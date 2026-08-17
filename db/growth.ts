@@ -102,14 +102,72 @@ const { rows: porAnada } = await query<{
     GROUP BY 1 ORDER BY 1`,
 );
 
-/** Emisiones con Annex A cosechado y sin ningún 10-D asociado. */
-const { rows: sinReporte } = await query<{ emisiones: string; prestamos: string }>(
-  `SELECT count(DISTINCT f.accession)::text AS emisiones,
-          count(l.id)::text AS prestamos
+/**
+ * Emisiones con Annex A cosechado y sin ningún 10-D, PARTIDAS POR AÑADA.
+ *
+ * La primera versión las contaba juntas y multiplicaba el total por la tasa de
+ * eventos de las añadas maduras. Eso da 78 eventos estimados sobre 2.702
+ * préstamos, y es falso: 74 de esas 75 emisiones son de 2025, 2026 y 2011, las
+ * mismas que la tabla de arriba marca "sin madurar". Aplicarles la tasa de las
+ * maduras es afirmar que van a producir eventos que por construcción no tienen.
+ *
+ * El número honesto es ~3, no 78, y el script imprimía la advertencia correcta
+ * tres líneas más abajo del número equivocado.
+ */
+const { rows: sinReporte } = await query<{
+  anada: string; emisiones: string; prestamos: string; maduras: string;
+}>(
+  `WITH maduras AS (
+     SELECT DISTINCT extract(year FROM f.filed_at)::int AS anada
+       FROM corpus.filings f
+       JOIN corpus.loans l ON l.accession = f.accession
+       JOIN corpus.delinquency d ON d.loan_id = l.id
+      WHERE d.transfer_date IS NOT NULL
+   )
+   SELECT extract(year FROM f.filed_at)::int::text AS anada,
+          count(DISTINCT f.accession)::text AS emisiones,
+          count(l.id)::text AS prestamos,
+          (extract(year FROM f.filed_at)::int IN (SELECT anada FROM maduras))::text AS maduras
      FROM corpus.filings f
      LEFT JOIN corpus.loans l ON l.accession = f.accession
     WHERE f.accession NOT IN (SELECT deal_accession FROM corpus.servicer_reports
-                               WHERE deal_accession IS NOT NULL)`,
+                               WHERE deal_accession IS NOT NULL)
+    GROUP BY 1, 4 ORDER BY 1`,
+);
+
+/**
+ * LA VENTANA DE OBSERVACIÓN DE CADA EMISIÓN.
+ *
+ * Esto no estaba en el plan y lo puso a la vista la corrida: hay 158 trusts con
+ * 158 reportes, o sea exactamente uno por trust. Entonces "evento" no significa
+ * "transfirió", significa "había transferido a la fecha del único 10-D que
+ * cosechamos de ese trust".
+ *
+ * Si esa fecha varía entre emisiones, cada una tiene una ventana de exposición
+ * distinta, y comparar originadores que colocan en emisiones distintas compara
+ * ventanas distintas. Estandarizar por añada corrige eso solo si la ventana es la
+ * misma dentro de cada añada — que es justamente lo que hay que medir.
+ *
+ * No es un problema de potencia: es un confundido que estuvo en todos los SIR que
+ * el proyecto calculó, y nunca se miró.
+ */
+const { rows: ventana } = await query<{
+  anada: string; n: string; p25: string; p50: string; p75: string; rango: string;
+}>(
+  `WITH x AS (
+     SELECT extract(year FROM f.filed_at)::int AS anada,
+            (sr.period_of_report - f.filed_at) / 365.25 AS anios
+       FROM corpus.servicer_reports sr
+       JOIN corpus.filings f ON f.accession = sr.deal_accession
+      WHERE sr.deal_accession IS NOT NULL
+        AND sr.period_of_report IS NOT NULL AND f.filed_at IS NOT NULL
+   )
+   SELECT anada::text, count(*)::text AS n,
+          round(percentile_cont(0.25) WITHIN GROUP (ORDER BY anios)::numeric, 2)::text AS p25,
+          round(percentile_cont(0.50) WITHIN GROUP (ORDER BY anios)::numeric, 2)::text AS p50,
+          round(percentile_cont(0.75) WITHIN GROUP (ORDER BY anios)::numeric, 2)::text AS p75,
+          round((max(anios) - min(anios))::numeric, 2)::text AS rango
+     FROM x GROUP BY anada ORDER BY anada`,
 );
 
 /** Cuántos 10-D distintos hay por trust: la otra vía de crecimiento. */
@@ -221,23 +279,61 @@ console.log(
     `${factor.toFixed(1)}x en préstamos MADUROS.\x1b[0m\n`,
 );
 
-const prSinReporte = Number(sinReporte[0]!.prestamos);
-const emSinReporte = Number(sinReporte[0]!.emisiones);
-const evEstimados = Math.round(prSinReporte * tasaMadura);
+const madurasSin = sinReporte.filter((r) => r.maduras === "true");
+const inmadurasSin = sinReporte.filter((r) => r.maduras !== "true");
+const prMaduro = madurasSin.reduce((t, r) => t + Number(r.prestamos), 0);
+const prInmaduro = inmadurasSin.reduce((t, r) => t + Number(r.prestamos), 0);
+const emMaduro = madurasSin.reduce((t, r) => t + Number(r.emisiones), 0);
+const emInmaduro = inmadurasSin.reduce((t, r) => t + Number(r.emisiones), 0);
+const evMaduro = Math.round(prMaduro * tasaMadura);
 
 console.log(`  vía                                        préstamos   eventos est.   ¿alcanza?`);
 console.log(`  ${"─".repeat(74)}`);
 console.log(
-  `  10-D de las ${String(emSinReporte).padStart(3)} emisiones ya cosechadas     ` +
-    `${num(prSinReporte).padStart(9)} ${String(evEstimados).padStart(14)}   ` +
-    `${evEstimados >= faltanEventos * (totalPr / 285) ? "\x1b[32msí\x1b[0m" : "\x1b[33mno\x1b[0m"}`,
+  `  10-D de ${String(emMaduro).padStart(3)} emisiones de añadas maduras       ` +
+    `${num(prMaduro).padStart(9)} ${String(evMaduro).padStart(14)}   \x1b[33mno\x1b[0m`,
 );
 console.log(
-  `  \x1b[90m  Es la vía más barata: el Annex A ya está parseado y solo falta el desempeño.\x1b[0m`,
+  `  10-D de ${String(emInmaduro).padStart(3)} emisiones sin madurar            ` +
+    `${num(prInmaduro).padStart(9)} ${String(0).padStart(14)}   \x1b[31mempeora\x1b[0m`,
 );
 console.log(
-  `  \x1b[90m  ${periodos[0]!.deals} trusts tienen ${periodos[0]!.reportes} reportes ` +
-    `(mediana ${periodos[0]!.p50} por trust): sumar períodos agrega eventos sin agregar préstamos.\x1b[0m`,
+  `  \x1b[90m  La segunda fila sube el denominador y no el numerador: cosecharla BAJA la\x1b[0m`,
+);
+console.log(
+  `  \x1b[90m  potencia. Es el caso donde más datos es peor, y son ${pct(prInmaduro / Math.max(1, prMaduro + prInmaduro), 0)} de lo que falta.\x1b[0m`,
+);
+
+console.log(`\n${"─".repeat(78)}`);
+console.log("La ventana de observación, que nunca se miró");
+console.log(`${"─".repeat(78)}\n`);
+console.log(
+  `  \x1b[90m${periodos[0]!.deals} trusts, ${periodos[0]!.reportes} reportes, mediana ` +
+    `${periodos[0]!.p50} por trust. Un solo 10-D por emisión significa que\x1b[0m`,
+);
+console.log(
+  `  \x1b[90m"evento" es "había transferido a la fecha de ESE reporte", y esa fecha varía.\x1b[0m\n`,
+);
+console.log(`  añada      n    años de exposición: p25 · p50 · p75      rango`);
+console.log(`  ${"─".repeat(64)}`);
+let rangoMax = 0;
+for (const v of ventana) {
+  const r = Number(v.rango);
+  rangoMax = Math.max(rangoMax, r);
+  console.log(
+    `  ${v.anada}  ${String(v.n).padStart(5)}      ${v.p25.padStart(5)} · ${v.p50.padStart(5)} · ${v.p75.padStart(5)}` +
+      `            ${v.rango.padStart(5)}` +
+      (r > 1 ? `  \x1b[33m← dentro de la misma añada\x1b[0m` : ""),
+  );
+}
+console.log(
+  `\n  \x1b[90mSi el rango dentro de una añada es grande, estandarizar por añada NO iguala\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mla exposición, y un originador que coloca en las emisiones observadas más\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mtarde acumula más eventos sin suscribir peor. Estuvo en todos los SIR.\x1b[0m`,
 );
 console.log(
   `\n  \x1b[90m  Emisiones nuevas de EDGAR: suben el denominador. Si son de añadas recientes\x1b[0m`,
