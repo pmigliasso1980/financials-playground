@@ -487,8 +487,8 @@ if (medV === null || medS === null) {
  * significa "más transferencias que lo esperable por su mezcla de activos y
  * añadas", no "peor negocio".
  */
-const { rows: sirV } = await query<{
-  v: string; n: string; obs: string; esp: string; shelves: string;
+const { rows: sirTodos } = await query<{
+  v: string; n: string; obs: string; esp: string; shelves: string; auto: string;
 }>(
   `WITH base AS (
      SELECT b.*,
@@ -544,18 +544,70 @@ const { rows: sirV } = await query<{
      SELECT tipo, anada, tercil, tercil_ltv, tercil_saldo,
             sum(evento)::numeric / count(*) AS tasa
        FROM con_tipo GROUP BY tipo, anada, tercil, tercil_ltv, tercil_saldo
+   ),
+   -- CUÁNTO DE LA TASA ESPERADA DE UN VENDEDOR ES SU PROPIA TASA.
+   --
+   -- El comentario de arriba dice que la autorreferencia sesga hacia 1 y por eso
+   -- es conservadora. Eso vale cuando el vendedor es una parte grande del estrato.
+   -- Cuando es el estrato ENTERO, la estandarización deja de ser conservadora y
+   -- pasa a ser vacía: el esperado es el observado por construcción.
+   --
+   -- Con subtipo eso deja de ser hipotético. NCB tiene 355 préstamos y todos los
+   -- Cooperative del corpus son suyos, así que su esperado sale exactamente 0,0 y
+   -- su SIR es 0/0. El intervalo de Byar devuelve [0,0], que excluye el 1, y el
+   -- script lo contaba como "se aparta". Es una prueba que no puede fallar.
+   dominio AS (
+     SELECT vendedor, tipo, anada, tercil, tercil_ltv, tercil_saldo,
+            count(*)::numeric AS nc,
+            count(*)::numeric / sum(count(*)) OVER (
+              PARTITION BY tipo, anada, tercil, tercil_ltv, tercil_saldo
+            ) AS share
+       FROM con_tipo
+      GROUP BY vendedor, tipo, anada, tercil, tercil_ltv, tercil_saldo
+   ),
+   auto_v AS (
+     SELECT vendedor,
+            coalesce(sum(nc) FILTER (WHERE share >= 0.8), 0) / nullif(sum(nc), 0) AS auto
+       FROM dominio GROUP BY vendedor
    )
    SELECT c.vendedor AS v, count(*)::text AS n,
           sum(c.evento)::text AS obs,
           round(sum(t.tasa), 2)::text AS esp,
-          count(DISTINCT c.shelf)::text AS shelves
+          count(DISTINCT c.shelf)::text AS shelves,
+          round(coalesce(max(a.auto), 0) * 100)::text AS auto
      FROM con_tipo c JOIN tasas t
        ON t.tipo = c.tipo AND t.anada = c.anada AND t.tercil = c.tercil
       AND t.tercil_ltv = c.tercil_ltv AND t.tercil_saldo = c.tercil_saldo
+     LEFT JOIN auto_v a ON a.vendedor = c.vendedor
     GROUP BY c.vendedor
-   HAVING count(*) >= ${MIN_POOL}
     ORDER BY sum(c.evento)::numeric / nullif(sum(t.tasa), 0)`,
 );
+
+/**
+ * QUIÉNES SALIERON DE LA TABLA, QUE ES LO PRIMERO QUE HAY QUE MIRAR.
+ *
+ * El filtro `pool >= MIN_POOL` se aplicaba dentro del SQL, así que un vendedor que
+ * quedaba corto simplemente no aparecía. Con los controles activos eso deja de ser
+ * inocente: cada control descarta los préstamos sin el dato, y un vendedor con
+ * cobertura peor que el promedio se cae de la tabla sin dejar rastro.
+ *
+ * Pasó exactamente eso, y con el vendedor que motivó el control. UBS AG tiene 177
+ * préstamos y la cobertura de subtipo es 75%, así que al estratificar por subtipo
+ * quedó abajo de 150 y desapareció. La corrida no dijo "UBS no sobrevive": dijo
+ * nada sobre UBS, y sin esta lista las dos cosas se leen igual.
+ *
+ * Un control que saca de la muestra justamente al caso que venía a examinar no
+ * responde la pregunta. Puede ser el control correcto igual — pero entonces la
+ * conclusión es "el corpus no alcanza", no "no se aparta".
+ */
+const sirV = sirTodos.filter((r) => Number(r.n) >= MIN_POOL);
+const enTabla = new Set(sirV.map((r) => r.v));
+const caidos = crudos
+  .filter((r) => Number(r.n) >= MIN_POOL && !enTabla.has(r.v))
+  .map((r) => {
+    const dentro = sirTodos.find((x) => x.v === r.v);
+    return { v: r.v, crudo: Number(r.n), conEstrato: Number(dentro?.n ?? 0) };
+  });
 
 /** Byar: con 0 eventos observados el intervalo normal no existe. */
 function byar(obs: number, esp: number): [number, number] {
@@ -573,7 +625,7 @@ console.log(
     `${CON_LTV ? " × LTV" : ""}${CON_TAMANO ? " × SALDO" : ""} (pool ≥ ${MIN_POOL})`,
 );
 console.log(`${"═".repeat(78)}\n`);
-console.log(`  vendedor          emis.       n   obs   esperado    SIR         IC 95%`);
+console.log(`  vendedor          emis.       n   obs   esperado    SIR         IC 95%      auto`);
 console.log(`  ${"─".repeat(72)}`);
 
 let apartados = 0;
@@ -589,17 +641,41 @@ for (const r of sirV) {
     pegados++;
   }
 }
+let tautologicos = 0;
 for (const r of sirV) {
   const obs = Number(r.obs), esp = Number(r.esp), nn = Number(r.n);
+  const auto = Number(r.auto);
   const s = esp > 0 ? obs / esp : 0;
   const [lo, hi] = byar(obs, esp);
-  const aparta = lo > 1 || hi < 1;
+  /**
+   * Con esperado 0 el intervalo de Byar es [0,0], que excluye el 1 siempre. No
+   * es un hallazgo: es la aritmética de dividir por cero con otro nombre.
+   */
+  const evaluable = esp > 0;
+  if (!evaluable) tautologicos++;
+  const aparta = evaluable && (lo > 1 || hi < 1);
   if (aparta) apartados++;
   console.log(
     `  ${r.v.slice(0, 16).padEnd(17)} ${String(r.shelves).padStart(4)} ${String(nn).padStart(7)} ` +
-      `${String(obs).padStart(5)} ${esp.toFixed(1).padStart(9)}  ${s.toFixed(2).padStart(6)}   ` +
-      `[${lo.toFixed(2)} , ${hi.toFixed(2)}]` +
-      (aparta ? `  \x1b[1m← se aparta\x1b[0m` : ""),
+      `${String(obs).padStart(5)} ${esp.toFixed(1).padStart(9)}  ${(evaluable ? s.toFixed(2) : "—").padStart(6)}   ` +
+      `${evaluable ? `[${lo.toFixed(2)} , ${hi.toFixed(2)}]` : "         —      "}  ` +
+      `${auto >= 50 ? "\x1b[33m" : "\x1b[90m"}${String(auto).padStart(3)}%\x1b[0m` +
+      (aparta ? `  \x1b[1m← se aparta\x1b[0m` : "") +
+      (!evaluable ? `  \x1b[31m← esperado 0: no evaluable\x1b[0m` : ""),
+  );
+}
+
+if (caidos.length > 0) {
+  console.log(
+    `\n  \x1b[33mEl control sacó de la tabla a ${caidos.length} vendedor(es) que sí llegan al pool sin él:\x1b[0m`,
+  );
+  for (const c of caidos) {
+    console.log(
+      `  \x1b[90m  ${c.v.slice(0, 20).padEnd(21)} ${c.crudo} préstamos → ${c.conEstrato} con el estrato completo\x1b[0m`,
+    );
+  }
+  console.log(
+    `  \x1b[90mSobre ellos esta corrida no dice que no se apartan: no dice nada.\x1b[0m`,
   );
 }
 
@@ -660,6 +736,14 @@ console.log(
     `${CON_SUBTIPO ? "subtipo" : "tipo"} y añada${CON_APALANCAMIENTO || CON_LTV || CON_TAMANO ? ", DSCR" : ""}` +
     `${CON_LTV ? ", LTV" : ""}${CON_TAMANO ? " y saldo" : ""}.`,
 );
+if (tautologicos > 0) {
+  console.log(
+    `  \x1b[90m${tautologicos} de esos ${sirV.length} no son evaluables: su esperado es 0 porque son\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mdueños de su estrato, y ahí la estandarización compara al préstamo consigo mismo.\x1b[0m`,
+  );
+}
 console.log(
   `  \x1b[90mPor azar se esperarían ${esperadosPorAzar.toFixed(1)} con ${sirV.length} pruebas al 5%.\x1b[0m` +
     (apartados <= Math.ceil(esperadosPorAzar)
@@ -686,6 +770,15 @@ console.log(
     (pegados > sirV.length * 0.6
       ? `  \x1b[31m← el estrato es demasiado fino\x1b[0m`
       : `  \x1b[32m← el estrato sigue aportando contraste\x1b[0m`),
+);
+console.log(
+  `\n  \x1b[90m"auto" es qué porción de los préstamos del vendedor cae en estratos donde él\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mmismo es el 80% o más. Ahí su tasa esperada es en buena medida su propia\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mtasa, y el SIR mide menos de lo que parece. Arriba de 50% conviene desconfiar.\x1b[0m`,
 );
 console.log(
   `\n  \x1b[90m"emis." es en cuántas emisoras coloca cada uno. Uno que aparece en una\x1b[0m`,
