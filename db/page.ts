@@ -180,12 +180,13 @@ function render(b: Benchmark): string {
                 .map((m) => `${esc(m.spec.etiqueta)} ${esc(m.spec.fmt(m.valor!))}`)
                 .join(" · ")
         }</p>
-        <p class="note">Los términos de un conduit son de mercado por construcción, y esta
-        tabla lo confirma más de lo que lo distingue: medido sobre las 28 emisiones de la
-        cohorte, el 50% de las mediciones cae fuera del rango intercuartil — exactamente lo
-        que predice el azar, porque el rango intercuartil contiene la mitad de una
-        distribución por definición. Ninguna de las seis métricas se aparta de eso.
-        Está acá por completitud, no porque separe esta emisión de las otras.</p>
+        <p class="note">Estos seis números rastrean lo mismo que la mezcla, más débilmente.
+        Sobre las 28 emisiones de la cohorte, cuántas métricas se apartan del rango
+        intercuartil correlaciona con cuánto se aparta la composición (rho = 0,59, t = 3,7):
+        una emisión con mucha hotelería tiene DSCR y debt yield distintos <i>porque</i> los
+        hoteles se suscriben distinto. La causa es la mezcla; los términos son su
+        consecuencia. Van abajo porque cada métrica por separado es una prueba débil de lo
+        que la composición mide de una vez.</p>
         <details>
           <summary>Ver la posición de cada métrica</summary>
           <table class="m">
@@ -417,17 +418,37 @@ if (args.includes("--todas")) {
   console.log(
     `\n  \x1b[1m${totalFuera} de ${totalEval} mediciones fuera del rango (${pct(share)})\x1b[0m`,
   );
+  /**
+   * ESTA MEDICIÓN NO TIENE POTENCIA. SE DEJA PARA QUE NO SE VUELVA A CITAR.
+   *
+   * Cada emisión se compara contra el rango intercuartil de las OTRAS del mismo
+   * conjunto. Por intercambiabilidad la tasa marginal es 50% exista o no señal:
+   * si todas las emisiones fueran idénticas daría 50%, y si fueran radicalmente
+   * distintas también. No hay referencia externa — el conjunto se mide contra sí
+   * mismo.
+   *
+   * O sea que el nulo y el observado coinciden por construcción, y "z = 0,00" no
+   * es evidencia de nada. Yo lo presenté como hallazgo negativo y reordené la
+   * página apoyándome en él.
+   *
+   * Lo que sí decide está abajo: la correlación entre cuántas métricas se apartan
+   * y cuánto se aparta la mezcla. Ahí sí hay dos cantidades independientes que
+   * pueden o no ir juntas, y van (rho = 0,59).
+   */
   console.log(
-    `  \x1b[90mBajo azar puro se esperaría 50%: el rango intercuartil contiene la mitad de\x1b[0m`,
+    `  \x1b[31mEste número no mide nada:\x1b[0m cada emisión se compara contra el rango de las`,
   );
   console.log(
-    `  \x1b[90muna distribución por definición. Con ${n} emisiones, SE = ${pct(se, 1)} y el\x1b[0m`,
+    `  otras del mismo conjunto, así que por intercambiabilidad la tasa marginal es`,
   );
   console.log(
-    `  \x1b[90mobservado está a ${z.toFixed(2)} errores estándar de la nula.\x1b[0m`,
+    `  50% exista o no señal. El nulo y el observado coinciden por construcción.`,
+  );
+  console.log(
+    `  \x1b[90mSE = ${pct(se, 1)} con ${n} emisiones, z = ${z.toFixed(2)} — y ese z no podía ser otro.\x1b[0m`,
   );
 
-  console.log(`\n  Por métrica, contra la nula de 50%:\n`);
+  console.log(`\n  Por métrica (mismo problema, se listan para comparar):\n`);
   for (const [etiqueta, e] of fueraPorMetrica) {
     const sh = e.eval ? e.fuera / e.eval : 0;
     const seM = Math.sqrt(0.25 / Math.max(1, e.eval));
@@ -440,15 +461,6 @@ if (args.includes("--todas")) {
     );
   }
 
-  console.log(
-    Math.abs(z) < 2
-      ? `\n  \x1b[31mLa tabla de métricas no distingue emisiones.\x1b[0m El resultado es\n` +
-          `  indistinguible de tomar una emisión al azar de la cohorte, así que las seis\n` +
-          `  filas con su barra no informan más que una línea diciendo "los términos son\n` +
-          `  de mercado". Lo que sí varía entre emisiones es la composición.`
-      : `\n  \x1b[32mLa tabla distingue:\x1b[0m ${pct(share)} contra la nula de 50% son ${z.toFixed(1)}\n` +
-          `  errores estándar, más de lo que explica el muestreo.`,
-  );
   /**
    * Correlación de Spearman entre "métricas fuera de rango" y "cuánto se aparta
    * la mezcla por encima del nulo".
