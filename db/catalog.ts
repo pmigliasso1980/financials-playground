@@ -257,7 +257,11 @@ const html = `<!doctype html>
          <table><tbody>${monoTipo
            .map(
              (f) => `<tr><th><a href="${f.slug}.html">${esc(f.b.objetivo.nombre)}</a></th>
-               <td class="n">${f.b.objetivo.pool}</td>
+               <td class="n">${f.b.objetivo.poolTipado}${
+                 f.b.objetivo.poolTipado < f.b.objetivo.pool
+                   ? `<span class="muted"> / ${f.b.objetivo.pool}</span>`
+                   : ""
+               }</td>
                <td class="muted sm">${pct(f.b.objetivo.shareDominante)} ${esc(f.b.objetivo.tipoDominante ?? "")}</td></tr>`,
            )
            .join("")}</tbody></table>
@@ -327,13 +331,18 @@ console.log(
 console.log(
   `  ${evaluables.length} conduits comparables · ${monoTipo.length} mono-tipo · ${sinEvaluar.length} sin evaluar\n`,
 );
-console.log(`  emisión                              pool   exceso    veredicto`);
+console.log(`  emisión                              con tipo  exceso    veredicto`);
 console.log(`  ${"─".repeat(70)}`);
 for (const f of evaluables) {
   const banda = bandaDe(f.b);
   const color = banda === "distinta" ? "\x1b[32m" : banda === "filo" ? "\x1b[33m" : "\x1b[90m";
   console.log(
-    `  ${f.b.objetivo.nombre.slice(0, 34).padEnd(36)} ${String(f.b.objetivo.pool).padStart(5)}   ` +
+    `  ${f.b.objetivo.nombre.slice(0, 34).padEnd(36)} ` +
+      `${String(f.b.objetivo.poolTipado).padStart(5)}${
+        f.b.objetivo.poolTipado < f.b.objetivo.pool
+          ? `\x1b[90m/${f.b.objetivo.pool}\x1b[0m`
+          : "   "
+      } ` +
       `${pct(exceso(f.b), 1).padStart(6)}    ${color}${ETIQUETA[banda]}\x1b[0m`,
   );
 }
