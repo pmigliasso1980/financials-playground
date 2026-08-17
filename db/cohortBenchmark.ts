@@ -105,10 +105,15 @@ export interface Benchmark {
   /**
    * Cuánto se aparta la mezcla de propiedades, y si eso supera al azar.
    *
-   * Medido con `db:composition-signal` sobre la cohorte 2026: 10 de 25 conduits
+   * Medido con `db:composition-signal` sobre la cohorte 2026: 13 de 25 conduits
    * se apartan más que el azar, contra 1,25 esperadas. El test se verificó antes
    * de usarlo generando emisiones DESDE la nula: encontró 2 de 28, contra 1,4
    * esperadas.
+   *
+   * Ese 13 NO es el que muestra `db:catalog`, que da 8. Son referencias distintas
+   * —el catálogo excluye las mono-tipo del pool y exige que las dos ponderaciones
+   * coincidan— y el detalle está en el encabezado de `catalog.ts`. Una versión
+   * anterior de este comentario decía "10", que no es ninguno de los dos.
    *
    * Las seis métricas rastrean lo mismo más débilmente —rho = 0,59 entre cuántas
    * se apartan y cuánto se aparta la mezcla— porque la composición causa el

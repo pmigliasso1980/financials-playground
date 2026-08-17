@@ -7,9 +7,29 @@
  * QUÉ ORDENA ESTA PÁGINA, Y POR QUÉ ESO Y NO OTRA COSA
  *
  * De todo lo que el proyecto midió, una sola cosa distingue emisiones por encima
- * del azar: la mezcla de propiedades. Diez de veinticinco conduits de 2026 se
- * apartan más de lo que produce el muestreo, contra 1,25 esperadas — y el test se
- * verificó generando emisiones DESDE la nula antes de usarlo.
+ * del azar: la mezcla de propiedades. Sobre la cohorte 2026 el catálogo cuenta
+ * 8 de 25 contra 1,3 esperadas por azar, y el test se verificó generando emisiones
+ * DESDE la nula antes de usarlo.
+ *
+ * TRES NÚMEROS PARA LA MISMA PREGUNTA, Y NINGUNO ESTABA MAL
+ *
+ * "Cuántas emisiones de 2026 tienen mezcla distinta" tiene tres respuestas en este
+ * repo: 10, 13 y 8. No es que dos estén equivocadas — son tres cantidades distintas
+ * con el mismo nombre:
+ *
+ *   db:composition-signal usa como referencia TODAS las emisiones de la añada,
+ *   incluidas las mono-tipo, y cuenta significativas al 5% con una ponderación.
+ *
+ *   db:catalog excluye las mono-tipo de la referencia —no son conduits, y meterlas
+ *   corre la mezcla "de mercado" hacia su tipo— y además exige que las dos
+ *   ponderaciones coincidan. Las que discrepan van a "al filo" en vez de contarse.
+ *
+ * Cada filtro saca emisiones, así que el conteo baja. El agregado no cambia de
+ * signo: 8 o 13 contra 1,3 esperadas es abrumador en las dos versiones.
+ *
+ * Lo que sí es un error es citar uno de los tres sin decir cuál, que es lo que
+ * hacían estos comentarios. El número que vale para el producto es el que el
+ * producto calcula, y por eso el HTML lo imprime en vez de tenerlo escrito.
  *
  * Las seis métricas de términos no se ordenan acá. Rastrean lo mismo más
  * débilmente (rho = 0,59 contra la distancia de composición) porque son su
