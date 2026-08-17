@@ -30,6 +30,7 @@
     "db:seller": "tsx db/sellerEffect.ts",
     "db:servicer-effect": "tsx db/servicerEffect.ts",
     "db:snapshot": "tsx db/snapshot.ts",
+    "db:stability": "tsx db/stability.ts",
     "db:stats": "tsx db/stats.ts",
     "db:status": "tsx db/migrate.ts --status",
     "db:test": "tsx db/conformance.test.ts",
