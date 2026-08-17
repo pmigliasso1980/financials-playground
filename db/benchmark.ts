@@ -465,8 +465,9 @@ if (AUDITORIA) {
       ? `    \x1b[31mEl tipo no juega: donde la emisión trae el dato, lo trae para todos.\x1b[0m\n` +
           `    \x1b[90mNo es formato: los encabezados del Annex A conduit son byte por byte\x1b[0m\n` +
           `    \x1b[90miguales entre emisores. Es el orden de los bloques tras el join, que\x1b[0m\n` +
-          `    \x1b[90mdesempata columnas con puntaje igual. Las que faltan son emisiones sin\x1b[0m\n` +
-          `    \x1b[90mrecosechar con la taxonomía nueva.\x1b[0m`
+          `    \x1b[90mdesempata columnas con puntaje igual — arreglado en la taxonomía\x1b[0m\n` +
+          `    \x1b[90m2026.08.10 dándole a /leased occ/ el primer patrón. Si vuelve a faltar\x1b[0m\n` +
+          `    \x1b[90men alguna emisión, es una recosecha pendiente o un empate nuevo.\x1b[0m`
       : `    \x1b[33mEl tipo sigue jugando aun dentro de emisiones sanas: hay dos causas\x1b[0m\n` +
           `    \x1b[33msuperpuestas y hace falta separarlas antes de usar la métrica.\x1b[0m`,
   );
@@ -589,13 +590,28 @@ if (AUDITORIA) {
       );
       console.log(`      nombre=${JSON.stringify((x.prop_name ?? "").slice(0, 44))}`);
     }
+    /**
+     * La versión anterior de estas líneas ofrecía dos causas —celda sucia o
+     * corrimiento de columnas— como si fueran exhaustivas. La evidencia que
+     * imprime justo arriba las descarta a las dos: nombre vacío, conteo nulo y
+     * unidad nula no es una celda sucia ni un corrimiento, es una fila que no
+     * es un préstamo.
+     *
+     * La dejé impresa varias corridas después de saber que era falsa. Ahora
+     * dice lo que la evidencia sostiene y nombra la tarea donde se arregla.
+     */
     console.log(
-      `\n    \x1b[90mSi el nombre y el conteo se ven sanos, "2" es una celda sucia aislada.\x1b[0m`,
+      `\n    \x1b[90mSin nombre, sin conteo y sin unidad: no son préstamos con el tipo mal,\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mSi también están fuera de lugar, es corrimiento de columnas y el\x1b[0m`,
+      `    \x1b[90mson filas que no son préstamos. row_index 0 es la primera fila después\x1b[0m`,
     );
-    console.log(`    \x1b[90marreglo está en la detección de encabezado, no en el tipo.\x1b[0m`);
+    console.log(
+      `    \x1b[90mdel encabezado, que en el Annex A conduit suele numerar las columnas —\x1b[0m`,
+    );
+    console.log(
+      `    \x1b[90my ahí un "2" en la posición del tipo es el número de columna. Tarea #49.\x1b[0m`,
+    );
   }
 
   /**
