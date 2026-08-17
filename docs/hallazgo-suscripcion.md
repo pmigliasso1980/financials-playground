@@ -322,36 +322,29 @@ preguntarse si la pregunta era contestable con la muestra disponible.
 **El piso de ruido debería calcularse antes de buscar el efecto, no después de
 encontrarlo.** Cuesta una tarde y decide si vale la pena el resto.
 
-### Corrección: qué mató qué, revisado con el corpus de hoy
+### Nota sobre una corrección que estuvo mal
 
-Cuando se escribió esto, `db:power` decía que el MDE superaba al efecto afirmado:
-la muestra no podía distinguir 10,5 puntos del ruido, así que el hallazgo estaba
-muerto antes de formularse. El corpus creció y ese veredicto se dio vuelta. Hoy el
-MDE es 6,7% contra el efecto afirmado de 10,5%.
+En una revisión posterior se agregó acá una sección afirmando que el veredicto de
+`db:power` había caducado: que cuando se escribió este documento el MDE superaba
+al efecto afirmado, y que al crecer el corpus se dio vuelta.
 
-O sea que la muestra **sí** podía detectar ese efecto, y que desaparezca al
-estratificar por tamaño no es falta de potencia: es que el efecto no está. La
-hipótesis muere igual y por una razón más fuerte —"se podía ver y no estaba" en
-vez de "no se podía ver"— pero el mecanismo es el sesgo de composición que
-encontró `db:bias`, no el piso de ruido.
+**Eso es falso.** El MDE era 6,6% cuando se escribió y es 6,7% hoy. Nunca cambió
+de lado, y este documento ya decía lo correcto en la sección "Qué NO explica el
+fracaso": el efecto afirmado eran 10,5 puntos, el piso de ruido 6,6, la muestra
+podía detectarlo, y lo que falló no fue el instrumento sino que el efecto no está.
 
-Vale registrar los dos errores que esto destapa, porque son de clases distintas:
+Cómo se llegó al error, porque es lo reutilizable: se auditó este documento de 345
+líneas leyendo el encabezado y el cierre —unas 84 líneas— y se afirmó una
+corrección sobre contenido que no se había leído. La sección que la refutaba está
+a mitad de camino y se llama exactamente "Qué NO explica el fracaso", escrita para
+prevenir esta lectura.
 
-**Del documento.** Atribuía la muerte a las dos últimas herramientas por igual.
-`db:power` cambió de rol: pasó de matar el hallazgo a certificar que su ausencia
-es informativa. Es una función distinta y más valiosa, y el doc la contaba como la
-otra.
+Un `grep` sobre un documento encuentra las líneas que coinciden con lo que uno ya
+sospecha. Leerlo entero encuentra las que lo contradicen.
 
-**De los resúmenes que se escribieron alrededor.** Este documento nunca dijo que
-las hipótesis murieran "por falta de potencia" —dice que ninguna sobrevive a la
-corrección por comparaciones múltiples, que es sobre LMF y es correcto—. La
-versión "murieron por falta de potencia" apareció en los resúmenes de trabajo, no
-acá. El documento fue más cuidadoso que el relato que se armó encima de él.
-
-**Y una advertencia operativa:** un veredicto que depende del tamaño del corpus
-caduca cuando el corpus crece. Este quedó vencido sin que nadie lo releyera. Los
-scripts que comparan contra un umbral fijo deberían recalcularlo, y los documentos
-que citan un veredicto deberían decir contra qué corpus se emitió.
+Lo que sí quedó verificado de esa revisión, y vale: el título decía cuatro
+hipótesis cuando el estado decía cinco, y los conteos eran de 222 emisiones y
+8.935 préstamos cuando hoy son 233 y 9.694.
 
 ---
 
@@ -372,8 +365,5 @@ miles. Cómo varía el debt yield suscrito por tipo de activo controlando por LT
 qué estructuras de deuda concentran qué perfiles, cómo se distribuyen las
 reservas. Ahí el corpus está sobrado de muestra.
 
-Lo que **no** haría: más trusts sobre la misma pregunta. Duplicar la muestra mueve
-el piso de ruido de 6,7 a 4,7 puntos —el error estándar cae con la raíz de n— y eso
-no cambia qué preguntas son contestables. La morosidad, en cambio, multiplica los
-eventos por diez con el mismo esfuerzo de cosecha, porque está en los mismos
-documentos que ya se descargan.
+Lo que **no** haría: más trusts sobre la misma pregunta. Duplica el trabajo de
+mapeo para mover el piso de ruido de 6,6 a 4,7 puntos.
