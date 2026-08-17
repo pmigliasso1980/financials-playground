@@ -102,7 +102,35 @@ export interface Benchmark {
   puntoPorPrestamo: number;
   /** Resolución en puntos que tendría un percentil con estos pares. */
   resolucionPercentil: number;
+  /**
+   * Cuánto se aparta la mezcla de propiedades, y si eso supera al azar.
+   *
+   * Medido con `db:composition-signal` sobre la cohorte 2026: 10 de 25 conduits
+   * se apartan más que el azar, contra 1,25 esperadas. Las seis métricas, en
+   * cambio, son indistinguibles de la nula (z = 0,00). Lo que informa sobre una
+   * emisión conduit es qué compró, no en qué términos.
+   */
+  distancia: number;
+  distanciaNulo: number;
+  pValor: number;
 }
+
+/** Variación total: la mitad de la suma de diferencias absolutas. */
+const tv = (a: number[], b: number[]) =>
+  0.5 * a.reduce((x, v, i) => x + Math.abs(v - b[i]!), 0);
+
+/**
+ * Generador con semilla: un p-valor que cambia entre corridas no se puede citar.
+ */
+function rng(semilla: number) {
+  let s = semilla >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+const SIMULACIONES = 4000;
 
 /**
  * Las emisiones disponibles, con lo necesario para decidir quién entra a la
@@ -187,7 +215,7 @@ export async function calcularBenchmark(
   const pares = mismaAnada.filter((c) => c.shareDominante <= CONCENTRACION_TIPO);
   const excluidas = mismaAnada.filter((c) => c.shareDominante > CONCENTRACION_TIPO);
 
-  const base: Omit<Benchmark, "metricas" | "composicion"> = {
+  const base: Omit<Benchmark, "metricas" | "composicion" | "distancia" | "distanciaNulo" | "pValor"> = {
     objetivo,
     pares,
     excluidas,
@@ -197,7 +225,9 @@ export async function calcularBenchmark(
     resolucionPercentil: 100 / (pares.length + 1),
   };
 
-  if (!base.evaluable) return { ...base, metricas: [], composicion: [] };
+  if (!base.evaluable) {
+    return { ...base, metricas: [], composicion: [], distancia: 0, distanciaNulo: 0, pValor: 1 };
+  }
 
   const accessions = [objetivo.accession, ...pares.map((p) => p.accession)];
   const metricas: MetricaResultado[] = [];
@@ -319,5 +349,45 @@ export async function calcularBenchmark(
     // Un tipo ausente en esta emisión y marginal en la cohorte no informa nada.
     .filter((r) => r.propio > 0 || r.cohorte >= 0.02);
 
-  return { ...base, metricas, composicion };
+  /**
+   * ¿Se aparta la mezcla más de lo que produce el azar?
+   *
+   * El nulo descuenta el tamaño del pool, que es la parte que importa: 15
+   * préstamos se desvían de la mezcla promedio por muestreo mucho más que 70.
+   * Sin eso, las emisiones chicas parecerían siempre las más distintas.
+   *
+   * La referencia son los `pares` —las mismas que usa todo lo demás en esta
+   * página— y no la cohorte entera. Incluir las mono-tipo correría la mezcla de
+   * referencia hacia multifamily y haría que todos los conduits parecieran
+   * apartarse en la misma dirección.
+   */
+  const conMezcla = composicion.filter((c) => c.propio > 0 || c.cohorte > 0);
+  const pVec = conMezcla.map((c) => c.propio);
+  const qVec = conMezcla.map((c) => c.cohorte);
+  const distancia = tv(pVec, qVec);
+
+  const acum: number[] = [];
+  qVec.reduce((x, v) => (acum.push(x + v), x + v), 0);
+  const rand = rng(0xc0ffee);
+  const sim: number[] = [];
+  for (let b = 0; b < SIMULACIONES; b++) {
+    const c = new Array(qVec.length).fill(0);
+    for (let k = 0; k < objetivo.pool; k++) {
+      const u = rand();
+      let i = acum.findIndex((a) => u < a);
+      if (i < 0) i = qVec.length - 1;
+      c[i]++;
+    }
+    sim.push(tv(c.map((x) => x / objetivo.pool), qVec));
+  }
+  sim.sort((a, b) => a - b);
+
+  return {
+    ...base,
+    metricas,
+    composicion,
+    distancia,
+    distanciaNulo: sim[Math.floor(sim.length / 2)]!,
+    pValor: sim.filter((x) => x >= distancia).length / sim.length,
+  };
 }

@@ -154,21 +154,7 @@ function render(b: Benchmark): string {
           : ""
       }
       <section>
-        <h2>Posición dentro de la cohorte ${esc(o.anada)}</h2>
-        <table class="m">
-          <thead><tr>
-            <th></th><th>esta emisión</th><th>cohorte (p25 · mediana · p75)</th><th></th><th>posición</th>
-          </tr></thead>
-          <tbody>${b.metricas.map(filaMetrica).join("")}</tbody>
-        </table>
-        <p class="note">La posición es <b>ordinal, no percentil</b>. Con ${b.pares.length} pares
-        un percentil tendría una resolución de ~${b.resolucionPercentil.toFixed(0)} puntos, así que
-        mostrarlo con decimales sugeriría una precisión que no existe. La diferencia entre
-        dos puestos contiguos es una emisión.</p>
-      </section>
-
-      <section>
-        <h2>Composición contra la cohorte</h2>
+        <h2>Qué compró esta emisión</h2>
         <table class="c">
           <thead><tr>
             <th></th><th>esta emisión</th><th>cohorte</th><th>dif.</th><th></th>
@@ -176,8 +162,41 @@ function render(b: Benchmark): string {
           <tbody>${b.composicion.map(filaComposicion).join("")}</tbody>
         </table>
         <p class="note">Cada préstamo vale <b>${pct(b.puntoPorPrestamo, 1)}</b> de este pool
-        (${o.pool} préstamos). Una diferencia de 9 puntos son
-        ${Math.max(1, Math.round(0.09 / b.puntoPorPrestamo))} préstamos, no una tendencia.</p>
+        (${o.pool} préstamos), así que una diferencia de 9 puntos son
+        ${Math.max(1, Math.round(0.09 / b.puntoPorPrestamo))} préstamos.
+        Hay que mover el <b>${pct(b.distancia)}</b> del pool para llegar a la mezcla de la
+        cohorte; sacando ${o.pool} préstamos al azar del universo de los pares se esperaría
+        mover ${pct(b.distanciaNulo)}.</p>
+      </section>
+
+      <section>
+        <h2>Términos</h2>
+        <p class="lead">${
+          b.metricas.filter((m) => m.valor !== null).length === 0
+            ? "Sin métricas evaluables."
+            : `En línea con la cohorte: ` +
+              b.metricas
+                .filter((m) => m.valor !== null)
+                .map((m) => `${esc(m.spec.etiqueta)} ${esc(m.spec.fmt(m.valor!))}`)
+                .join(" · ")
+        }</p>
+        <p class="note">Los términos de un conduit son de mercado por construcción, y esta
+        tabla lo confirma más de lo que lo distingue: medido sobre las 28 emisiones de la
+        cohorte, el 50% de las mediciones cae fuera del rango intercuartil — exactamente lo
+        que predice el azar, porque el rango intercuartil contiene la mitad de una
+        distribución por definición. Ninguna de las seis métricas se aparta de eso.
+        Está acá por completitud, no porque separe esta emisión de las otras.</p>
+        <details>
+          <summary>Ver la posición de cada métrica</summary>
+          <table class="m">
+            <thead><tr>
+              <th></th><th>esta emisión</th><th>cohorte (p25 · mediana · p75)</th><th></th><th>posición</th>
+            </tr></thead>
+            <tbody>${b.metricas.map(filaMetrica).join("")}</tbody>
+          </table>
+          <p class="note">La posición es <b>ordinal, no percentil</b>: con ${b.pares.length}
+          pares un percentil tendría resolución de ~${b.resolucionPercentil.toFixed(0)} puntos.</p>
+        </details>
       </section>`;
 
   return `<!doctype html>
@@ -232,6 +251,12 @@ function render(b: Benchmark): string {
   tr.notable .dif { color:var(--agr); font-weight:700 }
   .note { font-size:13px; color:var(--muted); margin:14px 0 0; padding-left:10px;
           border-left:2px solid var(--line) }
+  .verdict { font-size:15.5px; margin:0 0 18px; padding:12px 14px; border-radius:6px;
+             background:#f4f6fa; border:1px solid #e2e8f2 }
+  .verdict.sig { background:#f0f7f1; border-color:#d6e8d9 }
+  .lead { font-size:15px; margin:0 0 10px; font-variant-numeric:tabular-nums }
+  details { margin-top:14px }
+  summary { cursor:pointer; font-size:13px; color:var(--muted); padding:6px 0 }
   .refuse, .warn { background:var(--warn); border:1px solid #f0e2bc;
                    border-radius:6px; padding:18px 20px }
   .refuse h2, .warn h2 { color:#8a6410; text-transform:none; font-size:15px;
@@ -244,6 +269,19 @@ function render(b: Benchmark): string {
 <main>
   <h1>${esc(o.nombre)}</h1>
   <p class="sub">${esc(o.filed.slice(0, 10))} · ${o.pool} préstamos · cohorte ${esc(o.anada)}</p>
+  ${
+    b.evaluable
+      ? `<p class="verdict ${b.pValor < 0.05 ? "sig" : ""}">${
+          b.pValor < 0.05
+            ? `Mezcla de propiedades <b>distinta de su cohorte</b> — hay que mover el
+               ${pct(b.distancia)} del pool para igualarla, contra ${pct(b.distanciaNulo)}
+               que se esperaría por azar con ${o.pool} préstamos (p = ${b.pValor.toFixed(4)}).`
+            : `Mezcla de propiedades <b>indistinguible de su cohorte</b> — la distancia de
+               ${pct(b.distancia)} está dentro de lo que produce el muestreo con ${o.pool}
+               préstamos (${pct(b.distanciaNulo)} esperado, p = ${b.pValor.toFixed(2)}).`
+        }</p>`
+      : ""
+  }
   <p class="peers">${b.pares.length} emisiones comparables${
     b.excluidas.length > 0
       ? ` · ${b.excluidas.length} excluida${b.excluidas.length === 1 ? "" : "s"} por ser
