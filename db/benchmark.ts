@@ -463,8 +463,10 @@ if (AUDITORIA) {
   console.log(
     spreadDentro < 0.2
       ? `    \x1b[31mEl tipo no juega: donde la emisión trae el dato, lo trae para todos.\x1b[0m\n` +
-          `    \x1b[31mEs formato del Annex A por emisión, y las 7 rotas son un bug de parseo\x1b[0m\n` +
-          `    \x1b[31mreparable, no una ausencia real del dato.\x1b[0m`
+          `    \x1b[90mNo es formato: los encabezados del Annex A conduit son byte por byte\x1b[0m\n` +
+          `    \x1b[90miguales entre emisores. Es el orden de los bloques tras el join, que\x1b[0m\n` +
+          `    \x1b[90mdesempata columnas con puntaje igual. Las que faltan son emisiones sin\x1b[0m\n` +
+          `    \x1b[90mrecosechar con la taxonomía nueva.\x1b[0m`
       : `    \x1b[33mEl tipo sigue jugando aun dentro de emisiones sanas: hay dos causas\x1b[0m\n` +
           `    \x1b[33msuperpuestas y hace falta separarlas antes de usar la métrica.\x1b[0m`,
   );
