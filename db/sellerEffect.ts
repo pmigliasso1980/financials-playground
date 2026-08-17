@@ -134,6 +134,37 @@ const CON_LTV = process.argv.includes("--con-ltv");
  */
 const CON_TAMANO = process.argv.includes("--con-tamano");
 
+/**
+ * `--con-subtipo`: el estrato usa property_type_detailed en vez del tipo grueso.
+ *
+ * POR QUÉ, Y DE DÓNDE SALIÓ
+ *
+ * Agregar la corrección por comparaciones múltiples a este script cambió quién es
+ * el hallazgo citable. Con DSCR + LTV + saldo, LMF cae a z = 2,28 y NO pasa
+ * Bonferroni; UBS AG queda en z = 2,97 contra un umbral de 2,91 y pasa. El
+ * proyecto le dedicó trece ataques a LMF y ninguno a UBS.
+ *
+ * Y la tabla de subtipos dice dónde vive el exceso de UBS: 6 de sus 13 eventos
+ * están en 11 préstamos de Limited Service, al 54,5% contra 9,2% del corpus.
+ *
+ * Hoteles de servicio limitado y full service viven los dos dentro de
+ * "Hospitality". Son productos distintos, así que estandarizar por el tipo grueso
+ * no controla eso. Es el mismo mecanismo de producto-dentro-de-tipo que ya mató el
+ * efecto emisora: las cooperativas dentro de multifamily.
+ *
+ * EL COSTO, QUE ES DOBLE
+ *
+ * La cobertura de property_type_detailed es 75% (71,6% en LMF), así que se pierde
+ * un cuarto de la muestra. Y hay más de veinte subtipos: con añada son ~100 celdas
+ * para 168 eventos, así que la sobre-estratificación es probable. La firma —los
+ * esperados pegándose a los observados— ya se imprime y hay que mirarla ANTES del
+ * resultado.
+ *
+ * Si colapsa, la respuesta correcta es que el corpus no aguanta este control, no
+ * bajar el umbral hasta que dé.
+ */
+const CON_SUBTIPO = process.argv.includes("--con-subtipo");
+
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
 function wilson(k: number, total: number): [number, number] {
@@ -462,6 +493,10 @@ const { rows: sirV } = await query<{
   `WITH base AS (
      SELECT b.*,
             CASE
+              -- Con --con-subtipo el estrato es el PRODUCTO, no la categoría
+              -- gruesa. Se toma property_type_detailed crudo: agruparlo sería
+              -- reintroducir la decisión que este control viene a evitar.
+              WHEN ${CON_SUBTIPO ? "TRUE" : "FALSE"} THEN nullif(btrim(sub.value), '')
               WHEN t.property_type IS NULL THEN NULL
               WHEN t.property_type ~* 'multifamily|cooperative|garden|low rise|mid rise|high rise|student' THEN 'Multifamily'
               WHEN t.property_type ~* 'manufactured' THEN 'Manufactured'
@@ -475,6 +510,8 @@ const { rows: sirV } = await query<{
             END AS tipo
        FROM (${BASE}) b
        JOIN corpus.loans t ON t.id = b.id
+       LEFT JOIN corpus.facts sub ON sub.loan_id = b.id
+                                 AND sub.metric_key = 'property_type_detailed'
    ),
    con_dscr AS (
      SELECT b.*, ds.value::numeric AS dscr, lt.value::numeric AS ltv,
@@ -532,7 +569,7 @@ function byar(obs: number, esp: number): [number, number] {
 
 console.log(`\n${"═".repeat(78)}`);
 console.log(
-  `Originadores: SIR por TIPO × AÑADA${CON_APALANCAMIENTO || CON_LTV ? " × DSCR" : ""}` +
+  `Originadores: SIR por ${CON_SUBTIPO ? "SUBTIPO" : "TIPO"} × AÑADA${CON_APALANCAMIENTO || CON_LTV ? " × DSCR" : ""}` +
     `${CON_LTV ? " × LTV" : ""}${CON_TAMANO ? " × SALDO" : ""} (pool ≥ ${MIN_POOL})`,
 );
 console.log(`${"═".repeat(78)}\n`);
@@ -620,7 +657,7 @@ for (const r of sirV) {
 
 console.log(
   `\n  ${apartados} de ${sirV.length} originadores se apartan del promedio ajustado por ` +
-    `tipo y añada${CON_APALANCAMIENTO || CON_LTV || CON_TAMANO ? ", DSCR" : ""}` +
+    `${CON_SUBTIPO ? "subtipo" : "tipo"} y añada${CON_APALANCAMIENTO || CON_LTV || CON_TAMANO ? ", DSCR" : ""}` +
     `${CON_LTV ? ", LTV" : ""}${CON_TAMANO ? " y saldo" : ""}.`,
 );
 console.log(
