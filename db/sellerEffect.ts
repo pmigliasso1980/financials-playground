@@ -525,9 +525,9 @@ console.log(
 console.log(
   `  \x1b[90msola no se distingue de esa emisión: ahí vendedor y shelf son lo mismo.\x1b[0m`,
 );
-if (CON_APALANCAMIENTO) {
+if (CON_APALANCAMIENTO || CON_LTV) {
   console.log(
-    `\n  \x1b[90mSe controla DSCR por tercil, no LTV. Y el tipo de propiedad no captura\x1b[0m`,
+    `\n  \x1b[90mSe controla DSCR${CON_LTV ? " y LTV" : " por tercil, no LTV"}. Y el tipo de propiedad no captura\x1b[0m`,
   );
   console.log(
     `  \x1b[90mPRODUCTO: las cooperativas viven dentro de multifamily, y ese mismo\x1b[0m`,
@@ -546,5 +546,99 @@ if (CON_APALANCAMIENTO) {
     `  \x1b[90mPara distinguirlo:  npm run db:seller -- --con-apalancamiento\x1b[0m\n`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// 6. ¿El exceso está concentrado en una añada?
+// ---------------------------------------------------------------------------
+
+/**
+ * La pregunta que puede CONFIRMAR en vez de solo achicar.
+ *
+ * El residuo de LMF se encogió con cada control: 3,61 con tipo × añada, 2,26
+ * agregando DSCR, 1,90 agregando LTV. Ese patrón monótono es ambiguo — puede
+ * converger arriba de 1 o seguir bajando con los controles que faltan.
+ *
+ * Un control que REDUCE el efecto es débilmente informativo. Uno que NO lo
+ * reduce sería fuerte. Este test es de la segunda clase.
+ *
+ * QUÉ DISTINGUE
+ *
+ * Si los eventos de un originador están concentrados en 2021-2022, hizo una
+ * apuesta de ciclo: prestó fuerte en el pico de valuaciones. Eso no es
+ * suscripción, y estandarizar por añada NO lo corrige — ajusta el nivel de cada
+ * año, pero no captura que un originador haya prestado distinto DENTRO del año.
+ *
+ * Si están repartidos entre 2020 y 2024, es un estilo persistente, y ahí el
+ * residuo empieza a significar algo sobre cómo suscribe.
+ *
+ * CÓMO SE LEE
+ *
+ * La columna "concentración" es la porción de eventos que cae en la añada donde
+ * el originador tiene su mayor exceso, comparada contra la porción de su pool
+ * en esa misma añada. Si evento y pool coinciden, el exceso está repartido.
+ */
+const { rows: porAnada } = await query<{
+  v: string; anada: string; n: string; ev: string;
+}>(
+  `WITH base AS (${BASE})
+   SELECT vendedor AS v, anada::text, count(*)::text AS n, sum(evento)::text AS ev
+     FROM base
+    WHERE vendedor IS NOT NULL
+      AND vendedor IN (
+        SELECT vendedor FROM base WHERE vendedor IS NOT NULL
+         GROUP BY vendedor HAVING count(*) >= ${MIN_POOL} AND sum(evento) >= 10
+      )
+    GROUP BY vendedor, anada
+    ORDER BY vendedor, anada`,
+);
+
+const porV = new Map<string, Array<{ anada: string; n: number; ev: number }>>();
+for (const r of porAnada) {
+  const xs = porV.get(r.v) ?? [];
+  xs.push({ anada: r.anada, n: Number(r.n), ev: Number(r.ev) });
+  porV.set(r.v, xs);
+}
+
+console.log(`\n${"═".repeat(78)}`);
+console.log("¿El exceso está concentrado en una añada, o repartido?");
+console.log(`${"═".repeat(78)}\n`);
+console.log(`  vendedor      eventos   añadas con evento   peor añada      % ev / % pool`);
+console.log(`  ${"─".repeat(72)}`);
+
+for (const [v, xs] of [...porV].sort((a, b) => {
+  const s = (z: typeof a) => z[1].reduce((t, x) => t + x.ev, 0);
+  return s(b) - s(a);
+})) {
+  const totEv = xs.reduce((t, x) => t + x.ev, 0);
+  const totN = xs.reduce((t, x) => t + x.n, 0);
+  if (totEv === 0) continue;
+
+  const conEvento = xs.filter((x) => x.ev > 0).length;
+  const peor = xs.reduce((a, b) => (b.ev / Math.max(1, b.n) > a.ev / Math.max(1, a.n) ? b : a));
+  const shareEv = peor.ev / totEv;
+  const sharePool = peor.n / totN;
+
+  /**
+   * Si la porción de eventos de la peor añada supera con holgura a su porción
+   * del pool, el exceso vive en ese año. Repartido significa que las dos
+   * porciones se parecen.
+   */
+  const concentrado = shareEv > sharePool * 2 && shareEv > 0.5;
+  console.log(
+    `  ${v.slice(0, 12).padEnd(13)} ${String(totEv).padStart(7)}   ${String(conEvento).padStart(10)} de ${xs.length}` +
+      `      ${peor.anada}  ${pct(shareEv, 0).padStart(7)} / ${pct(sharePool, 0).padStart(5)}` +
+      (concentrado ? `  \x1b[33m← concentrado\x1b[0m` : `  \x1b[90mrepartido\x1b[0m`),
+  );
+}
+
+console.log(
+  `\n  \x1b[90mConcentrado = el exceso vive en un año: es una apuesta de ciclo, y\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mestandarizar por añada NO lo corrige —ajusta el nivel del año, no cómo\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mprestó cada uno dentro de él—. Repartido = estilo persistente.\x1b[0m\n`,
+);
 
 await closePool();
