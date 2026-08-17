@@ -97,19 +97,35 @@ function filaMetrica(m: MetricaResultado): string {
   </tr>`;
 }
 
-function filaComposicion(c: Composicion, punto: number): string {
+function filaComposicion(c: Composicion): string {
   const notable = Math.abs(c.diferencia) > 0.1;
   const w = (v: number) => Math.min(100, v * 100 * 2.2).toFixed(1);
+  /**
+   * Una diferencia menor a un préstamo se muestra como "—", no como "+0%".
+   *
+   * El porcentaje redondeado hacía parecer un error de cálculo lo que en
+   * realidad era una diferencia por debajo de la resolución del pool: con 35
+   * préstamos, 0,4 puntos son 0,14 préstamos.
+   */
+  const dif = c.bajoResolucion
+    ? `<span class="muted">—</span>`
+    : `${c.diferencia > 0 ? "+" : ""}${pct(c.diferencia)}`;
+  /**
+   * Y la columna de la derecha dice cuántos préstamos son LA DIFERENCIA, no
+   * cuántos tiene la emisión. La versión anterior mostraba "-13% · 5 préstamos"
+   * y esos 5 eran el multifamily de BANK5, no la brecha contra la cohorte: dos
+   * números distintos leídos como uno.
+   */
+  const detalle = c.bajoResolucion
+    ? `menos de un préstamo de diferencia`
+    : `${c.prestamosDif} préstamo${c.prestamosDif === 1 ? "" : "s"} de diferencia` +
+      ` · esta emisión tiene ${c.prestamos}`;
   return `<tr${notable ? ' class="notable"' : ""}>
     <th>${esc(c.tipo)}</th>
     <td class="mini"><div class="mb"><i style="width:${w(c.propio)}%"></i></div>${pct(c.propio)}</td>
     <td class="mini"><div class="mb coh"><i style="width:${w(c.cohorte)}%"></i></div>${pct(c.cohorte)}</td>
-    <td class="dif">${c.diferencia > 0 ? "+" : ""}${pct(c.diferencia)}</td>
-    <td class="muted sm">${c.prestamos} préstamo${c.prestamos === 1 ? "" : "s"}${
-      notable
-        ? ` · la diferencia son ${Math.max(1, Math.round(Math.abs(c.diferencia) / punto))}`
-        : ""
-    }</td>
+    <td class="dif">${dif}</td>
+    <td class="muted sm">${esc(detalle)}</td>
   </tr>`;
 }
 
@@ -157,7 +173,7 @@ function render(b: Benchmark): string {
           <thead><tr>
             <th></th><th>esta emisión</th><th>cohorte</th><th>dif.</th><th></th>
           </tr></thead>
-          <tbody>${b.composicion.map((c) => filaComposicion(c, b.puntoPorPrestamo)).join("")}</tbody>
+          <tbody>${b.composicion.map(filaComposicion).join("")}</tbody>
         </table>
         <p class="note">Cada préstamo vale <b>${pct(b.puntoPorPrestamo, 1)}</b> de este pool
         (${o.pool} préstamos). Una diferencia de 9 puntos son
@@ -254,6 +270,103 @@ function render(b: Benchmark): string {
 // ---------------------------------------------------------------------------
 
 const candidatas = await cargarCandidatas();
+const dir = new URL("../out/", import.meta.url).pathname;
+
+const slugDe = (nombre: string) =>
+  nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+
+/**
+ * `--todas`: genera la página de cada emisión de la cohorte y mide algo que la
+ * página sola no puede mostrar.
+ *
+ * LA PREGUNTA DE PRODUCTO
+ *
+ * En BANK5 2026-5YR24, cinco de las seis métricas caen dentro del rango
+ * intercuartil de la cohorte. Si eso pasa en las 28, la tabla de métricas —que
+ * es la mitad de la página— no informa nada y lo único que distingue a una
+ * emisión es su mezcla de propiedades. Si pasa en 10 de 28, informa bastante.
+ *
+ * Son dos productos distintos y la diferencia es un número que nadie midió.
+ * Ahora cuesta poco medirlo porque el cálculo está en un módulo.
+ */
+if (args.includes("--todas")) {
+  const anada = String(new Date().getFullYear());
+  const cohorte = candidatas.filter((c) => c.anada === anada);
+  await mkdir(dir, { recursive: true });
+
+  console.log(`\n${"═".repeat(78)}`);
+  console.log(`¿Informa la tabla de métricas? — cohorte ${anada}`);
+  console.log(`${"═".repeat(78)}\n`);
+  console.log(`  emisión                              pool   evaluadas   fuera del p25-p75`);
+  console.log(`  ${"─".repeat(74)}`);
+
+  let totalEval = 0;
+  let totalFuera = 0;
+  const fueraPorMetrica = new Map<string, { fuera: number; eval: number }>();
+
+  for (const c of cohorte) {
+    const bm = await calcularBenchmark(c.nombre, candidatas);
+    if (!bm) continue;
+    await writeFile(`${dir}${slugDe(c.nombre)}.html`, render(bm), "utf8");
+
+    if (!bm.evaluable) {
+      console.log(`  ${c.nombre.slice(0, 34).padEnd(36)} ${String(c.pool).padStart(5)}   \x1b[90mno evaluable\x1b[0m`);
+      continue;
+    }
+
+    /**
+     * "Fuera" es fuera del rango intercuartil, no la posición ordinal.
+     *
+     * La posición dice dónde cae; el rango dice si eso es distinguible del
+     * medio del mercado. Una emisión puede ser 19ª de 25 y estar adentro de la
+     * caja: es la mitad superior, pero no se aparta.
+     */
+    const conDato = bm.metricas.filter((m) => m.valor !== null);
+    const fuera = conDato.filter((m) => m.valor! < m.p25! || m.valor! > m.p75!);
+    totalEval += conDato.length;
+    totalFuera += fuera.length;
+    for (const m of conDato) {
+      const e = fueraPorMetrica.get(m.spec.etiqueta) ?? { fuera: 0, eval: 0 };
+      e.eval++;
+      if (m.valor! < m.p25! || m.valor! > m.p75!) e.fuera++;
+      fueraPorMetrica.set(m.spec.etiqueta, e);
+    }
+
+    console.log(
+      `  ${c.nombre.slice(0, 34).padEnd(36)} ${String(c.pool).padStart(5)}   ` +
+        `${String(conDato.length).padStart(9)}   ` +
+        `${fuera.length === 0 ? "\x1b[90m" : fuera.length >= 3 ? "\x1b[33m" : ""}${fuera.length}\x1b[0m` +
+        (fuera.length > 0 ? `  \x1b[90m${fuera.map((m) => m.spec.etiqueta).join(", ")}\x1b[0m` : ""),
+    );
+  }
+
+  console.log(`\n${"─".repeat(78)}\n`);
+  console.log(`  Por métrica — cuántas emisiones se apartan del rango intercuartil:\n`);
+  for (const [etiqueta, e] of fueraPorMetrica) {
+    const share = e.eval ? e.fuera / e.eval : 0;
+    console.log(
+      `    ${etiqueta.padEnd(14)} ${String(e.fuera).padStart(3)} de ${String(e.eval).padStart(3)}   ` +
+        `${share >= 0.4 ? "\x1b[32m" : share >= 0.2 ? "\x1b[33m" : "\x1b[31m"}${pct(share)}\x1b[0m`,
+    );
+  }
+
+  const share = totalEval ? totalFuera / totalEval : 0;
+  console.log(
+    `\n  \x1b[1m${totalFuera} de ${totalEval} mediciones fuera del rango (${pct(share)})\x1b[0m`,
+  );
+  console.log(
+    share < 0.25
+      ? `\n  \x1b[31mLa tabla de métricas casi no distingue emisiones.\x1b[0m Por construcción el 50%\n` +
+          `  de una distribución cae en el rango intercuartil; si el observado no supera\n` +
+          `  eso, la mitad de la página es decorativa y lo que informa es la composición.`
+      : `\n  \x1b[32mLa tabla de métricas distingue.\x1b[0m Contra el 50% que caería adentro por\n` +
+          `  construcción, ${pct(share)} afuera es señal y no ruido de muestreo.`,
+  );
+  console.log(`\n  ${cohorte.length} páginas en ${dir}\n`);
+  await closePool();
+  process.exit(0);
+}
+
 const b = await calcularBenchmark(BUSQUEDA, candidatas);
 
 if (!b) {
@@ -263,15 +376,8 @@ if (!b) {
   process.exit(1);
 }
 
-const slug = b.objetivo.nombre
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, "-")
-  .replace(/^-|-$/g, "")
-  .slice(0, 60);
-
-const dir = new URL("../out/", import.meta.url).pathname;
 await mkdir(dir, { recursive: true });
-const ruta = `${dir}${slug}.html`;
+const ruta = `${dir}${slugDe(b.objetivo.nombre)}.html`;
 await writeFile(ruta, render(b), "utf8");
 
 console.log(`\n  ${b.objetivo.nombre}`);

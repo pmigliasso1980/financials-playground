@@ -80,8 +80,12 @@ export interface Composicion {
   propio: number;
   cohorte: number;
   diferencia: number;
-  /** Cuántos préstamos de ESTA emisión explican la diferencia. */
+  /** true si la diferencia es menor a un préstamo: no es una diferencia. */
+  bajoResolucion: boolean;
+  /** Cuántos préstamos de esta emisión son de este tipo. */
   prestamos: number;
+  /** Cuántos préstamos explican la DIFERENCIA contra la cohorte. */
+  prestamosDif: number;
 }
 
 export interface Benchmark {
@@ -266,7 +270,7 @@ export async function calcularBenchmark(
                 WHEN l.property_type ~* 'hospitality|hotel|service|extended stay' THEN 'Hospitality'
                 WHEN l.property_type ~* 'mixed' THEN 'Mixed Use'
                 WHEN l.property_type ~* 'manufactured' THEN 'Manufactured'
-                ELSE 'Otro'
+                ELSE 'Sin clasificar'
               END AS tipo
          FROM corpus.loans l
         WHERE l.property_type IS NOT NULL AND l.accession = ANY($1)
@@ -291,12 +295,25 @@ export async function calcularBenchmark(
     .map((r) => {
       const propio = Number(r.propio ?? 0);
       const cohorte = Number(r.cohorte ?? 0);
+      const diferencia = propio - cohorte;
+      /**
+       * Una diferencia menor a un préstamo no es una diferencia.
+       *
+       * Con 35 préstamos cada uno vale 2,9 puntos, así que 0,4 puntos son 0,14
+       * préstamos: no existe una emisión que difiera en eso. Se mostraba como
+       * "+0%", que parece un error de cálculo y en realidad era una diferencia
+       * por debajo de la resolución del pool.
+       */
+      const punto = 1 / Math.max(1, objetivo.pool);
       return {
         tipo: r.tipo,
         propio,
         cohorte,
-        diferencia: propio - cohorte,
+        diferencia,
+        bajoResolucion: Math.abs(diferencia) < punto,
         prestamos: Math.round(propio * objetivo.pool),
+        /** Cuántos préstamos explican la diferencia, que no es lo mismo que `prestamos`. */
+        prestamosDif: Math.round(Math.abs(diferencia) / punto),
       };
     })
     // Un tipo ausente en esta emisión y marginal en la cohorte no informa nada.
