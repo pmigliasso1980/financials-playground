@@ -667,6 +667,72 @@ if (AUDITORIA) {
     console.log(`    \x1b[90mcomposición que imprime esta herramienta.\x1b[0m`);
   }
 
+  /**
+   * ¿HAY UN HUECO ENTRE LAS DOS POBLACIONES?
+   *
+   * El pipeline ya descarta filas con menos de 3 observations
+   * (`minObservationsPerRow ?? 3` en rowsToObservations). Las 7 filas fantasma
+   * tienen exactamente 3: pasan por un fact de margen.
+   *
+   * Ese 3 no salió de medir nada. Si los préstamos reales del Annex A conduit
+   * tienen decenas de observations y las filas fantasma tienen unas pocas, entre
+   * las dos poblaciones hay una zona vacía, y el umbral tiene que estar ahí —
+   * elegido por dónde está el hueco, no por parecer razonable.
+   *
+   * Si en cambio la distribución es continua desde 3 hasta 80, no hay dos
+   * poblaciones: hay un gradiente de completitud, cualquier umbral corta
+   * préstamos reales, y el descarte por conteo es el criterio equivocado.
+   *
+   * Este histograma decide entre esas dos cosas, y es lo que había que mirar
+   * antes de fijar cualquier número.
+   */
+  const { rows: histo } = await query<{ tramo: string; n: string }>(
+    `WITH conteo AS (
+       SELECT l.id, count(fa.id) AS facts
+         FROM corpus.loans l
+         LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
+        WHERE l.accession = ANY($1)
+        GROUP BY l.id
+     )
+     SELECT CASE
+              WHEN facts <= 10 THEN lpad(facts::text, 2, ' ')
+              WHEN facts < 20 THEN '11-19'
+              WHEN facts < 40 THEN '20-39'
+              WHEN facts < 60 THEN '40-59'
+              ELSE '60+'
+            END AS tramo,
+            count(*)::text AS n
+       FROM conteo GROUP BY 1 ORDER BY 1`,
+    [accs],
+  );
+
+  console.log(`\n  Observations por fila — ¿dos poblaciones o un gradiente?\n`);
+  const maxN = Math.max(...histo.map((h) => Number(h.n)));
+  for (const h of histo) {
+    const n = Number(h.n);
+    const barra = "█".repeat(Math.max(1, Math.round((n / maxN) * 44)));
+    const chico = /^\s*\d+$/.test(h.tramo) && Number(h.tramo) <= 10;
+    console.log(
+      `    ${h.tramo.padStart(5)}  ${chico ? "\x1b[31m" : "\x1b[90m"}${barra}\x1b[0m ${n}`,
+    );
+  }
+
+  /** El hueco: tramos de conteo bajo sin ninguna fila. */
+  const presentes = new Set(histo.map((h) => h.tramo.trim()));
+  const vacios: number[] = [];
+  for (let k = 1; k <= 10; k++) if (!presentes.has(String(k))) vacios.push(k);
+  console.log(
+    `\n    \x1b[90mSin filas en: ${vacios.length ? vacios.join(", ") : "ningún conteo de 1 a 10"} observations.\x1b[0m`,
+  );
+  console.log(
+    vacios.length >= 3
+      ? `    \x1b[32mHay hueco: las dos poblaciones están separadas y el umbral puede\x1b[0m\n` +
+          `    \x1b[32mubicarse adentro sin cortar préstamos reales.\x1b[0m`
+      : `    \x1b[33mSin hueco claro: cualquier umbral por conteo corta en zona poblada.\x1b[0m\n` +
+          `    \x1b[33mHabría que descartar por otra señal —fila sin nombre ni saldo— y no\x1b[0m\n` +
+          `    \x1b[33mpor cantidad de observations.\x1b[0m`,
+  );
+
   console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);
   if (dups.length === 0) {
     console.log(`    \x1b[32mNinguna: ${cohorte.length} nombres distintos en ${cohorte.length} emisiones.\x1b[0m`);
