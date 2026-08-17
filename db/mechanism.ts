@@ -296,6 +296,112 @@ const METRICAS: Array<{
   { etiqueta: "Saldo (M)", extraer: (d) => d.saldo, fmt: (v) => (v / 1e6).toFixed(1) },
 ];
 
+/**
+ * PERMUTACIÓN ESTRATIFICADA, Y POR QUÉ SE RESTRINGE AL SOLAPE.
+ *
+ * Las dos diferencias que aparecen —reserva más fina y préstamo más chico— están
+ * entrelazadas. La reserva se mide en puntos base del saldo, así que ya está
+ * normalizada, pero eso no descarta que los préstamos chicos tengan reservas más
+ * finas por otras razones.
+ *
+ * LA PRIMERA VERSIÓN NO CONTROLABA NADA, Y SE VERIFICÓ ANTES DE USARLA
+ *
+ * Estratificar en tres terciles y permutar dentro de cada uno parecía suficiente.
+ * El chequeo de calibración —datos donde la métrica depende SOLO del saldo, o sea
+ * donde cualquier señal es espuria— encontró 37 significativas de 40. El control
+ * fabricaba exactamente el efecto que decía descartar.
+ *
+ * Más estratos casi no ayudan: con seis quedan 31 de 40, con diez 19 de 40.
+ *
+ * Lo que arregla es RESTRINGIR AL SOLAPE. Con los saldos limitados al rango donde
+ * los dos grupos tienen masa, la calibración baja a 0-2 de 40 con cualquier
+ * cantidad de estratos. La razón: el problema no era lo grueso del estrato sino
+ * las colas donde un grupo no tiene con quién compararse — ahí el estrato promedia
+ * contra nadie y el confundido pasa entero.
+ *
+ * El costo es muestra, y se imprime: cuántos préstamos quedan después de recortar.
+ */
+const ESTRATOS = 6;
+
+function permutarEstratificado(
+  extraer: (d: Prestamo) => number | null,
+): {
+  obs: number | null; nulo: number | null; p: number;
+  nA: number; nB: number; recortados: number;
+} {
+  const todos = datos.filter((d) => extraer(d) !== null && d.saldo !== null);
+  const vacio = { obs: null, nulo: null, p: 1, nA: 0, nB: 0, recortados: 0 };
+  if (todos.length < 12) return vacio;
+
+  /**
+   * El rango de solape: desde el mayor de los dos mínimos hasta el menor de los
+   * dos máximos. Afuera de ahí un grupo no tiene contraparte.
+   */
+  const sA = todos.filter((d) => d.esVendedor).map((d) => d.saldo!).sort((x, y) => x - y);
+  const sB = todos.filter((d) => !d.esVendedor).map((d) => d.saldo!).sort((x, y) => x - y);
+  if (sA.length < 4 || sB.length < 4) return vacio;
+  const lo = Math.max(sA[0]!, sB[0]!);
+  const hi = Math.min(sA[sA.length - 1]!, sB[sB.length - 1]!);
+
+  const base = todos.filter((d) => d.saldo! >= lo && d.saldo! <= hi);
+  const recortados = todos.length - base.length;
+  if (base.filter((d) => d.esVendedor).length < 4) return { ...vacio, recortados };
+
+  const ord = [...base].sort((a, b) => a.saldo! - b.saldo!);
+  const cortes = [...Array(ESTRATOS - 1)].map(
+    (_, i) => ord[Math.floor(((i + 1) * ord.length) / ESTRATOS)]!.saldo!,
+  );
+  const estrato = (d: Prestamo) => cortes.filter((c) => d.saldo! > c).length;
+  const estratos = [...Array(ESTRATOS)].map((_, t) => base.filter((d) => estrato(d) === t));
+
+  /** Promedio de las diferencias dentro de estrato: cada uno aporta su propia comparación. */
+  const difEstratificada = (etiqueta: (d: Prestamo) => boolean) => {
+    const parciales: number[] = [];
+    for (const est of estratos) {
+      const a = est.filter(etiqueta).map((d) => extraer(d)!);
+      const b = est.filter((d) => !etiqueta(d)).map((d) => extraer(d)!);
+      if (a.length < 2 || b.length < 2) continue;
+      parciales.push(mediana(a)! - mediana(b)!);
+    }
+    if (parciales.length === 0) return null;
+    return Math.abs(parciales.reduce((x, y) => x + y, 0) / parciales.length);
+  };
+
+  const obs = difEstratificada((d) => d.esVendedor);
+  if (obs === null) return { ...vacio, recortados };
+
+  const rand = rng(0xc0ffee);
+  const difs: number[] = [];
+  for (let k = 0; k < PERMUTACIONES; k++) {
+    /**
+     * Se mezcla DENTRO de cada estrato, conservando cuántos del vendedor hay en
+     * cada uno. Mezclar entre estratos reintroduciría el saldo por la ventana.
+     */
+    const asignado = new Map<Prestamo, boolean>();
+    for (const est of estratos) {
+      const cuantos = est.filter((d) => d.esVendedor).length;
+      const idx = est.map((_, i) => i);
+      for (let i = idx.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [idx[i], idx[j]] = [idx[j]!, idx[i]!];
+      }
+      idx.forEach((pos, orden) => asignado.set(est[pos]!, orden < cuantos));
+    }
+    const d = difEstratificada((x) => asignado.get(x) ?? false);
+    if (d !== null) difs.push(d);
+  }
+  difs.sort((x, y) => x - y);
+
+  return {
+    obs,
+    nulo: difs.length ? difs[Math.floor(difs.length / 2)]! : null,
+    p: difs.length ? difs.filter((x) => x >= obs).length / difs.length : 1,
+    nA: base.filter((d) => d.esVendedor).length,
+    nB: base.filter((d) => !d.esVendedor).length,
+    recortados,
+  };
+}
+
 let significativas = 0;
 for (const m of METRICAS) {
   const r = permutar(m.extraer);
@@ -315,6 +421,52 @@ for (const m of METRICAS) {
       `  \x1b[90m${r.nA}/${r.nB}\x1b[0m`,
   );
 }
+
+console.log(`\n${"─".repeat(78)}`);
+console.log("Lo mismo, pero mezclando DENTRO de terciles de saldo");
+console.log(`${"─".repeat(78)}\n`);
+console.log(
+  `\x1b[90m  LMF presta más chico y exige menos reserva: las dos diferencias están\x1b[0m`,
+);
+console.log(
+  `\x1b[90m  entrelazadas. Entre préstamos de tamaño parecido, ¿sigue habiendo?\x1b[0m`,
+);
+console.log(
+  `\x1b[90m  Restringido al solape de saldos y ${ESTRATOS} estratos: verificado en 0-2 falsos\x1b[0m`,
+);
+console.log(
+  `\x1b[90m  positivos de 40 contra datos donde la métrica depende solo del saldo. La\x1b[0m`,
+);
+console.log(
+  `\x1b[90m  columna "recorte" dice cuántos préstamos costó el control.\x1b[0m\n`,
+);
+console.log(`  métrica                            |dif|    nulo   p-valor      n   recorte`);
+console.log(`  ${"─".repeat(70)}`);
+
+let sigEstrat = 0;
+for (const m of METRICAS) {
+  if (m.etiqueta.startsWith("Saldo")) continue; // estratificar por saldo lo anula
+  const r = permutarEstratificado(m.extraer);
+  const sig = r.nulo !== null && r.p < 0.05;
+  if (sig) sigEstrat++;
+  console.log(
+    `  ${m.etiqueta.padEnd(32)} ${(r.obs === null ? "—" : m.fmt(r.obs)).padStart(8)} ` +
+      `${(r.nulo === null ? "—" : m.fmt(r.nulo)).padStart(7)} ` +
+      `${sig ? "\x1b[32m" : "\x1b[90m"}${(r.nulo === null ? "sin muestra" : r.p.toFixed(4)).padStart(9)}\x1b[0m` +
+      `  \x1b[90m${r.nA}/${r.nB}   -${r.recortados}\x1b[0m`,
+  );
+}
+
+console.log(
+  sigEstrat === 0
+    ? `\n  \x1b[33mNada sobrevive al control por tamaño.\x1b[0m Lo que parecía mecanismo era el\n` +
+        `  saldo: LMF presta más chico, y los préstamos chicos tienen reservas más finas.\n` +
+        `  Sexto control que erosiona un hallazgo sobre LMF, y el sexto que lo hace\n` +
+        `  desaparecer en vez de explicarlo.`
+    : `\n  \x1b[32m${sigEstrat} sobrevive(n) al control por tamaño.\x1b[0m Entre préstamos de saldo parecido\n` +
+        `  la diferencia sigue, así que el tamaño no la explica. Es lo más cerca de un\n` +
+        `  mecanismo que este proyecto llegó.`,
+);
 
 console.log(`\n${"─".repeat(78)}\n`);
 
