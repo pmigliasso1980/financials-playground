@@ -386,6 +386,39 @@ check("con IDs enteros no descarta nada", () => {
   eq(filtered.propertyRows, 0, "no hay filas de propiedad");
 });
 
+check("descarta la fila que numera las columnas", () => {
+  /**
+   * El caso real: en el Annex A conduit la primera fila después del encabezado
+   * numera las columnas (1, 2, 3...) y entraba como préstamo. Aparecían 7 en la
+   * cohorte 2026, con property_type = "2" — el número de columna leído como tipo.
+   *
+   * No se puede filtrar por cantidad de observations: tenían exactamente 3, y
+   * sobre las 9.751 filas del corpus la distribución es continua desde 3. Un
+   * préstamo tiene nombre o tiene saldo; esta fila no tiene ninguno.
+   */
+  const numeradora = headers1.map((_, i) => String(i + 1));
+  const table = block(headers1, [numeradora, ...BLOCK_1_DATA], "con-numeradora");
+  const filtered = keepLoanRows(table.rows, table.headerRowIndex);
+  eq(filtered.phantomRows, 1, "la fila numeradora");
+  assert(
+    !filtered.rows.slice(table.headerRowIndex + 1).some((r) => r === numeradora),
+    "la numeradora no debería quedar entre los datos",
+  );
+});
+
+check("se abstiene si tendría que descartar demasiadas filas", () => {
+  /**
+   * La guarda que importa: si el filtro quiere borrar más del 15% de las filas,
+   * lo más probable es que las columnas de nombre y saldo no estén donde creemos
+   * —no que el 20% del pool sean fantasmas—. Borrar medio Annex A en silencio es
+   * peor que dejar entrar unas filas de más.
+   */
+  const vacias = BLOCK_1_DATA.map((r) => r.map(() => ""));
+  const table = block(headers1, vacias, "todas-vacias");
+  const filtered = keepLoanRows(table.rows, table.headerRowIndex);
+  eq(filtered.phantomRows, 0, "debería abstenerse, no vaciar la tabla");
+});
+
 check("sin flag ni Loan ID conserva todo", () => {
   // Preferimos datos de más a datos silenciosamente perdidos.
   const headers = headers1.filter((h) => !/flag/i.test(h) && !/loan id/i.test(h));

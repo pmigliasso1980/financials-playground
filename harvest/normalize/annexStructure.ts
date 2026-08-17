@@ -69,6 +69,70 @@ export interface FlagFilterResult {
   propertyRows: number;
   /** true si la tabla tenía columna de flag; si no, se devolvió todo sin tocar. */
   hadFlagColumn: boolean;
+  /** Filas descartadas por no ser préstamos: sin nombre de propiedad ni saldo. */
+  phantomRows: number;
+}
+
+/**
+ * Máximo de filas que el filtro estructural puede descartar antes de abstenerse.
+ *
+ * Si supera esto, lo más probable es que las columnas de nombre y saldo no estén
+ * donde creemos —no que el 20% del pool sean filas fantasma— y borrar medio
+ * Annex A en silencio es peor que dejar entrar unas filas de más.
+ */
+const MAX_PHANTOM_SHARE = 0.15;
+
+/**
+ * Descarta las filas que no son préstamos.
+ *
+ * POR QUÉ NO ALCANZA CON EL FILTRO DE FLAG NI CON EL DE LOAN ID
+ *
+ * Los dos anteriores separan préstamos de propiedades. Ninguno detecta una fila
+ * que no es ninguna de las dos cosas: en el Annex A conduit, la primera fila
+ * después del encabezado suele numerar las columnas (1, 2, 3...) y entraba como
+ * préstamo. Aparecían 7 en la cohorte 2026, con `property_type = "2"` — el
+ * número de columna leído como tipo de propiedad.
+ *
+ * POR QUÉ ESTRUCTURAL Y NO POR CANTIDAD DE OBSERVATIONS
+ *
+ * `rowsToObservations` ya descarta filas con menos de 3 observations, y las 7
+ * fantasma tenían exactamente 3. Subir ese umbral no sirve: sobre las 9.751
+ * filas del corpus la distribución es continua desde 3 —hay filas en 3, 4, 5,
+ * 6, 7, 9 y 10— así que cualquier corte por conteo elimina préstamos reales. El
+ * hueco que parecía existir era un artefacto de mirar 28 emisiones de 233.
+ *
+ * Un préstamo tiene nombre de propiedad o tiene saldo. Una fila sin ninguno de
+ * los dos no es un préstamo, tenga 3 observations o 30.
+ */
+function dropPhantomRows(
+  data: unknown[][],
+  headers: string[],
+): { kept: unknown[][]; dropped: number } {
+  const nameCol = columnOf(headers, "property_name");
+  const amountCol = columnOf(headers, "loan_amount");
+
+  // Sin ninguna de las dos columnas no hay con qué decidir: se conserva todo.
+  if (nameCol === null && amountCol === null) return { kept: data, dropped: 0 };
+
+  const tiene = (row: unknown[], col: number | null, conDigito: boolean) => {
+    if (col === null) return false;
+    const v = String(row?.[col] ?? "").trim();
+    if (!v) return false;
+    return conDigito ? /\d/.test(v) : true;
+  };
+
+  const kept: unknown[][] = [];
+  const fantasma: unknown[][] = [];
+  for (const row of data) {
+    if (tiene(row, nameCol, false) || tiene(row, amountCol, true)) kept.push(row);
+    else fantasma.push(row);
+  }
+
+  if (data.length > 0 && fantasma.length / data.length > MAX_PHANTOM_SHARE) {
+    // Demasiadas: la hipótesis sobre las columnas es la que está mal.
+    return { kept: data, dropped: 0 };
+  }
+  return { kept, dropped: fantasma.length };
 }
 
 /**
@@ -106,7 +170,14 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
     kept.push(row);
   }
 
-  return { rows: [...header, ...kept], loanRows, propertyRows, hadFlagColumn: true };
+  const limpio = dropPhantomRows(kept, headers);
+  return {
+    rows: [...header, ...limpio.kept],
+    loanRows: loanRows - limpio.dropped,
+    propertyRows,
+    hadFlagColumn: true,
+    phantomRows: limpio.dropped,
+  };
 }
 
 /**
@@ -142,9 +213,17 @@ function keepLoanRowsByLoanId(
   const data = rows.slice(headerRowIndex + 1);
 
   if (loanIdCol === null) {
-    // Sin flag ni Loan ID no hay forma de distinguir: preferimos datos de más a
-    // datos silenciosamente perdidos.
-    return { rows, loanRows: data.length, propertyRows: 0, hadFlagColumn: false };
+    // Sin flag ni Loan ID no hay forma de distinguir préstamo de propiedad,
+    // pero el filtro estructural sigue valiendo: una fila sin nombre ni saldo no
+    // es ninguna de las dos.
+    const limpio = dropPhantomRows(data, headers);
+    return {
+      rows: [...rows.slice(0, headerRowIndex + 1), ...limpio.kept],
+      loanRows: data.length - limpio.dropped,
+      propertyRows: 0,
+      hadFlagColumn: false,
+      phantomRows: limpio.dropped,
+    };
   }
 
   let loanRows = 0;
@@ -172,12 +251,14 @@ function keepLoanRowsByLoanId(
     kept.push(row);
   }
 
+  const limpio = dropPhantomRows(kept, headers);
   return {
-    rows: [...header, ...kept],
-    loanRows,
+    rows: [...header, ...limpio.kept],
+    loanRows: loanRows - limpio.dropped,
     propertyRows,
     // Se filtró, aunque no por la columna de flag.
     hadFlagColumn: propertyRows > 0,
+    phantomRows: limpio.dropped,
   };
 }
 
