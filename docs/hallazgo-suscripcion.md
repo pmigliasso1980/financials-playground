@@ -339,6 +339,64 @@ lecturas son defendibles y el dato no las separa; lo que cambia es la pregunta:
 > con controles → «¿LMF rinde peor que otro prestamista que hace el mismo préstamo?»
 > — no se puede afirmar.
 
+### El decimoquinto: la ventana de observación, que nunca se había mirado
+
+Apareció midiendo otra cosa. Hay **158 trusts y 158 reportes**: exactamente un 10-D
+por emisión. Entonces "evento" nunca significó "transfirió" — significa *había
+transferido a la fecha del único reporte que cosechamos de esa emisión*, y esa
+fecha varía.
+
+Varía incluso dentro de la misma añada, que es la escala en la que el SIR
+estandariza:
+
+| añada | exposición p25 · p50 · p75 | rango |
+|---|---|---|
+| 2020 | 4,71 · 5,47 · 6,15 años | 2,76 |
+| 2022 | 3,43 · 3,71 · 4,00 | 2,15 |
+| 2024 | 1,48 · 1,68 · 1,85 | 1,23 |
+
+Un originador que coloca en las emisiones observadas más tarde acumula más
+transferencias sin suscribir peor. Estuvo operando en los catorce ataques
+anteriores y en el número que este documento cita.
+
+**Pero que varíe no alcanza.** Si la ventana varía al azar respecto de quién
+originó, se promedia. El SIR queda mal solo si un vendedor coloca sistemáticamente
+en las emisiones vistas más tarde, y eso se mide: desvío de exposición de cada
+vendedor dentro de su añada.
+
+El peor caso del corpus es **GACC con +0,226 años sobre 3,97 de media: un sesgo del
+5,7%** suponiendo tasa de transferencia constante. Ninguno llega al 10%.
+
+Y en LMF el desvío es **−0,142 años**: tiene *menos* exposición que el promedio de
+sus añadas, así que corregir por esto le subiría el SIR alrededor de 3,6% en vez de
+bajárselo. El confundido es real, es chico, y en el caso que importa corre en contra
+de la explicación cómoda.
+
+Es el primero de los quince ataques que no termina en "murió" ni en "no se puede
+medir", sino en "existe, se midió, y es demasiado chico para explicar nada".
+
+### El techo del corpus, que ahora tiene número
+
+Con 13 comparaciones Bonferroni pide z > 2,89, y como el SE de log(SIR) es 1/√obs,
+detectar un SIR de 1,51 pide **50 eventos** en ese originador. LMF tiene 27. Lo
+mínimo detectable hoy es **1,74**.
+
+| SIR a detectar | eventos necesarios |
+|---|---|
+| 2,00 | 18 |
+| **1,74** | **27 — lo que hay** |
+| 1,51 | 50 |
+| 1,30 | 122 |
+
+Y ese factor de 1,9x no se consigue cosechando. De los 2.702 préstamos con Annex A
+y sin 10-D, **2.585 son de 2025 y 2026**: añadas sin un solo evento todavía.
+Cosecharlas sube el denominador y no el numerador — es el caso donde más datos
+empeora la potencia. Lo que falta no está en EDGAR: está en el tiempo.
+
+**Conclusión operativa: la pregunta de suscripción por originador está cerrada para
+este corpus.** No por falta de método —quince ataques, todos respondidos— sino
+porque resolver 1,51 requiere un corpus maduro que hoy no existe.
+
 ### UBS AG: el que nadie miró, y que este corpus no puede medir
 
 Agregar Bonferroni al script —que le faltaba— cambió quién era el candidato. Con
