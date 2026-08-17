@@ -1,0 +1,29 @@
+# Postgres local para el corpus.
+#
+#   docker compose up -d
+#   npm run db:migrate
+#
+# El puerto es 5433, no 5432, para no chocar con un Postgres que ya tengas
+# instalado en la máquina.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: financials-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: financials
+      POSTGRES_PASSWORD: financials
+      POSTGRES_DB: financials
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U financials -d financials"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

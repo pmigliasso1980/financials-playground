@@ -1,0 +1,17 @@
+{
+  "cik": "1856967",
+  "accession": "0001539497-21-000553",
+  "companyName": "Morgan Stanley Capital I Trust 2021-L5",
+  "formType": "FWP",
+  "filedAt": "2021-04-26",
+  "fileName": "n2510_x2anx1.htm",
+  "fileUrl": "https://www.sec.gov/Archives/edgar/data/1856967/000153949721000553/n2510_x2anx1.htm",
+  "capturedAt": "2026-08-14T03:40:10.335Z",
+  "originalBytes": 5564215,
+  "trimmedBytes": 5559849,
+  "rowsKeptPerTable": 120,
+  "tablesTotal": 32,
+  "tablesKept": 32,
+  "rowsTotal": 1791,
+  "rowsKept": 1791
+}

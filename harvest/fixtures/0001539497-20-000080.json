@@ -1,0 +1,17 @@
+{
+  "cik": "1797288",
+  "accession": "0001539497-20-000080",
+  "companyName": "Benchmark 2020-B16 Mortgage Trust",
+  "formType": "FWP",
+  "filedAt": "2020-01-21",
+  "fileName": "n1972_x4-anxa1.htm",
+  "fileUrl": "https://www.sec.gov/Archives/edgar/data/1797288/000153949720000080/n1972_x4-anxa1.htm",
+  "capturedAt": "2026-08-08T04:29:44.013Z",
+  "originalBytes": 2317545,
+  "trimmedBytes": 2314649,
+  "rowsKeptPerTable": 120,
+  "tablesTotal": 123,
+  "tablesKept": 123,
+  "rowsTotal": 929,
+  "rowsKept": 929
+}

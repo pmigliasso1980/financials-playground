@@ -1,0 +1,63 @@
+{
+  "name": "financials-playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sandbox de exploración sobre la plataforma Lev (CRE) — cliente REST tipado, tipos generados desde OpenAPI, y docs sincronizados.",
+  "engines": {
+    "node": ">=20.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "db:analyze": "tsx db/analyze.ts",
+    "db:challenge": "tsx db/challenge.ts",
+    "db:coverage": "tsx db/coverage.ts",
+    "db:down": "docker compose down",
+    "db:predictors": "tsx db/predictors.ts",
+    "db:delinquency": "tsx db/delinquency.ts",
+    "db:power": "tsx db/power.ts",
+    "db:bias": "tsx db/bias.ts",
+    "db:reconcile": "tsx db/reconcile.ts",
+    "db:explain": "tsx db/explain.ts",
+    "db:identities": "tsx db/identities.ts",
+    "db:join": "tsx db/servicerJoin.ts",
+    "db:migrate": "tsx db/migrate.ts",
+    "db:outcomes": "tsx db/outcomes.ts",
+    "db:performance": "tsx db/servicerBatch.ts",
+    "db:reset": "tsx db/migrate.ts --reset",
+    "db:snapshot": "tsx db/snapshot.ts",
+    "db:stats": "tsx db/stats.ts",
+    "db:status": "tsx db/migrate.ts --status",
+    "db:test": "tsx db/conformance.test.ts",
+    "db:up": "docker compose up -d",
+    "harvest": "tsx harvest/cli.ts",
+    "harvest:batch": "tsx harvest/batch.ts",
+    "harvest:capture": "tsx harvest/capture.ts",
+    "harvest:diagnose": "tsx harvest/diagnose.ts",
+    "harvest:env:test": "tsx harvest/env.test.ts",
+    "harvest:fixtures": "tsx harvest/fixtures.test.ts",
+    "harvest:inspect": "tsx harvest/inspect.ts",
+    "harvest:real": "tsx harvest/real.test.ts",
+    "harvest:scale": "tsx harvest/scale.test.ts",
+    "harvest:servicer": "tsx harvest/servicerProbe.ts",
+    "harvest:servicer:test": "tsx harvest/servicer.test.ts",
+    "harvest:test": "tsx harvest/test.ts",
+    "sync:docs": "bash scripts/sync-docs.sh",
+    "taxonomy": "tsx harvest/taxonomy.ts",
+    "test:all": "npm run typecheck && npm run harvest:env:test && npm run harvest:test && npm run harvest:real && npm run harvest:scale && npm run harvest:fixtures && npm run harvest:servicer:test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "node-html-parser": "^6.1.13",
+    "pg": "^8.13.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "openapi-typescript": "^7.4.0",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
