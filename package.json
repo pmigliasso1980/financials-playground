@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "db:analyze": "tsx db/analyze.ts",
+    "db:benchmark": "tsx db/benchmark.ts",
     "db:bias": "tsx db/bias.ts",
     "db:challenge": "tsx db/challenge.ts",
     "db:cohort": "tsx db/cohort.ts",
