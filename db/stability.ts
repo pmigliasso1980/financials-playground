@@ -91,21 +91,36 @@ console.log(
     `${anadas.map((a) => `${a.anada} (${a.n})`).join(" · ")}\x1b[0m\n`,
 );
 
-console.log(`  métrica          ` + cols.map((c) => c.padStart(9)).join("") + `   desplaz.`);
+console.log(
+  `  métrica          ` + cols.map((c) => c.padStart(9)).join("") + `   desplaz.    nulo   p`,
+);
 console.log(`  ${"─".repeat(20 + cols.length * 9 + 12)}`);
 
 interface Resultado {
   etiqueta: string;
   desplazamiento: number;
   monotona: boolean;
+  /** Cuánto se desplazaría por puro muestreo si las añadas fueran intercambiables. */
+  nuloMediana: number | null;
+  pValor: number;
+}
+
+/** Semilla fija: un p-valor que cambia entre corridas no se puede citar. */
+function rng(semilla: number) {
+  let s = semilla >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
 }
 const resultados: Resultado[] = [];
 
 for (const m of METRICAS) {
-  const { rows } = await query<{ anada: string; mediana: string | null; n: string }>(
+  const { rows } = await query<{ anada: string; mediana: string | null; n: string; valores: number[] }>(
     `SELECT extract(year FROM f.filed_at)::int::text AS anada,
             percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS mediana,
-            count(*)::text AS n
+            count(*)::text AS n,
+            array_agg(fa.value::numeric) AS valores
        FROM corpus.facts fa
        JOIN corpus.loans l ON l.id = fa.loan_id
        JOIN corpus.filings f ON f.accession = l.accession
@@ -145,19 +160,84 @@ for (const m of METRICAS) {
   }
   const monotona = subiendo || bajando;
 
-  resultados.push({ etiqueta: m.etiqueta, desplazamiento, monotona });
+  /**
+   * EL NULO DEL DESPLAZAMIENTO, QUE FALTABA.
+   *
+   * El umbral del 20% estaba fijado a priori y sin referencia. Pero las medianas
+   * por añada varían por muestreo aunque las añadas sean idénticas, así que
+   * `(máx − mín) / mediana` tiene un valor esperado MAYOR A CERO que crece con la
+   * cantidad de añadas y baja con el n de cada celda. Comparar contra 20% sin
+   * saber cuánto vale el nulo es la clase de error que esta sesión encontró siete
+   * veces.
+   *
+   * Se simula lo que la pregunta afirma: si las añadas fueran intercambiables, se
+   * sacan de una bolsa común tantos valores como tiene cada una y se recalcula el
+   * desplazamiento. El observado se compara contra esa distribución.
+   *
+   * Nota sobre el costo: esto remuestrea miles de valores por métrica, así que se
+   * usan 600 réplicas en vez de 2.000. Con un observado que suele estar diez veces
+   * arriba del nulo, la precisión del p-valor no es lo que decide.
+   */
+  const REPLICAS = 600;
+  const bolsa = rows.flatMap((r) => (r.valores ?? []).map(Number)).filter(Number.isFinite);
+  const tamanos = rows
+    .filter((r) => porAnada.has(r.anada))
+    .map((r) => Number(r.n));
+
+  let nuloMediana: number | null = null;
+  let pValor = 1;
+
+  if (bolsa.length > 0 && tamanos.length >= 3) {
+    const rand = rng(0xC0FFEE);
+    const simulados: number[] = [];
+    for (let k = 0; k < REPLICAS; k++) {
+      const medianas: number[] = [];
+      for (const n of tamanos) {
+        // Muestreo con reemplazo de la bolsa común: la hipótesis de intercambio.
+        const muestra: number[] = [];
+        for (let i = 0; i < n; i++) muestra.push(bolsa[Math.floor(rand() * bolsa.length)]!);
+        muestra.sort((a, b) => a - b);
+        const mid = muestra.length >> 1;
+        medianas.push(
+          muestra.length % 2 ? muestra[mid]! : (muestra[mid - 1]! + muestra[mid]!) / 2,
+        );
+      }
+      const c = medianas.slice().sort((a, b) => a - b)[Math.floor(medianas.length / 2)]!;
+      simulados.push(c !== 0 ? (Math.max(...medianas) - Math.min(...medianas)) / Math.abs(c) : 0);
+    }
+    simulados.sort((a, b) => a - b);
+    nuloMediana = simulados[Math.floor(simulados.length / 2)]!;
+    pValor = simulados.filter((x) => x >= desplazamiento).length / simulados.length;
+  }
+
+  resultados.push({ etiqueta: m.etiqueta, desplazamiento, monotona, nuloMediana, pValor });
 
   const color =
     desplazamiento > DESPLAZAMIENTO_TOLERABLE ? "\x1b[31m" : "\x1b[32m";
   console.log(
     `  ${m.etiqueta.padEnd(17)}` +
       valores.map((v) => (v === null ? "—" : m.fmt(v)).padStart(9)).join("") +
-      `   ${color}${pct(desplazamiento)}\x1b[0m${monotona ? " \x1b[33m↗\x1b[0m" : ""}`,
+      `   ${color}${pct(desplazamiento).padStart(7)}\x1b[0m` +
+      `  \x1b[90m${nuloMediana === null ? "  —" : pct(nuloMediana).padStart(6)}` +
+      `  ${pValor < 0.05 ? "<.05" : pValor.toFixed(2)}\x1b[0m` +
+      `${monotona ? " \x1b[33m↗\x1b[0m" : ""}`,
   );
 }
 
 console.log(
-  `\n  \x1b[90mDesplazamiento = (máx − mín) / mediana central. Umbral ${pct(DESPLAZAMIENTO_TOLERABLE)},\x1b[0m`,
+  `\n  \x1b[90mDesplazamiento = (máx − mín) / mediana central. La columna "nulo" es cuánto\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mse desplazaría por puro muestreo si las añadas fueran intercambiables:\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mse sacan de una bolsa común tantos valores como tiene cada añada y se\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mrecalcula. El umbral de ${pct(DESPLAZAMIENTO_TOLERABLE)} estaba fijado a priori y sin referencia;\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mahora se ve si está arriba o abajo del nulo. Umbral ${pct(DESPLAZAMIENTO_TOLERABLE)},\x1b[0m`,
 );
 console.log(
   `  \x1b[90mfijado antes de mirar. ↗ marca las que se mueven siempre en la misma\x1b[0m`,
