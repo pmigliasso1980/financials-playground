@@ -123,8 +123,38 @@ export interface ServicerDelinquencyRow {
   reoDate: string | null;
 }
 
+/**
+ * El bloque "Specially Serviced Loan Detail", que no es el de morosidad.
+ *
+ * POR QUÉ EXISTE ESTA INTERFAZ
+ *
+ * El parser sacaba `transfer_date` únicamente del bloque de morosos. Pero un
+ * préstamo puede estar en special servicing PAGANDO AL DÍA, y entonces no
+ * aparece entre los morosos: aparece acá.
+ *
+ * BANK 2021-BNK36 dice "No delinquent loans this period" en el bloque de
+ * morosidad, y en este bloque tiene al Pros ID 71 —multifamily en Illinois,
+ * transferido el 12/02/2025—. El pipeline lo contaba como cero eventos.
+ *
+ * Eso no era un error aleatorio: si un shelf tiene préstamos que entran a
+ * special servicing antes de dejar de pagar y otro no, la diferencia entre sus
+ * tasas mide qué bloque llenó cada administrador. Ocho ataques al denominador,
+ * a la composición y a los administradores no lo habrían encontrado nunca,
+ * porque el problema estaba en una tabla que el parser no leía.
+ */
+export interface ServicerSpecialRow {
+  prosId: string;
+  loanId: string;
+  transferDate: string | null;
+  resolutionCode: string | null;
+  propertyType: string | null;
+  state: string | null;
+}
+
 export interface ServicerParseResult {
   delinquency: ServicerDelinquencyRow[];
+  /** Préstamos en special servicing, estén o no atrasados. */
+  specialServicing: ServicerSpecialRow[];
   rows: ServicerLoanRow[];
   /** Un registro por préstamo, ya deduplicado. */
   loans: ServicerLoanFact[];
@@ -173,6 +203,18 @@ export interface ServicerParseResult {
      * cada vuelta de hoy terminó delatando al instrumento.
      */
     delinquencyDroppedSamples: string[];
+
+    /** Mismo desglose para el bloque de especialmente administrados. */
+    specialTables: number;
+    specialDataRows: number;
+    /**
+     * Préstamos que aparecen en special servicing y NO entre los morosos.
+     *
+     * Es la medida directa de lo que el parser perdía antes: si este número es
+     * cero en todos los documentos, el bloque nuevo no aportaba nada; si es
+     * grande y desparejo entre shelves, era la explicación de la brecha.
+     */
+    specialSoloAqui: number;
   };
   issues: string[];
 }
@@ -301,6 +343,60 @@ function locateDelinquency(rows: unknown[][]): DelinquencyIndex | null {
       transfer: at(/servicing\s*transfer\s*date/i),
       foreclosure: at(/foreclosure\s*date/i),
       reo: at(/^reo\s*date$/i),
+      headerRow: r,
+    };
+  }
+  return null;
+}
+
+/**
+ * El bloque de especialmente administrados, que comparte columnas con el de
+ * morosidad y no es el mismo.
+ *
+ * Los dos tienen `Servicing Transfer Date` y `Resolution Strategy Code`. Lo que
+ * los separa es que el de morosidad trae `Months Delinquent` y este no, y que
+ * este trae `Special Servicing Comments`. Anclar solo en la fecha de
+ * transferencia haría que el parser leyera dos veces la misma tabla y contara
+ * cada moroso doble.
+ */
+interface SpecialIndex {
+  prosId: number; loanId: number; transfer: number;
+  resolution: number; propertyType: number; state: number;
+  headerRow: number;
+}
+
+function locateSpecialServicing(rows: unknown[][]): SpecialIndex | null {
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r]!;
+    const prosId = row.findIndex((c) => /^pros\s*id$/i.test(norm(c)));
+    if (prosId === -1) continue;
+
+    const width = Math.max(...rows.slice(Math.max(0, r - 2), r + 1).map((x) => x.length));
+    const merged: string[] = [];
+    for (let col = 0; col < width; col++) {
+      const parts: string[] = [];
+      for (let back = 2; back >= 0; back--) {
+        const text = norm(rows[r - back]?.[col]);
+        if (text && !parts.includes(text)) parts.push(text);
+      }
+      merged.push(parts.join(" "));
+    }
+
+    const at = (re: RegExp) => merged.findIndex((h) => re.test(h));
+
+    // Si trae meses de atraso es el bloque de morosidad, no este.
+    if (at(/months\s*delinquent/i) !== -1) continue;
+
+    const transfer = at(/servicing\s*transfer\s*date/i);
+    if (transfer === -1) continue;
+
+    return {
+      prosId,
+      loanId: at(/^loan\s*id$/i),
+      transfer,
+      resolution: at(/resolution\s*strategy/i),
+      propertyType: at(/property\s*type/i),
+      state: at(/^state$/i),
       headerRow: r,
     };
   }
@@ -891,6 +987,60 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
     }
   }
 
+  /**
+   * Segunda pasada: los especialmente administrados.
+   *
+   * Va después del bloque de morosidad a propósito, porque necesita saber qué
+   * préstamos ya se contaron ahí para poder reportar cuántos aparecen SOLO acá
+   * —que es la medida de lo que el parser perdía—.
+   */
+  const specialServicing: ServicerSpecialRow[] = [];
+  let specialTables = 0;
+  let specialDataRows = 0;
+  let specialSoloAqui = 0;
+  const yaMorosos = new Set(delinquency.map((d) => d.loanId));
+
+  for (const table of tables) {
+    const esp = locateSpecialServicing(table.rows);
+    if (!esp) continue;
+    specialTables++;
+
+    for (let r = esp.headerRow + 1; r < table.rows.length; r++) {
+      const row = table.rows[r]!;
+      if (isFooterRow(row)) continue;
+
+      const prosId = norm(row[esp.prosId]);
+      if (!prosId) continue;
+      specialDataRows++;
+
+      // Mismo guard que en morosidad: dos letras seguidas es prosa, no un ID.
+      if (/[a-z]{2,}/i.test(prosId)) continue;
+      const loanId = normalizeProsId(prosId);
+      if (!loanId) continue;
+
+      const cell = (i: number) => (i === -1 ? null : norm(row[i]) || null);
+      const transferDate =
+        esp.transfer === -1 ? null : parseShortDate(row[esp.transfer]);
+
+      /**
+       * Sin fecha de transferencia la fila no aporta el evento que buscamos.
+       * Puede ser una fila de continuación o un préstamo ya resuelto.
+       */
+      if (!transferDate) continue;
+
+      if (!yaMorosos.has(loanId)) specialSoloAqui++;
+
+      specialServicing.push({
+        prosId,
+        loanId,
+        transferDate,
+        resolutionCode: cell(esp.resolution),
+        propertyType: cell(esp.propertyType),
+        state: cell(esp.state),
+      });
+    }
+  }
+
   for (const table of tables) {
     const cols = locateColumns(table.rows);
     if (!cols) continue;
@@ -1022,6 +1172,7 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
 
   return {
     delinquency,
+    specialServicing,
     rows,
     loans,
     diagnostics: {
@@ -1036,6 +1187,9 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
       delinquencyDataRows,
       delinquencyDropped,
       delinquencyDroppedSamples,
+      specialTables,
+      specialDataRows,
+      specialSoloAqui,
       trancheConflicts,
       fullYearShare,
     },

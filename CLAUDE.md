@@ -26,6 +26,39 @@ volvió un número distinto del anunciado, no por razonar:
 Una predicción que no puede estar mal no sirve. "Podría subir o bajar" no falsea
 nada.
 
+### Después de tres ataques fallidos, dejá de atacar y explicá
+
+La afirmación "BANK suscribe cuatro veces mejor que BBCMS" sobrevivió **nueve**
+intentos de matarla: cobertura del join, población listada, formato del bloque,
+filtros del parser, valores crudos en veinte emisiones, administrador maestro,
+administrador especial, composición por tipo de propiedad, y un bloque entero
+del 10-D que el parser no leía.
+
+Los nueve preguntaban lo mismo: *"¿esto es un artefacto?"*. Los nueve dieron que
+no, y ninguno acercó nada a la verdad. **Nueve "no es un artefacto" no hacen un
+"es real".**
+
+El décimo preguntó *"¿qué sería esto si fuera real?"* y la mató en un intento: el
+shelf no origina préstamos, los compra. Estandarizando por vendedor × añada
+ninguna emisora se aparta.
+
+Una hipótesis rival concreta vale más que cualquier cantidad de verificación
+defensiva, porque puede confirmar además de refutar. Si no se puede formular
+ninguna, ese es el dato.
+
+### Antes de atacar un hallazgo, releé lo que el proyecto ya escribió
+
+La explicación de esa brecha estaba en `docs/hallazgo-suscripcion.md` desde hacía
+semanas: *"las cooperativas de Nueva York vienen clasificadas como multifamily; en
+los deals BANK son la mitad del pool"*. Se redescubrió tres días después por otro
+camino, sin haber releído el archivo.
+
+### La unidad de análisis se elige antes que el método
+
+Un shelf de CMBS empaqueta préstamos comprados a varios originadores. Preguntarle
+"¿quién suscribe mejor?" es un error de categoría que ninguna sofisticación
+estadística corrige, y que se podía ver sin datos.
+
 ### Los umbrales se fijan antes de ver el número
 
 En `db/challenge.ts` y `db/outcomes.ts` los cortes están escritos antes de correr

@@ -82,6 +82,14 @@ let totalDelinquent = 0;
 let totalSinPegar = 0;
 /** Filas que pegaron sobre un préstamo ya visto: tramos pari passu, no pérdida. */
 let totalColapsadas = 0;
+/**
+ * Préstamos en special servicing que NO estaban entre los morosos.
+ *
+ * Es la medida directa de lo que el parser perdía: si es cero, el bloque nuevo
+ * no aportaba nada; si es grande y desparejo entre shelves, era la explicación
+ * de que BANK marcara 4 veces menos transferencias que BBCMS.
+ */
+let totalEspeciales = 0;
 let totalMatched = 0;
 let totalUnmatched = 0;
 const problems: string[] = [];
@@ -230,6 +238,9 @@ for (const [i, t] of targets.entries()) {
           delinquencyDataRows: parsed.diagnostics.delinquencyDataRows,
           delinquencyDropped: parsed.diagnostics.delinquencyDropped,
           delinquencyDroppedSamples: parsed.diagnostics.delinquencyDroppedSamples,
+          specialTables: parsed.diagnostics.specialTables,
+          specialDataRows: parsed.diagnostics.specialDataRows,
+          specialSoloAqui: parsed.diagnostics.specialSoloAqui,
           poolLoans: corpusLoans.length,
           trancheConflicts: parsed.diagnostics.trancheConflicts.length,
         }),
@@ -275,7 +286,8 @@ for (const [i, t] of targets.entries()) {
            status = EXCLUDED.status,
            transfer_date = EXCLUDED.transfer_date,
            foreclosure_date = EXCLUDED.foreclosure_date,
-           reo_date = EXCLUDED.reo_date`,
+           reo_date = EXCLUDED.reo_date,
+           source = 'delinquency'`,
         [
           report.accession, corpusId, d.prosId, report.periodOfReport || null,
           d.paidThrough, d.monthsDelinquent, d.status,
@@ -288,6 +300,38 @@ for (const [i, t] of targets.entries()) {
     totalDelinquent += delinquent;
     totalSinPegar += sinPegar;
     totalColapsadas += delinquent - vistos.size;
+
+    /**
+     * El bloque de especialmente administrados, que el parser no leía.
+     *
+     * Un préstamo puede estar en special servicing pagando al día: aparece acá
+     * y no entre los morosos. El upsert NO pisa `months_delinquent` porque ese
+     * dato solo existe en el otro bloque — si lo pisara con NULL, arreglar el
+     * numerador rompería la identidad que valida la tabla entera.
+     */
+    let especiales = 0;
+    for (const s of parsed.specialServicing) {
+      const corpusId = byInt.get(loanInt(s.loanId) ?? "");
+      if (!corpusId) continue;
+      await query(
+        `INSERT INTO corpus.delinquency
+           (report_accession, loan_id, pros_id, period, transfer_date,
+            resolution_code, source)
+         VALUES ($1, $2, $3, $4, $5, $6, 'special')
+         ON CONFLICT (report_accession, loan_id) DO UPDATE SET
+           transfer_date = coalesce(EXCLUDED.transfer_date, corpus.delinquency.transfer_date),
+           resolution_code = coalesce(EXCLUDED.resolution_code, corpus.delinquency.resolution_code),
+           source = CASE WHEN corpus.delinquency.source = 'delinquency'
+                         THEN 'ambos' ELSE 'special' END`,
+        [
+          report.accession, corpusId, s.prosId, report.periodOfReport || null,
+          s.transferDate, s.resolutionCode,
+        ],
+      );
+      if (!vistos.has(corpusId)) especiales++;
+      vistos.add(corpusId);
+    }
+    totalEspeciales += especiales;
 
     /**
      * Sin NOI utilizable ya no es un fracaso: es un informe registrado que
@@ -422,7 +466,11 @@ console.log(
     `${totalColapsadas > 0 ? ` · ${totalColapsadas} colapsadas \x1b[90m(tramos del mismo préstamo)\x1b[0m` : ""}`,
 );
 console.log(
-  `  \x1b[90mla tabla queda con ${totalDelinquent - totalColapsadas} filas: una por préstamo, no por tramo\x1b[0m`,
+  `  \x1b[90mla tabla queda con ${totalDelinquent - totalColapsadas} filas del bloque de morosidad\x1b[0m`,
+);
+console.log(
+  `  ${totalEspeciales > 0 ? "\x1b[1m" : ""}${totalEspeciales} préstamos en special servicing que NO estaban entre los morosos\x1b[0m` +
+    `\n  \x1b[90m← eventos que el pipeline contaba como cero antes de leer el segundo bloque\x1b[0m`,
 );
 
 if (problems.length > 0) {

@@ -1,4 +1,4 @@
-# Tres hipótesis muertas y el instrumento que las mató
+# Cuatro hipótesis muertas y el instrumento que las mató
 
 > **Estado: el hallazgo principal de este proyecto es falso.**
 > Este documento antes afirmaba que el crecimiento del NOI entregado se derrumbó
@@ -157,7 +157,67 @@ eso, no agresividad.
 York, que toman deuda muy chica contra un valor muy alto y vienen clasificadas
 como multifamily. En los deals BANK son la mitad del pool.
 
-**Tres de tres.** Ese patrón importa más que cualquiera de las tres por separado.
+**"BANK suscribe cuatro veces mejor que BBCMS."** La más cara de todas, porque
+sobrevivió más. Ajustado por añada, tipo de propiedad y tercil de DSCR, el shelf
+BANK transfería a special servicing con un SIR de 0,42 contra 1,66 de BBCMS,
+intervalos que no se tocaban.
+
+Sobrevivió **nueve** intentos de matarla: la cobertura del join (97,7%), la
+población que cada administrador lista, el formato del bloque de morosidad, los
+filtros del parser, el valor crudo verificado en veinte emisiones, el
+administrador maestro, el administrador especial, la composición por tipo de
+propiedad, y un bloque entero del 10-D —"Specially Serviced Loan Detail"— que el
+parser no leía y aportaba 35 eventos.
+
+Murió con el décimo, que fue el primero que no era defensivo. Mapeando la
+columna *Mortgage Loan Seller* del Annex A y estandarizando por **originador ×
+añada**, ninguna emisora se aparta: BANK 1,01 · BBCMS 1,10 · BMO 1,03 · Wells
+0,83, todos los intervalos conteniendo el 1.
+
+BANK no suscribe mejor: **compra a otros originadores**. Su pool viene de NCB
+—National Cooperative Bank, cooperativas de vivienda, 396 préstamos con cero
+eventos— más BANA, WFB y MSMCH. El de BBCMS viene de Barclays, LMF y UBS. Entre
+originadores la variación real va de 0% a 11,2%.
+
+**Cuatro de cuatro.** Ese patrón importa más que cualquiera de las cuatro por
+separado.
+
+---
+
+## Los dos errores que hicieron cara a la cuarta
+
+**El error de categoría.** Un shelf de CMBS no es un originador: es un vehículo
+que empaqueta préstamos comprados a varios bancos. Atribuirle calidad de
+suscripción era felicitar a la caja por lo que hizo la fábrica, y eso se podía
+decir el primer día sin ningún dato. Nueve ataques sofisticados al numerador y
+al denominador no compensan una unidad de análisis mal elegida.
+
+**La respuesta estaba escrita en este archivo.** La sección de arriba dice, desde
+hace semanas, que las cooperativas de Nueva York vienen clasificadas como
+multifamily y que *"en los deals BANK son la mitad del pool"*. Eso es exactamente
+el mecanismo que terminó explicando la brecha. Se redescubrió por otro camino
+—desde los datos del vendedor— sin releer la documentación del propio proyecto.
+
+Los dos son fallas del mismo tipo: **conocimiento disponible que no se consultó
+porque la atención estaba puesta en defender una afirmación en vez de en
+explicarla.**
+
+---
+
+## La asimetría entre atacar y explicar
+
+Los nueve ataques preguntaban *"¿esto es un artefacto?"*. Los nueve dieron que
+no, y ninguno acercó nada a la verdad. Nueve "no es un artefacto" no hacen un
+"es real".
+
+El décimo preguntaba *"¿qué sería esto si fuera real?"* — y en un solo intento
+mostró que el efecto vivía un nivel más abajo. Una hipótesis rival concreta vale
+más que cualquier cantidad de verificaciones defensivas, porque puede confirmar
+además de refutar.
+
+**Regla práctica:** después de tres ataques fallidos a un hallazgo, dejar de
+atacarlo y formular la explicación alternativa más específica posible. Si no se
+puede formular ninguna, ese es el dato.
 
 ---
 

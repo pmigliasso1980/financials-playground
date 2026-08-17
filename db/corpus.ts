@@ -144,7 +144,7 @@ async function insertLoans(
   const ids = new Map<number, number>();
   if (props.length === 0) return ids;
 
-  const COLS = 9;
+  const COLS = 10;
   const CHUNK = Math.floor(60_000 / COLS); // margen sobre el límite de 65.535
 
   for (let start = 0; start < props.length; start += CHUNK) {
@@ -158,7 +158,7 @@ async function insertLoans(
       const base = i * COLS;
       tuples.push(
         `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},` +
-          `$${base + 6},$${base + 7},$${base + 8},$${base + 9})`,
+          `$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10})`,
       );
       values.push(
         accession,
@@ -170,12 +170,13 @@ async function insertLoans(
         prop.label.state,
         valueOf("zip"),
         prop.label.property_type,
+        prop.label.loan_seller,
       );
     });
 
     const { rows } = await client.query<{ id: string; row_index: number }>(
       `INSERT INTO corpus.loans
-         (accession, row_index, loan_ref, property_name, address, city, state, zip, property_type)
+         (accession, row_index, loan_ref, property_name, address, city, state, zip, property_type, loan_seller)
        VALUES ${tuples.join(",")}
        RETURNING id, row_index`,
       values,
@@ -421,6 +422,7 @@ interface LoanRow {
   city: string | null;
   state: string | null;
   property_type: string | null;
+  loan_seller: string | null;
 }
 
 interface ObservationRow {
@@ -488,6 +490,7 @@ export async function loadHarvest(accession: string): Promise<HarvestResult | nu
       city: loan.city,
       state: loan.state,
       property_type: loan.property_type,
+      loan_seller: loan.loan_seller,
     },
     observations: (byLoan.get(loan.id) ?? []).map((o) => ({
       id: `${accession}:${loan.row_index}:${o.metric_key}`,

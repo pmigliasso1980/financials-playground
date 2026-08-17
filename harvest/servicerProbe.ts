@@ -97,9 +97,25 @@ for (const report of reports) {
        *
        * Solo para el bloque de NOI, que es el que descarta filas.
        */
+      /**
+       * También los bloques de especialmente administrados.
+       *
+       * El parser saca `transfer_date` SOLO del bloque de morosidad. Pero el
+       * 10-D trae además "Specially Serviced Loan Detail", con su propia
+       * columna `Servicing Transfer Date` — y un préstamo puede estar en
+       * special servicing pagando al día, en cuyo caso aparecería ahí y no
+       * entre los morosos.
+       *
+       * BANK 2021-BNK36 dice "No delinquent loans this period" y nunca miramos
+       * si su bloque de especialmente administrados tenía filas. Si las tiene,
+       * el numerador de todo el análisis está incompleto de forma sistemática.
+       */
       const esNoi = t.headers.some((h) => /noi\s*end\s*date/i.test(h));
       const esMorosidad = t.headers.some((h) => /months\s*delinquent/i.test(h));
-      if (!esNoi && !esMorosidad) continue;
+      const esEspecial = t.headers.some((h) =>
+        /servicing\s*transfer\s*date|special\s*servicing\s*comments|specially\s*serviced/i.test(h),
+      );
+      if (!esNoi && !esMorosidad && !esEspecial) continue;
 
       console.log(`    \x1b[90m── tres filas de datos ──\x1b[0m`);
       for (let r = t.headerRow + 1; r <= t.headerRow + 3 && r < t.rows.length; r++) {

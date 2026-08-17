@@ -90,6 +90,7 @@ export interface HarvestedProperty {
     city: string | null;
     state: string | null;
     property_type: string | null;
+    loan_seller: string | null;
   };
 }
 
@@ -302,6 +303,7 @@ export function rowsToObservations(
         city: textOf("city"),
         state: textOf("state"),
         property_type: textOf("property_type"),
+        loan_seller: textOf("loan_seller"),
       },
     });
   });

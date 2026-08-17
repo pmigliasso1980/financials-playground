@@ -121,7 +121,7 @@ function buildFixture(): HarvestResult {
           address: "201 North State Street",
           city: "Chicago",
           state: "IL",
-          property_type: "Hospitality",
+          loan_seller: null, property_type: "Hospitality",
         },
         observations: [
           mkObs(0, "property_name", "Property Name", "text", "property", "TheWit Chicago", "TheWit Chicago", "Property Name", 2),
@@ -140,7 +140,7 @@ function buildFixture(): HarvestResult {
           address: "1400 Riverbend Dr",
           city: "Austin",
           state: "TX",
-          property_type: "Multifamily",
+          loan_seller: null, property_type: "Multifamily",
         },
         observations: [
           mkObs(1, "property_name", "Property Name", "text", "property", "Ventana Residences", "Ventana Residences", "Property Name", 2),

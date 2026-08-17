@@ -59,6 +59,7 @@ export type MetricKey =
   | "interest_rate_mezzanine"
   | "interest_rate_subordinate"
   | "property_type"
+  | "loan_seller"
   | "property_name"
   | "address"
   | "city"
@@ -778,6 +779,46 @@ export const METRIC_SPECS: MetricSpec[] = [
     entity: "property",
     patterns: [/property\s*type/i, /^\s*type\b/i, /asset\s*type/i],
     exclude: [/loan/i, /rate/i, /sub/i],
+  },
+  {
+    key: "loan_seller",
+    label: "Mortgage Loan Seller",
+    unit: "text",
+    /**
+     * QUIÉN ORIGINÓ EL PRÉSTAMO, QUE NO ES QUIÉN ARMÓ LA EMISIÓN
+     *
+     * Todo el análisis de "emisoras" venía atribuyéndole a BANK o a BBCMS lo que
+     * hicieron sus vendedores. Un deal BANK agrupa préstamos originados por Bank
+     * of America, Morgan Stanley y Wells Fargo; el shelf es el empaquetador.
+     *
+     * Y es la variable que puede CONFIRMAR el efecto en vez de solo no matarlo:
+     * el mismo vendedor coloca en varias emisiones, así que el diseño queda
+     * cruzado por construcción. Wells Fargo vende hacia BANK (SIR 0,42) y hacia
+     * su propio shelf (1,20). Si el vendedor manda, fijarlo debería aplanar esa
+     * diferencia.
+     *
+     * La entidad es `property` porque ese es el nivel de fila del Annex A, no
+     * porque el vendedor describa una propiedad: en un préstamo con varias
+     * propiedades el valor se repite. Sirve igual — la pregunta se hace a nivel
+     * préstamo y ahí el valor es único.
+     *
+     * LAS EXCLUSIONES
+     *
+     * "Mortgage Loan Seller" ya figuraba en este archivo, pero solo como
+     * exclusión de `loan_amount` —el encabezado aparece en 9 filings y el patrón
+     * de monto lo capturaba—. Acá hay que evitar el camino inverso: columnas que
+     * hablan del vendedor sin nombrarlo, como el número de préstamos que aportó
+     * o el porcentaje del pool.
+     */
+    entity: "property",
+    patterns: [
+      /mortgage\s*loan\s*seller/i,
+      /^\s*loan\s*seller\b/i,
+      /\boriginator\b/i,
+      /originating\s*(lender|bank)/i,
+      /\bseller\b/i,
+    ],
+    exclude: [/count/i, /number\s*of/i, /#/, /\bpct\b/i, /percent/i, /%/, /balance/i, /amount/i],
   },
   {
     key: "property_name",

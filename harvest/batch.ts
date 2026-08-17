@@ -165,7 +165,14 @@ async function main() {
         GROUP BY f.cik, f.stats->>'taxonomyVersion'`,
       [TAXONOMY_VERSION],
     );
-    refresh = new Set(rows.map((r) => r.cik));
+    /**
+     * Normalizado, porque así se consulta más abajo.
+     *
+     * `f.cik` puede venir con ceros a la izquierda y el filtro de `pending` usa
+     * `String(Number(c))`. Guardar el crudo hacía que el `has` no matcheara
+     * nunca — el conjunto se calculaba, se anunciaba, y no seleccionaba nada.
+     */
+    refresh = new Set(rows.map((r) => String(Number(r.cik))));
     const affected = rows.reduce((a, r) => a + Number(r.loans), 0);
     console.log(
       `\n\x1b[33m--refresh-stale:\x1b[0m ${refresh.size} emisiones cosechadas con un mapeo ` +
@@ -224,12 +231,49 @@ async function main() {
     );
   }
 
-  const pending = ciks.filter(
-    (c) => !already.has(String(Number(c))) || refresh.has(String(Number(c))),
-  );
-  const skipped = ciks.length - pending.length;
+  /**
+   * Lo descubierto MÁS lo que hay que recosechar, no lo descubierto FILTRADO.
+   *
+   * Esta línea decía `ciks.filter(... || refresh.has(...))`. Como `ciks` sale
+   * del descubrimiento —que por definición busca trusts que NO están en el
+   * corpus— una emisión vieja no aparecía ahí y el `||` no tenía sobre qué
+   * actuar. El flag calculaba 222 emisiones obsoletas, imprimía una advertencia
+   * en rojo sobre borrar 2.213 filas de desempeño, y después cosechaba otra
+   * cosa: veinte trusts nuevos de 2011-2014.
+   *
+   * Es la peor forma de este error. No falló en silencio: falló anunciando en
+   * voz alta que estaba haciendo lo correcto.
+   */
+  const norm = (c: string) => String(Number(c));
+  const descubiertos = ciks.filter((c) => !already.has(norm(c)));
+  const enLista = new Set(descubiertos.map(norm));
 
-  console.log(`\n${ciks.length} trusts · ${pending.length} por cosechar${skipped ? ` · ${skipped} ya en el corpus` : ""}\n`);
+  /**
+   * `--refresh-limit N`: recosechar N emisiones y parar.
+   *
+   * Recosechar 222 emisiones son ~30 minutos y borra el desempeño de 2.213
+   * préstamos por CASCADE. El código que las selecciona acababa de tener un bug
+   * que lo hacía no seleccionar ninguna mientras anunciaba lo contrario.
+   *
+   * Correr cinco primero cuesta un minuto y responde si el arreglo funciona.
+   * Es la misma lógica que la sonda del vendedor: verificar antes de la
+   * operación cara, no después de que el resultado sorprenda.
+   */
+  const refreshLimitFlag = args.indexOf("--refresh-limit");
+  const refreshLimit =
+    refreshLimitFlag === -1 ? Infinity : Number(args[refreshLimitFlag + 1] ?? Infinity);
+
+  const aRecosechar = [...refresh]
+    .filter((c) => !enLista.has(c))
+    .slice(0, refreshLimit);
+  const pending = [...descubiertos, ...aRecosechar];
+  const skipped = ciks.length - descubiertos.length;
+
+  console.log(
+    `\n${ciks.length} trusts descubiertos · ${descubiertos.length} nuevos por cosechar` +
+      `${skipped ? ` · ${skipped} ya en el corpus` : ""}` +
+      `${aRecosechar.length ? ` · \x1b[33m${aRecosechar.length} a recosechar por mapeo viejo\x1b[0m` : ""}\n`,
+  );
 
   const started = Date.now();
   let ok = 0;
