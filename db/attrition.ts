@@ -595,10 +595,22 @@ function correrNulo(
   for (let r = 0; r < REPLICAS; r++) {
     const st = estadistico(hacer(rng(semilla + r * 97)));
     simQ.push(st.Q);
-    if (Math.abs(st.Q - obs.Q) < 1e-12) inmoviles++;
-    for (const v of vendedores) simD.get(v)!.push(st.d.get(v) ?? 0);
+    /**
+     * La inmovilidad se cuenta POR VENDEDOR, no sobre Q.
+     *
+     * Q suma sobre los quince, así que basta con que se mueva una sola celda para
+     * que Q cambie: el contador sobre Q marcó 0% mientras 61,9% de los préstamos
+     * estaban en celdas congeladas y siete vendedores tenían p clavado en 1,0000.
+     * Un detector de degeneración que agrega es un detector que no detecta — la
+     * tercera versión del mismo error en este archivo.
+     */
+    for (const v of vendedores) {
+      const d = st.d.get(v) ?? 0;
+      simD.get(v)!.push(d);
+      if (Math.abs(d - (obs.d.get(v) ?? 0)) < 1e-12) inmoviles++;
+    }
   }
-  return { etiqueta, simQ, simD, inmoviles: inmoviles / REPLICAS };
+  return { etiqueta, simQ, simD, inmoviles: inmoviles / (REPLICAS * Math.max(1, vendedores.length)) };
 }
 
 const nuloR = correrNulo("restringido", marcaRestringida, 0xa77);
@@ -653,7 +665,7 @@ for (const f of filas) {
 console.log(
   `\n  \x1b[1mHeterogeneidad\x1b[0m  Q = ${obs.Q.toFixed(2)}` +
     `   restringido: p = ${pDe(obs.Q, nuloR.simQ, false).toFixed(4)}` +
-    `\x1b[90m (${pct(nuloR.inmoviles, 0)} inmóviles)\x1b[0m` +
+    `\x1b[90m (${pct(nuloR.inmoviles, 0)} de las diferencias por vendedor no se movieron)\x1b[0m` +
     `   irrestricto: p = ${pDe(obs.Q, nuloI.simQ, false).toFixed(4)}`,
 );
 console.log(
