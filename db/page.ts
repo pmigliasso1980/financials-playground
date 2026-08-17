@@ -255,6 +255,7 @@ function render(b: Benchmark): string {
   .verdict { font-size:15.5px; margin:0 0 18px; padding:12px 14px; border-radius:6px;
              background:#f4f6fa; border:1px solid #e2e8f2 }
   .verdict.sig { background:#f0f7f1; border-color:#d6e8d9 }
+  .verdict.filo { background:#fdf6ec; border-color:#f0e2bc }
   .lead { font-size:15px; margin:0 0 10px; font-variant-numeric:tabular-nums }
   details { margin-top:14px }
   summary { cursor:pointer; font-size:13px; color:var(--muted); padding:6px 0 }
@@ -272,15 +273,34 @@ function render(b: Benchmark): string {
   <p class="sub">${esc(o.filed.slice(0, 10))} · ${o.pool} préstamos · cohorte ${esc(o.anada)}</p>
   ${
     b.evaluable
-      ? `<p class="verdict ${b.pValor < 0.05 ? "sig" : ""}">${
-          b.pValor < 0.05
-            ? `Mezcla de propiedades <b>distinta de su cohorte</b> — hay que mover el
-               ${pct(b.distancia)} del pool para igualarla, contra ${pct(b.distanciaNulo)}
-               que se esperaría por azar con ${o.pool} préstamos (p = ${b.pValor.toFixed(4)}).`
-            : `Mezcla de propiedades <b>indistinguible de su cohorte</b> — la distancia de
-               ${pct(b.distancia)} está dentro de lo que produce el muestreo con ${o.pool}
-               préstamos (${pct(b.distanciaNulo)} esperado, p = ${b.pValor.toFixed(2)}).`
-        }</p>`
+      ? !b.robusto
+        ? /**
+           * Las dos ponderaciones discrepan: se dice eso, no se elige una.
+           *
+           * Medido sobre 2026: por préstamo salen 13 emisiones con mezcla
+           * distinta y por emisión 15, coincidiendo en 13. El agregado es
+           * robusto pero dos emisiones cambian de lado, y una es BANK5
+           * 2026-5YR24 — que con una ponderación es "indistinguible" y con la
+           * otra "distinta".
+           *
+           * Afirmar cualquiera de las dos sería afirmar más de lo que sabemos.
+           */
+          `<p class="verdict filo">Mezcla <b>al filo</b> — hay que mover el ${pct(b.distancia)}
+           del pool para igualar la cohorte, contra ${pct(b.distanciaNulo)} esperado por azar
+           con ${o.pool} préstamos. Que eso cuente como "distinta" depende de cómo se pondere
+           la referencia: contando todos los préstamos de los pares da p = ${b.pValor.toFixed(3)},
+           y dando el mismo peso a cada emisión da p = ${b.pValorPorEmision.toFixed(3)}.
+           Con las dos a distinto lado del 5%, la respuesta honesta es que está en el borde.</p>`
+        : `<p class="verdict ${b.pValor < 0.05 ? "sig" : ""}">${
+            b.pValor < 0.05
+              ? `Mezcla de propiedades <b>distinta de su cohorte</b> — hay que mover el
+                 ${pct(b.distancia)} del pool para igualarla, contra ${pct(b.distanciaNulo)}
+                 que se esperaría por azar con ${o.pool} préstamos (p = ${b.pValor.toFixed(4)},
+                 y da lo mismo con las dos ponderaciones de la referencia).`
+              : `Mezcla de propiedades <b>indistinguible de su cohorte</b> — la distancia de
+                 ${pct(b.distancia)} está dentro de lo que produce el muestreo con ${o.pool}
+                 préstamos (${pct(b.distanciaNulo)} esperado, p = ${b.pValor.toFixed(2)}).`
+          }</p>`
       : ""
   }
   <p class="peers">${b.pares.length} emisiones comparables${

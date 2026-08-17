@@ -122,6 +122,23 @@ export interface Benchmark {
   distancia: number;
   distanciaNulo: number;
   pValor: number;
+  /**
+   * El mismo cálculo con la referencia ponderada por EMISIÓN en vez de por
+   * préstamo, y si las dos coinciden.
+   *
+   * Medido: sobre 2026, por préstamo salen 13 emisiones significativas y por
+   * emisión 15, coincidiendo en 13. El agregado es robusto —las dos cifras son
+   * abrumadoras contra 1,4 esperadas— pero dos emisiones cambian de lado, y una
+   * es BANK5 2026-5YR24.
+   *
+   * O sea que el veredicto por emisión NO es robusto en los casos al filo. Una
+   * página que dice "distinta" o "indistinguible" según una ponderación elegida
+   * sin pensarla afirma más de lo que sabe, así que cuando las dos discrepan se
+   * dice eso en vez de elegir una.
+   */
+  pValorPorEmision: number;
+  /** true si las dos ponderaciones dan el mismo veredicto al 5%. */
+  robusto: boolean;
 }
 
 /** Variación total: la mitad de la suma de diferencias absolutas. */
@@ -224,7 +241,7 @@ export async function calcularBenchmark(
   const pares = mismaAnada.filter((c) => c.shareDominante <= CONCENTRACION_TIPO);
   const excluidas = mismaAnada.filter((c) => c.shareDominante > CONCENTRACION_TIPO);
 
-  const base: Omit<Benchmark, "metricas" | "composicion" | "distancia" | "distanciaNulo" | "pValor"> = {
+  const base: Omit<Benchmark, "metricas" | "composicion" | "distancia" | "distanciaNulo" | "pValor" | "pValorPorEmision" | "robusto"> = {
     objetivo,
     pares,
     excluidas,
@@ -235,7 +252,10 @@ export async function calcularBenchmark(
   };
 
   if (!base.evaluable) {
-    return { ...base, metricas: [], composicion: [], distancia: 0, distanciaNulo: 0, pValor: 1 };
+    return {
+      ...base, metricas: [], composicion: [],
+      distancia: 0, distanciaNulo: 0, pValor: 1, pValorPorEmision: 1, robusto: true,
+    };
   }
 
   const accessions = [objetivo.accession, ...pares.map((p) => p.accession)];
@@ -297,6 +317,44 @@ export async function calcularBenchmark(
    * normaliza a las categorías gruesas porque son las que tienen suficientes
    * préstamos por celda para que un porcentaje signifique algo.
    */
+  /**
+   * La composición de CADA par, para poder ponderar por emisión.
+   *
+   * La query de abajo devuelve el agregado ponderado por préstamo; esta devuelve
+   * el vector de cada emisión por separado, que es lo que hace falta para
+   * promediarlos con peso igual.
+   */
+  const { rows: porPar } = await query<{ accession: string; tipo: string; share: string }>(
+    `WITH canon AS (
+       SELECT l.accession,
+              CASE
+                WHEN l.property_type ~* 'multifamily|cooperative|garden|low rise|mid rise|student' THEN 'Multifamily'
+                WHEN l.property_type ~* 'retail|anchored|single tenant' THEN 'Retail'
+                WHEN l.property_type ~* 'office|cbd|suburban|medical' THEN 'Office'
+                WHEN l.property_type ~* 'industrial|warehouse|flex' THEN 'Industrial'
+                WHEN l.property_type ~* 'storage' THEN 'Self Storage'
+                WHEN l.property_type ~* 'hospitality|hotel|service|extended stay' THEN 'Hospitality'
+                WHEN l.property_type ~* 'mixed' THEN 'Mixed Use'
+                WHEN l.property_type ~* 'manufactured' THEN 'Manufactured'
+                ELSE 'Sin clasificar'
+              END AS tipo
+         FROM corpus.loans l
+        WHERE l.property_type IS NOT NULL AND l.accession = ANY($1)
+     ),
+     tot AS (SELECT accession, count(*) AS n FROM canon GROUP BY accession)
+     SELECT c.accession, c.tipo,
+            (count(*)::numeric / nullif(t.n, 0))::text AS share
+       FROM canon c JOIN tot t ON t.accession = c.accession
+      GROUP BY c.accession, c.tipo, t.n`,
+    [accessions],
+  );
+  const composicionDe = new Map<string, Map<string, number>>();
+  for (const r of porPar) {
+    const m = composicionDe.get(r.accession) ?? new Map<string, number>();
+    m.set(r.tipo, Number(r.share));
+    composicionDe.set(r.accession, m);
+  }
+
   const { rows: mezcla } = await query<{ tipo: string; propio: string; cohorte: string }>(
     `WITH canon AS (
        SELECT l.accession,
@@ -391,12 +449,48 @@ export async function calcularBenchmark(
   }
   sim.sort((a, b) => a - b);
 
+  /**
+   * La misma medición con la referencia ponderada por emisión.
+   *
+   * El nulo se resimula: cambiar la referencia cambia también qué distancias
+   * produce el azar, así que reusar el anterior compararía contra el nulo
+   * equivocado.
+   */
+  const qEmision = conMezcla.map((_, i) => {
+    const suma = pares.reduce((x, par) => {
+      const t = conMezcla[i]!.tipo;
+      const propioPar = composicionDe.get(par.accession)?.get(t) ?? 0;
+      return x + propioPar;
+    }, 0);
+    return suma / Math.max(1, pares.length);
+  });
+  const dEmision = tv(pVec, qEmision);
+
+  const acumE: number[] = [];
+  qEmision.reduce((x, v) => (acumE.push(x + v), x + v), 0);
+  const randE = rng(0xc0ffee);
+  const simE: number[] = [];
+  for (let b = 0; b < SIMULACIONES; b++) {
+    const c = new Array(qEmision.length).fill(0);
+    for (let k = 0; k < objetivo.pool; k++) {
+      const u = randE();
+      let i = acumE.findIndex((a) => u < a);
+      if (i < 0) i = qEmision.length - 1;
+      c[i]++;
+    }
+    simE.push(tv(c.map((x) => x / objetivo.pool), qEmision));
+  }
+  const pValor = sim.filter((x) => x >= distancia).length / sim.length;
+  const pValorPorEmision = simE.filter((x) => x >= dEmision).length / simE.length;
+
   return {
     ...base,
     metricas,
     composicion,
     distancia,
     distanciaNulo: sim[Math.floor(sim.length / 2)]!,
-    pValor: sim.filter((x) => x >= distancia).length / sim.length,
+    pValor,
+    pValorPorEmision,
+    robusto: pValor < 0.05 === pValorPorEmision < 0.05,
   };
 }
