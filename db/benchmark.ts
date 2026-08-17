@@ -54,9 +54,33 @@ if (!health.ok) {
 /** Fijados antes de ver nada. */
 const MIN_PARES = 15;
 const CONCENTRACION_TIPO = 0.8;
+/**
+ * Mínimo de préstamos con la métrica para que la mediana del pool signifique
+ * algo. Con menos, la "mediana de la emisión" es la mediana de un puñado.
+ */
+const MIN_PARA_METRICA = 10;
 
 const args = process.argv.slice(2);
 const LISTAR = args.includes("--listar");
+
+/**
+ * `--auditoria`: ¿en cuántas emisiones de la cohorte resuelve cada métrica?
+ *
+ * POR QUÉ EXISTE
+ *
+ * La primera corrida devolvió "Ocupación — sin dato en esta emisión". En un
+ * diagnóstico eso es una nota al pie; en un producto es lo que destruye la
+ * confianza, porque el usuario no sabe si el dato no existe o si nosotros no lo
+ * encontramos.
+ *
+ * Y antes de decidir cuál de las dos cosas es, hace falta el denominador: si la
+ * ocupación resuelve en 5 de 28 emisiones no debería estar en la herramienta;
+ * si resuelve en 26, son dos emisiones con un problema de mapeo.
+ *
+ * Es la misma regla que venimos usando —medir la cobertura antes de construir
+ * encima— aplicada al benchmark en vez de al corpus.
+ */
+const AUDITORIA = args.includes("--auditoria");
 const BUSQUEDA = args.find((a) => !a.startsWith("--")) ?? null;
 
 const pct = (v: number, d = 0) => `${(v * 100).toFixed(d)}%`;
@@ -134,6 +158,369 @@ if (LISTAR) {
       `  ${c.filed.slice(0, 10)}  ${c.nombre.slice(0, 42).padEnd(44)} ${String(c.pool).padStart(4)}` +
         (share > CONCENTRACION_TIPO
           ? `  \x1b[33mmono-tipo (${pct(share)} ${c.tipo_dominante})\x1b[0m`
+          : ""),
+    );
+  }
+  console.log();
+  await closePool();
+  process.exit(0);
+}
+
+if (AUDITORIA) {
+  const anadaAudit = String(new Date().getFullYear());
+  const cohorte = candidatas.filter((c) => c.anada === anadaAudit);
+  const accs = cohorte.map((c) => c.accession);
+
+  console.log(`\n${"═".repeat(78)}`);
+  console.log(`Auditoría del benchmark — cohorte ${anadaAudit}`);
+  console.log(`${"═".repeat(78)}\n`);
+  console.log(`  ${cohorte.length} emisiones. ¿En cuántas resuelve cada métrica?\n`);
+  console.log(`  métrica          resuelve   emisiones sin dato`);
+  console.log(`  ${"─".repeat(70)}`);
+
+  for (const m of METRICAS) {
+    const { rows } = await query<{ accession: string; n: string }>(
+      `SELECT l.accession, count(*)::text AS n
+         FROM corpus.facts fa
+         JOIN corpus.loans l ON l.id = fa.loan_id
+        WHERE fa.metric_key = $1
+          AND fa.value ~ '^-?[0-9.]+$'
+          AND fa.value::numeric BETWEEN ${m.min} AND ${m.max}
+          AND l.accession = ANY($2)
+        GROUP BY l.accession
+       HAVING count(*) >= ${MIN_PARA_METRICA}`,
+      [m.key, accs],
+    );
+    const con = new Set(rows.map((r) => r.accession));
+    const sin = cohorte.filter((c) => !con.has(c.accession));
+    const cuenta = new Map(rows.map((r) => [r.accession, Number(r.n)]));
+    const share = cohorte.length ? con.size / cohorte.length : 0;
+    console.log(
+      `  ${m.etiqueta.padEnd(14)} ${`${con.size}/${cohorte.length}`.padStart(8)}   ` +
+        `${share >= 0.9 ? "\x1b[32m" : share >= 0.5 ? "\x1b[33m" : "\x1b[31m"}${pct(share).padStart(5)}\x1b[0m` +
+        (sin.length > 0 ? `   \x1b[90m${sin.length} sin dato\x1b[0m` : ""),
+    );
+
+    /**
+     * Las faltantes se nombran SIEMPRE, no solo cuando son pocas.
+     *
+     * La primera versión las listaba con `sin.length <= 5` y arriba de eso
+     * imprimía "7 emisiones". Es el mismo error que venimos persiguiendo en los
+     * datos, cometido en el reporte: un resumen que oculta justo lo que hace
+     * falta para decidir. Siete nombres no llenan una pantalla, y sin ellos no
+     * se puede saber si la falta es aleatoria o estructural.
+     */
+    if (sin.length > 0 && con.size < cohorte.length) {
+      /**
+       * Cuántos préstamos tiene REALMENTE, sin el umbral.
+       *
+       * La primera versión decía "sin dato" y era mentira: el umbral de 10 es
+       * lo que decidía, no la ausencia del dato. BANK5 salía sin ocupación en
+       * una tabla y 5/5 en la de shelves, porque una exigía diez préstamos y la
+       * otra uno. Dos definiciones de "tiene el dato" conviviendo en la misma
+       * pantalla, contradiciéndose.
+       *
+       * Ahora se imprime el conteo crudo contra el pool. "3 de 35" es una
+       * afirmación sobre el mundo; "sin dato" era una sobre mi umbral.
+       */
+      const { rows: crudos } = await query<{ accession: string; n: string }>(
+        `SELECT l.accession, count(*)::text AS n
+           FROM corpus.facts fa
+           JOIN corpus.loans l ON l.id = fa.loan_id
+          WHERE fa.metric_key = $1
+            AND fa.value ~ '^-?[0-9.]+$'
+            AND fa.value::numeric BETWEEN ${m.min} AND ${m.max}
+            AND l.accession = ANY($2)
+          GROUP BY l.accession`,
+        [m.key, sin.map((x) => x.accession)],
+      );
+      const crudo = new Map(crudos.map((r) => [r.accession, Number(r.n)]));
+      for (const x of sin) {
+        const n = crudo.get(x.accession) ?? 0;
+        console.log(
+          `    \x1b[90m· ${x.nombre.slice(0, 42).padEnd(44)} ${String(n).padStart(3)} de ${x.pool}` +
+            (n > 0 ? ` \x1b[33m← hay dato, lo corta el umbral de ${MIN_PARA_METRICA}\x1b[0m` : ` \x1b[90mcero\x1b[0m`),
+        );
+      }
+    }
+  }
+
+  /**
+   * ¿La falta es aleatoria o se agrupa por emisor?
+   *
+   * Una cobertura del 75% no dice lo mismo según cómo se reparta. Si las 7 sin
+   * ocupación están esparcidas, la distribución de la cohorte se arma sobre una
+   * submuestra parecida al todo. Si son todas del mismo shelf, la referencia
+   * excluye sistemáticamente a un originador y comparar contra ella está
+   * sesgado — sin que nada en la salida lo indique.
+   *
+   * Es la misma pregunta que ya nos costó caro con `property_type`: ahí la
+   * cobertura global era 93,7% y tres shelves enteros estaban abajo del umbral.
+   */
+  const { rows: porShelf } = await query<{ shelf: string; total: string; con_occ: string }>(
+    `WITH e AS (
+       SELECT f.accession,
+              split_part(f.company_name, ' ', 1) AS shelf,
+              EXISTS (
+                SELECT 1 FROM corpus.facts fa
+                  JOIN corpus.loans l ON l.id = fa.loan_id
+                 WHERE l.accession = f.accession
+                   AND fa.metric_key = 'occupancy'
+                   AND fa.value ~ '^-?[0-9.]+$'
+              ) AS tiene
+         FROM corpus.filings f
+        WHERE f.accession = ANY($1)
+     )
+     SELECT shelf, count(*)::text AS total,
+            count(*) FILTER (WHERE tiene)::text AS con_occ
+       FROM e GROUP BY shelf HAVING count(*) >= 2 ORDER BY 1`,
+    [accs],
+  );
+
+  console.log(`\n  Ocupación por shelf — ¿la falta se agrupa?\n`);
+  for (const r of porShelf) {
+    const tot = Number(r.total);
+    const con = Number(r.con_occ);
+    console.log(
+      `    ${r.shelf.slice(0, 18).padEnd(20)} ${`${con}/${tot}`.padStart(6)}` +
+        (con === 0 ? `  \x1b[31m← el shelf entero\x1b[0m` : con < tot ? `  \x1b[33mparcial\x1b[0m` : ""),
+    );
+  }
+  console.log(
+    `\n  \x1b[90mEsta tabla pregunta si existe ALGÚN préstamo con el dato, así que casi\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90msiempre dice que sí: BANK5 sale 5/5 teniendo 6 de 35. La unidad correcta\x1b[0m`,
+  );
+  console.log(`  \x1b[90mes el préstamo, y es la de abajo.\x1b[0m`);
+
+  /**
+   * LA MEDICIÓN QUE HABÍA QUE HACER DESDE EL PRINCIPIO: préstamos, no emisiones.
+   *
+   * Las dos tablas de arriba cuentan emisiones que pasan un umbral. Pero la
+   * mediana de una emisión se calcula sobre PRÉSTAMOS, y una cohorte donde cada
+   * deal tiene el dato en 11 de 35 daría 28/28 en la primera tabla y sería una
+   * referencia construida sobre un tercio de la población.
+   *
+   * `CLAUDE.md` dice "la unidad de análisis se elige antes que el método" y acá
+   * la elegí después, mirando lo que era fácil de contar.
+   *
+   * EL CORTE POR TIPO ES EL TEST DECISIVO
+   *
+   * Quedan dos explicaciones para la ralitud, y predicen cosas distintas:
+   *
+   *   (a) el dato se informa donde significa algo — la ocupación de un hotel se
+   *       mide con RevPAR, la de un self storage rota mensual. Entonces
+   *       multifamily/office/retail deberían estar altos y hospitality en cero.
+   *
+   *   (b) el parser lo pierde — entonces la cobertura es pareja y baja en TODOS
+   *       los tipos, porque a la columna no le importa qué hay adentro.
+   *
+   * Benchmark 2026-B42 con 1 de 62 ya empuja fuerte hacia (b): esa emisión es
+   * 42% multifamily, o sea ~26 préstamos donde la ocupación es la métrica
+   * central del activo. Pero un caso no decide, y este corte sí.
+   */
+  const { rows: porTipo } = await query<{
+    tipo: string; total: string; con_occ: string;
+  }>(
+    `SELECT coalesce(l.property_type, '(sin tipo)') AS tipo,
+            count(*)::text AS total,
+            count(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM corpus.facts fa
+               WHERE fa.loan_id = l.id AND fa.metric_key = 'occupancy'
+                 AND fa.value ~ '^-?[0-9.]+$'
+            ))::text AS con_occ
+       FROM corpus.loans l
+      WHERE l.accession = ANY($1)
+      GROUP BY 1 HAVING count(*) >= 10
+      ORDER BY count(*) DESC`,
+    [accs],
+  );
+
+  const totPrest = porTipo.reduce((a, r) => a + Number(r.total), 0);
+  const totOcc = porTipo.reduce((a, r) => a + Number(r.con_occ), 0);
+
+  console.log(`\n${"─".repeat(78)}`);
+  console.log(`\n  Ocupación a nivel PRÉSTAMO, por tipo de propiedad\n`);
+  console.log(`    tipo                  préstamos   con ocupación`);
+  console.log(`    ${"─".repeat(52)}`);
+  for (const r of porTipo) {
+    const tot = Number(r.total);
+    const con = Number(r.con_occ);
+    const sh = con / tot;
+    console.log(
+      `    ${r.tipo.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
+        `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(con).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
+    );
+  }
+  console.log(
+    `\n    \x1b[1mTotal${String(totPrest).padStart(24)}   ${totOcc} ${pct(totOcc / Math.max(1, totPrest))}\x1b[0m`,
+  );
+
+  /**
+   * El veredicto se calcula, no se lee a ojo.
+   *
+   * Si la dispersión entre tipos es chica, la cobertura no depende de qué hay
+   * adentro del activo y la explicación "se informa donde significa algo" no se
+   * sostiene.
+   */
+  const shares = porTipo.map((r) => Number(r.con_occ) / Number(r.total));
+  const spread = Math.max(...shares) - Math.min(...shares);
+  console.log(
+    `\n    \x1b[90mDispersión entre tipos: ${pct(spread)} (del ${pct(Math.min(...shares))} al ${pct(Math.max(...shares))}).\x1b[0m`,
+  );
+  console.log(
+    `\n    \x1b[90mEste corte NO decide nada por sí solo: el tipo de propiedad y la emisión\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90mestán correlacionados. Una emisión rota que sea 42% multifamily hunde la\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90mfila de multifamily sin que multifamily tenga nada que ver. Ver abajo.\x1b[0m`,
+  );
+
+  /**
+   * EL TEST DE VERDAD: dentro de cada emisión, no a través de ellas.
+   *
+   * La versión anterior de este bloque emitía un veredicto ("varía por tipo,
+   * luego el dato se informa donde significa algo") a partir de la dispersión
+   * entre tipos AGREGADA sobre las 28 emisiones. Estaba confundido.
+   *
+   * La aritmética de la propia salida lo mostraba: las 7 emisiones sin dato
+   * suman 234 préstamos y aportan 15, así que las otras 21 tienen 673 de 675 —
+   * el 99,7%. La cobertura no es un gradiente por tipo: es binaria por EMISIÓN.
+   * La variación "por tipo" que medí era la composición de las 7 rotas.
+   *
+   * Es el mismo error que mató la hipótesis de BANK contra BBCMS: agregar a
+   * través de la unidad que carga la variación real y leer el resultado como
+   * efecto de la variable que uno quería mirar.
+   *
+   * El test correcto separa las dos poblaciones primero. Dentro de las emisiones
+   * que SÍ traen el dato, si la cobertura es pareja entre tipos entonces el
+   * formato es lo único que decide y el tipo no juega.
+   */
+  const { rows: dentro } = await query<{ tipo: string; total: string; con_occ: string }>(
+    `WITH sanas AS (
+       SELECT l.accession
+         FROM corpus.loans l
+        WHERE l.accession = ANY($1)
+        GROUP BY l.accession
+       HAVING count(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM corpus.facts fa
+                 WHERE fa.loan_id = l.id AND fa.metric_key = 'occupancy'
+                   AND fa.value ~ '^-?[0-9.]+$'
+              ))::numeric / count(*) > 0.5
+     )
+     SELECT coalesce(l.property_type, '(sin tipo)') AS tipo,
+            count(*)::text AS total,
+            count(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM corpus.facts fa
+               WHERE fa.loan_id = l.id AND fa.metric_key = 'occupancy'
+                 AND fa.value ~ '^-?[0-9.]+$'
+            ))::text AS con_occ
+       FROM corpus.loans l
+       JOIN sanas s ON s.accession = l.accession
+      GROUP BY 1 HAVING count(*) >= 10
+      ORDER BY count(*) DESC`,
+    [accs],
+  );
+
+  console.log(`\n  Solo dentro de las emisiones que SÍ traen ocupación\n`);
+  console.log(`    tipo                  préstamos   con ocupación`);
+  console.log(`    ${"─".repeat(52)}`);
+  for (const r of dentro) {
+    const tot = Number(r.total);
+    const con = Number(r.con_occ);
+    const sh = con / tot;
+    console.log(
+      `    ${r.tipo.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
+        `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(con).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
+    );
+  }
+
+  /**
+   * El bucket de nulos NO entra en el veredicto.
+   *
+   * Tercera versión de esta conclusión, y las tres primeras estuvieron mal por
+   * la misma razón: el número de abajo se calculaba sobre un conjunto que
+   * incluía algo que no pertenecía. Acá era `(sin tipo)`, que no es un tipo de
+   * propiedad sino la ausencia de uno — preguntarle si se comporta como un tipo
+   * no tiene sentido, y su 65% inflaba la dispersión a 35 puntos cuando entre
+   * los ocho tipos reales es exactamente cero.
+   *
+   * Los préstamos sin tipo son el agujero de `property_type` que ya está
+   * anotado aparte. Se muestran, no se computan.
+   */
+  const sd = dentro
+    .filter((r) => !r.tipo.startsWith("("))
+    .map((r) => Number(r.con_occ) / Number(r.total));
+  const spreadDentro = sd.length ? Math.max(...sd) - Math.min(...sd) : 0;
+  console.log(
+    `\n    \x1b[90mDispersión entre los ${sd.length} tipos reales: ${pct(spreadDentro)}` +
+      ` (contra ${pct(spread)} agregando entre emisiones).\x1b[0m\n` +
+      `    \x1b[90m'(sin tipo)' queda fuera del cálculo: es la ausencia de un tipo, no un tipo.\x1b[0m`,
+  );
+  console.log(
+    spreadDentro < 0.2
+      ? `    \x1b[31mEl tipo no juega: donde la emisión trae el dato, lo trae para todos.\x1b[0m\n` +
+          `    \x1b[31mEs formato del Annex A por emisión, y las 7 rotas son un bug de parseo\x1b[0m\n` +
+          `    \x1b[31mreparable, no una ausencia real del dato.\x1b[0m`
+      : `    \x1b[33mEl tipo sigue jugando aun dentro de emisiones sanas: hay dos causas\x1b[0m\n` +
+          `    \x1b[33msuperpuestas y hace falta separarlas antes de usar la métrica.\x1b[0m`,
+  );
+
+  /**
+   * Los shares de concentración, que decidieron exclusiones sin que nadie
+   * mirara el valor. Un 82% y un 98% se excluyen igual con umbral 0,8, pero
+   * el primero es una decisión mía y el segundo una propiedad del deal.
+   */
+  /**
+   * ¿Hay emisiones cargadas dos veces?
+   *
+   * En la lista de faltantes aparecieron dos "Wells Fargo Commercial Mortgage
+   * Trust 2026-5" — que puede ser el truncado a 42 caracteres de dos deals
+   * distintos, o la misma cosechada dos veces.
+   *
+   * No es cosmético: la cohorte es el denominador de toda posición ordinal. Una
+   * emisión duplicada se cuenta como dos pares, corre la mediana hacia sí misma
+   * y desplaza cada "13ª de 25" sin que nada lo indique.
+   */
+  const { rows: dups } = await query<{ nombre: string; n: string; accs: string; pools: string }>(
+    `SELECT f.company_name AS nombre, count(*)::text AS n,
+            string_agg(f.accession, ' · ') AS accs,
+            string_agg(p.pool::text, ' · ') AS pools
+       FROM corpus.filings f
+       JOIN (SELECT accession, count(*) AS pool FROM corpus.loans GROUP BY accession) p
+         ON p.accession = f.accession
+      WHERE f.accession = ANY($1)
+      GROUP BY f.company_name HAVING count(*) > 1`,
+    [accs],
+  );
+  console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);
+  if (dups.length === 0) {
+    console.log(`    \x1b[32mNinguna: ${cohorte.length} nombres distintos en ${cohorte.length} emisiones.\x1b[0m`);
+  } else {
+    for (const d of dups) {
+      console.log(`    \x1b[33m${d.nombre.slice(0, 46)}\x1b[0m  ×${d.n}  pools ${d.pools}`);
+      console.log(`      \x1b[90m${d.accs}\x1b[0m`);
+    }
+    console.log(
+      `\n    \x1b[90mPools distintos = deals distintos con nombre igual. Pools iguales =\x1b[0m`,
+    );
+    console.log(`    \x1b[90mrevisar si es la misma emisión cosechada dos veces.\x1b[0m`);
+  }
+
+  console.log(`\n  Concentración por tipo — el umbral de exclusión es ${pct(CONCENTRACION_TIPO)}:\n`);
+  for (const c of [...cohorte].sort(
+    (a, b) => Number(b.share_dominante ?? 0) - Number(a.share_dominante ?? 0),
+  ).slice(0, 8)) {
+    const sh = Number(c.share_dominante ?? 0);
+    console.log(
+      `    ${c.nombre.slice(0, 40).padEnd(42)} ${pct(sh).padStart(5)} ${(c.tipo_dominante ?? "").slice(0, 16)}` +
+        (sh > CONCENTRACION_TIPO
+          ? sh < CONCENTRACION_TIPO + 0.08
+            ? `  \x1b[33m← al filo del umbral\x1b[0m`
+            : `  \x1b[90mexcluida\x1b[0m`
           : ""),
     );
   }
@@ -237,7 +624,7 @@ for (const m of METRICAS) {
         AND fa.value::numeric BETWEEN ${m.min} AND ${m.max}
         AND l.accession = ANY($2)
       GROUP BY l.accession
-     HAVING count(*) >= 10`,
+     HAVING count(*) >= ${MIN_PARA_METRICA}`,
     [m.key, accessionsPares],
   );
 
