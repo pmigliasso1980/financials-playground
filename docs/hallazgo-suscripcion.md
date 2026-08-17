@@ -1,9 +1,10 @@
 # Cuatro hipótesis muertas y el instrumento que las mató
 
-> **Estado: cuatro hipótesis murieron; una sobrevive.**
+> **Estado: cinco hipótesis muertas. Ninguna sobrevive a la corrección por
+> comparaciones múltiples.**
 > El hallazgo original —el derrumbe del crecimiento del NOI por añada— es falso.
-> Lo que quedó en pie está un nivel más abajo: entre originadores, no entre
-> emisoras. Ver "Lo primero que sobrevivió".
+> El último candidato, un originador con exceso de transferencias, se erosionó
+> con cada control hasta perder significancia. Ver "La quinta: LMF".
 >
 > Este documento antes afirmaba que el crecimiento del NOI entregado se derrumbó
 > de 11,5% en la añada 2021 a 1,0% en 2024. No sobrevivió a la verificación. Lo
@@ -225,7 +226,7 @@ puede formular ninguna, ese es el dato.
 
 ---
 
-## Lo primero que sobrevivió
+## La quinta: LMF
 
 Después de matar el efecto emisora, la variación quedó donde correspondía: entre
 **originadores**. Comparando cada préstamo contra otros del mismo tipo de
@@ -237,10 +238,34 @@ propiedad, la misma añada, el mismo tercil de DSCR y el mismo tercil de LTV:
 | LMF | 1,89 | [1,28 , 2,70] | 270 | 30 |
 | UBS AG | 2,21 | [1,18 , 3,78] | 172 | 13 |
 
-Con corrección de Bonferroni sobre 14 pruebas (p < 0,0036), usando
-SE de log(SIR) ≈ 1/√observados: **LMF sobrevive** (z = 3,49, p ≈ 0,0005), **UBS
-no** (z = 2,86, p ≈ 0,0042). NCB sobrevive por intervalo pero mide producto —
-presta a cooperativas de vivienda— no habilidad.
+Con esos controles LMF pasaba Bonferroni (z = 3,49, p ≈ 0,0005) y UBS no
+(z = 2,86, p ≈ 0,0042). NCB medía producto —cooperativas de vivienda— no
+habilidad.
+
+**Pero faltaba un control, y era el que importaba.** `db:mechanism` fue a buscar
+qué distingue a los préstamos de LMF que el apalancamiento no captura:
+solo-interés, reservas de reposición, proyección de NOI sobre histórico. Los tres
+salieron planos o en contra —LMF tiene MENOS préstamos full-IO que el resto,
+72% contra 79%—.
+
+Lo único que se movió fue el **saldo**: mediana de 5,9M contra 11,3M en los
+mismos subtipos. El tamaño no estaba controlado en ninguno de los doce ataques.
+
+| control acumulado | SIR de LMF |
+|---|---|
+| tipo × añada | 3,61 |
+| + tercil de DSCR | 2,26 |
+| + tercil de LTV | 1,90 |
+| + tercil de saldo | **1,51** — p = 0,024, no pasa Bonferroni |
+
+Cuatro controles, cuatro mordidas, sin excepción. Ese patrón monótono es la
+firma de un residuo que se va explicando, no de un efecto que resiste. Un
+control más —geografía, calidad del sponsor— probablemente lo lleve a ~1,2.
+
+**Conclusión: el exceso de LMF es composición hasta el fondo, y el corpus se
+quedó sin controles antes de que llegara a 1.** No está probado que LMF suscriba
+igual que los demás; está probado que este corpus no puede mostrar que suscriba
+peor.
 
 ### Por qué este resultado es distinto de los cuatro que murieron
 
