@@ -191,8 +191,18 @@ check("cada añada de NOI va a su propia métrica", () => {
 });
 
 check("las añadas de EGI y gastos también se separan", () => {
+  /**
+   * Las ocho columnas, en el orden en que las trae el Annex A conduit.
+   *
+   * La versión anterior pasaba solo cuatro —third y underwritten de cada
+   * familia— porque con la taxonomía vieja no había más claves donde ponerlas.
+   * Con ocho claves hay que dar las ocho columnas: si se afirma sobre una que
+   * no está en la entrada, el test falla por ausencia y no por mapeo.
+   */
   const { matches } = mapColumns([
+    "Most Recent EGI ($)", "Second Most Recent EGI ($)",
     "Third Most Recent EGI ($)", "Underwritten EGI ($)",
+    "Most Recent Expenses ($)", "Second Most Recent Expenses ($)",
     "Third Most Recent Expenses ($)", "Underwritten Expenses ($)",
   ]);
   const byKey = new Map(matches.map((m) => [m.metric.key, m.header]));
