@@ -523,9 +523,23 @@ if (AUDITORIA) {
     console.log(
       `    ${c.tipo.slice(0, 34).padEnd(36)} ${String(c.n).padStart(4)} préstamos` +
         ` \x1b[90men ${c.emisiones} emisiones\x1b[0m` +
-        (Number(c.emisiones) === 1 && Number(c.n) >= 3
-          ? `  \x1b[33m← solo en una: ¿taxonomía distinta?\x1b[0m`
-          : ""),
+        /**
+         * Dos marcas, por dos modos de falla distintos.
+         *
+         * La primera versión solo tenía la de "confinada a una emisión", escrita
+         * suponiendo que el riesgo era que distintos emisores usaran taxonomías
+         * distintas. El problema real resultó ser otro: una categoría llamada
+         * "2", en tres emisiones, que pasó sin marca porque no está confinada.
+         *
+         * Un tipo de propiedad puramente numérico no es una categoría: es una
+         * celda de datos que se coló en la columna. Eso se puede afirmar sin
+         * saber de qué documento vino.
+         */
+        (/^[\d.,\s]+$/.test(c.tipo)
+          ? `  \x1b[31m← no es una categoría: valor numérico\x1b[0m`
+          : Number(c.emisiones) === 1 && Number(c.n) >= 3
+            ? `  \x1b[33m← solo en una: ¿taxonomía distinta?\x1b[0m`
+            : ""),
     );
   }
 
