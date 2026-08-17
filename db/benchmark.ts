@@ -543,6 +543,59 @@ if (AUDITORIA) {
     );
   }
 
+  /**
+   * Los préstamos con tipo numérico, con sus campos vecinos.
+   *
+   * HIPÓTESIS QUE ESTO PONE A PRUEBA
+   *
+   * `harvest:ties` encontró encabezados con filas de datos pegadas adentro
+   * ("# of Properties 3 1", "Loan ID Number 37 37.01 37.02 38"). Si el
+   * encabezado quedó mal delimitado, las columnas de esa emisión están
+   * corridas, y un property_type de "2" sería el valor de la columna vecina
+   * —justamente `# of Properties`— leído en el lugar equivocado.
+   *
+   * Si es corrimiento, los campos de al lado también van a estar fuera de
+   * lugar: un nombre de propiedad donde va el tipo, un tipo donde va el conteo.
+   * Si en cambio el resto se ve sano, "2" es una celda sucia aislada y no hay
+   * corrimiento — dos causas con arreglos completamente distintos.
+   */
+  const { rows: sospechosos } = await query<{
+    nombre: string; loan_id: string; tipo: string;
+    prop_name: string | null; prop_count: string | null; unidad: string | null;
+  }>(
+    `SELECT f.company_name AS nombre, l.loan_id, l.property_type AS tipo,
+            max(fa.value) FILTER (WHERE fa.metric_key = 'property_name')  AS prop_name,
+            max(fa.value) FILTER (WHERE fa.metric_key = 'property_count') AS prop_count,
+            max(fa.value) FILTER (WHERE fa.metric_key = 'unit_of_measure') AS unidad
+       FROM corpus.loans l
+       JOIN corpus.filings f ON f.accession = l.accession
+       LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
+      WHERE l.accession = ANY($1) AND l.property_type ~ '^[0-9.,[:space:]]+$'
+      GROUP BY f.company_name, l.loan_id, l.property_type
+      ORDER BY 1, 2`,
+    [accs],
+  );
+
+  if (sospechosos.length > 0) {
+    console.log(`\n  Préstamos con tipo numérico — ¿están corridas las columnas?\n`);
+    for (const x of sospechosos) {
+      console.log(`    \x1b[1m${x.nombre.slice(0, 40)}\x1b[0m  préstamo ${x.loan_id}`);
+      console.log(
+        `      tipo=\x1b[31m${JSON.stringify(x.tipo)}\x1b[0m` +
+          `  # props=${JSON.stringify(x.prop_count)}` +
+          `  unidad=${JSON.stringify(x.unidad)}`,
+      );
+      console.log(`      nombre=${JSON.stringify((x.prop_name ?? "").slice(0, 44))}`);
+    }
+    console.log(
+      `\n    \x1b[90mSi el nombre y el conteo se ven sanos, "2" es una celda sucia aislada.\x1b[0m`,
+    );
+    console.log(
+      `    \x1b[90mSi también están fuera de lugar, es corrimiento de columnas y el\x1b[0m`,
+    );
+    console.log(`    \x1b[90marreglo está en la detección de encabezado, no en el tipo.\x1b[0m`);
+  }
+
   console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);
   if (dups.length === 0) {
     console.log(`    \x1b[32mNinguna: ${cohorte.length} nombres distintos en ${cohorte.length} emisiones.\x1b[0m`);
