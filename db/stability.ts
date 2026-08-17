@@ -92,7 +92,7 @@ console.log(
 );
 
 console.log(
-  `  métrica          ` + cols.map((c) => c.padStart(9)).join("") + `   desplaz.    nulo   p`,
+  `  métrica          ` + cols.map((c) => c.padStart(9)).join("") + `   desplaz.    nulo  ×nulo`,
 );
 console.log(`  ${"─".repeat(20 + cols.length * 9 + 12)}`);
 
@@ -218,8 +218,27 @@ for (const m of METRICAS) {
     `  ${m.etiqueta.padEnd(17)}` +
       valores.map((v) => (v === null ? "—" : m.fmt(v)).padStart(9)).join("") +
       `   ${color}${pct(desplazamiento).padStart(7)}\x1b[0m` +
-      `  \x1b[90m${nuloMediana === null ? "  —" : pct(nuloMediana).padStart(6)}` +
-      `  ${pValor < 0.05 ? "<.05" : pValor.toFixed(2)}\x1b[0m` +
+      `  \x1b[90m${nuloMediana === null ? "  —" : pct(nuloMediana).padStart(6)}\x1b[0m` +
+      /**
+       * El cociente contra el nulo, que es lo que el p-valor no dice.
+       *
+       * Con miles de préstamos por celda TODO sale significativo — el propio
+       * docstring lo anticipaba— así que el p no decide nada. Lo que importa es
+       * cuántas veces el desplazamiento observado supera al ruido: abajo de 2x, el
+       * umbral del 20% está haciendo el trabajo del muestreo y no del mercado.
+       *
+       * El Saldo es el caso: nulo del 16% porque su mediana tiene colas gruesas.
+       * Con un observado del 106% sobra, pero si hubiera sido 25% el criterio a
+       * priori habría dicho "inestable" con 1,5x de margen sobre el ruido.
+       */
+      `  ${
+        nuloMediana === null || nuloMediana === 0
+          ? "\x1b[90m    —\x1b[0m"
+          : (() => {
+              const veces = desplazamiento / nuloMediana;
+              return `${veces < 2 ? "\x1b[33m" : "\x1b[90m"}${veces.toFixed(1)}x\x1b[0m`;
+            })()
+      }` +
       `${monotona ? " \x1b[33m↗\x1b[0m" : ""}`,
   );
 }
@@ -243,6 +262,32 @@ console.log(
   `  \x1b[90mfijado antes de mirar. ↗ marca las que se mueven siempre en la misma\x1b[0m`,
 );
 console.log(`  \x1b[90mdirección: tendencia del mercado, no ruido de composición.\x1b[0m`);
+
+/**
+ * LAS DOS PREGUNTAS SON DISTINTAS Y CONVIENE NO MEZCLARLAS.
+ *
+ * El umbral del 20% pregunta si el desplazamiento es GRANDE. El nulo pregunta si es
+ * REAL. La ocupación se desplaza 3% contra un nulo de 1%: real y despreciable a la
+ * vez, y las dos cosas son ciertas.
+ *
+ * Lo que decide si hay referencia pooled es la primera —un desplazamiento del 3% no
+ * arruina una referencia— así que el veredicto sigue usando el umbral. El nulo entra
+ * como control de que el umbral esté por encima del ruido, y ahí aparece el único
+ * caso donde no lo está con margen.
+ */
+const cercaDelRuido = resultados.filter(
+  (r) => r.nuloMediana !== null && r.nuloMediana > 0 && r.desplazamiento / r.nuloMediana < 2,
+);
+if (cercaDelRuido.length > 0) {
+  console.log(
+    `\n  \x1b[33mAtención:\x1b[0m ${cercaDelRuido.map((r) => r.etiqueta).join(", ")} ` +
+      `tiene(n) el desplazamiento a menos`,
+  );
+  console.log(
+    `  \x1b[90mde 2x del ruido de muestreo. Ahí el umbral del ${pct(DESPLAZAMIENTO_TOLERABLE)} no distingue mercado\x1b[0m`,
+  );
+  console.log(`  \x1b[90mde azar, y el veredicto sobre esa métrica no se puede citar.\x1b[0m`);
+}
 
 const inestables = resultados.filter((r) => r.desplazamiento > DESPLAZAMIENTO_TOLERABLE);
 const tendencia = inestables.filter((r) => r.monotona);
