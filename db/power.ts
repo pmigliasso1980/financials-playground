@@ -10,16 +10,23 @@
  * entregado se derrumbó entre 2021 y 2024", "BANK suscribe cuatro veces mejor que
  * BBCMS" y "LMF origina peor". Cero sobrevivieron.
  *
- * Cinco de cinco no es mala suerte. La explicación más económica no es
- * que el mercado sea aburrido: es que le estamos pidiendo al dato una precisión
- * que no tiene, y que cada "hallazgo" era ruido con forma de patrón.
+ * Cinco de cinco no es mala suerte, y la sospecha con la que se escribió este
+ * archivo era que le pedíamos al dato una precisión que no tiene.
  *
- * Esto es comprobable. La mediana del crecimiento de NOI de una añada se calcula
- * sobre 89 a 157 préstamos, y el crecimiento de NOI de una propiedad individual
- * tiene una dispersión enorme —un inquilino que se va mueve el número treinta
- * puntos—. Si el intervalo de confianza de esa mediana mide ±3 puntos, entonces
- * ninguna diferencia menor a ~8 puntos entre dos añadas es distinguible del azar,
- * y las tres hipótesis estaban muertas antes de formularse.
+ * LA SOSPECHA RESULTÓ FALSA, Y ESO ES EL RESULTADO
+ *
+ * El MDE es 6,7% y el efecto afirmado era 10,5%: la muestra podía detectarlo. Las
+ * hipótesis no murieron por falta de potencia sino porque los efectos no están —
+ * conclusión más fuerte y menos cómoda que "no se podía ver".
+ *
+ * Este encabezado decía lo contrario ("las tres hipótesis estaban muertas antes de
+ * formularse") mientras el script imprimía el resultado opuesto tres pantallas
+ * abajo. Duró así hasta que alguien leyó las dos cosas juntas.
+ *
+ * La mediana del crecimiento de NOI de una añada se calcula sobre 89 a 157
+ * préstamos y la dispersión individual es enorme —un inquilino que se va mueve el
+ * número treinta puntos—, así que la sospecha era razonable. Simplemente no era
+ * cierta, y el bootstrap de abajo es lo que lo decide.
  *
  * QUÉ HACE
  *
