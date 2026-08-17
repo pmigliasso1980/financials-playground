@@ -78,6 +78,34 @@
  *   efecto de +4 y −4 pp que se cancela              → Q 29/30 · agrupado 3/30
  *
  * La tercera fila es el corpus.
+ *
+ * Y EL TEST DE HETEROGENEIDAD TAMBIÉN LLEGÓ DEGENERADO
+ *
+ * La primera corrida con celdas emisión × vendedor dio p = 0,93 para una
+ * diferencia de +8,2 pp, y siete vendedores clavados en p = 1,0000. Con 196
+ * préstamos que quedan y 89 que se caen a tasas del 11%, la dispersión de esa
+ * diferencia debería ser 4 pp: 8,2 pp es z = 2,03 y no p = 0,93.
+ *
+ * El nulo estaba centrado en la observada en vez de en cero, que es la firma de
+ * una permutación sin nada que mover: dentro de la mayoría de las celdas
+ * emisión × vendedor, la falta de dato es todo-o-nada.
+ *
+ * Es el mismo error que este archivo ya había arreglado un nivel más arriba. Se
+ * escribió un detector de degeneración para el nulo A, se verificó con datos
+ * sintéticos que funcionaba, y treinta líneas más abajo se construyó un segundo
+ * test sin llevarlo. La lección no viajó sola de un test al siguiente.
+ *
+ * LOS DOS NULOS SON UNA COTA, NO UNA ELECCIÓN
+ *
+ *   RESTRINGIDO (dentro de la celda): no le atribuye a la falta de dato ninguna
+ *   diferencia entre documentos. Es conservador hasta el punto de no ver nada
+ *   cuando la falta es del par emisión-vendedor, que es lo que pasa acá.
+ *
+ *   IRRESTRICTO (dentro del vendedor): tiene potencia, pero le carga a la falta
+ *   de dato todo lo que en realidad separa a una emisión de otra.
+ *
+ * El valor real está entre los dos, y el script imprime los dos con esa etiqueta
+ * en vez de elegir el que conviene.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -502,32 +530,94 @@ function estadistico(marca: Map<Prestamo, boolean> | null) {
 }
 
 const obs = estadistico(null);
-const simQ: number[] = [];
-const simD = new Map<string, number[]>(vendedores.map((v) => [v, []]));
-for (let r = 0; r < REPLICAS; r++) {
-  const rand = rng(0xa77 + r * 97);
-  const marca = new Map<Prestamo, boolean>();
-  for (const [, xs] of celdas) {
-    const k = xs.filter(completo).length;
-    const idx = xs.map((_, i) => i);
-    for (let i = idx.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [idx[i], idx[j]] = [idx[j]!, idx[i]!];
-    }
-    for (let i = 0; i < idx.length; i++) marca.set(xs[idx[i]!]!, i < k);
+
+/**
+ * Cuántos préstamos viven en celdas donde no hay nada que permutar.
+ *
+ * Este es el número que faltaba. Si una celda emisión × vendedor tiene todos sus
+ * préstamos completos o ninguno, la permutación restringida devuelve la observada
+ * y el p-valor mide cero.
+ */
+let congelados = 0;
+for (const [, xs] of celdas) {
+  const k = xs.filter(completo).length;
+  if (k === 0 || k === xs.length) congelados += xs.length;
+}
+const shareCongelado = congelados / prestamos.length;
+
+/** Baraja en el lugar, con el generador con semilla. */
+function barajar<T>(xs: T[], rand: () => number): T[] {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
   }
-  const st = estadistico(marca);
-  simQ.push(st.Q);
-  for (const v of vendedores) simD.get(v)!.push(st.d.get(v) ?? 0);
+  return a;
 }
 
-const pQ = (simQ.filter((x) => x >= obs.Q).length + 1) / (simQ.length + 1);
+/** Permuta la etiqueta DENTRO de cada celda emisión × vendedor. Conservador. */
+function marcaRestringida(rand: () => number): Map<Prestamo, boolean> {
+  const m = new Map<Prestamo, boolean>();
+  for (const [, xs] of celdas) {
+    const k = xs.filter(completo).length;
+    barajar(xs, rand).forEach((p, i) => m.set(p, i < k));
+  }
+  return m;
+}
+
+/**
+ * Permuta DENTRO del vendedor, sin respetar la emisión. Tiene potencia y le carga
+ * a la falta de dato lo que puede ser diferencia entre documentos.
+ */
+function marcaIrrestricta(rand: () => number): Map<Prestamo, boolean> {
+  const m = new Map<Prestamo, boolean>();
+  for (const [, xs] of porVendedor) {
+    const k = xs.filter(completo).length;
+    barajar(xs, rand).forEach((p, i) => m.set(p, i < k));
+  }
+  return m;
+}
+
+interface Nulo {
+  etiqueta: string;
+  simQ: number[];
+  simD: Map<string, number[]>;
+  inmoviles: number;
+}
+function correrNulo(
+  etiqueta: string,
+  hacer: (rand: () => number) => Map<Prestamo, boolean>,
+  semilla: number,
+): Nulo {
+  const simQ: number[] = [];
+  const simD = new Map<string, number[]>(vendedores.map((v) => [v, []]));
+  let inmoviles = 0;
+  for (let r = 0; r < REPLICAS; r++) {
+    const st = estadistico(hacer(rng(semilla + r * 97)));
+    simQ.push(st.Q);
+    if (Math.abs(st.Q - obs.Q) < 1e-12) inmoviles++;
+    for (const v of vendedores) simD.get(v)!.push(st.d.get(v) ?? 0);
+  }
+  return { etiqueta, simQ, simD, inmoviles: inmoviles / REPLICAS };
+}
+
+const nuloR = correrNulo("restringido", marcaRestringida, 0xa77);
+const nuloI = correrNulo("irrestricto", marcaIrrestricta, 0xb33);
+const pDe = (obs2: number, sim: number[], abs = true) =>
+  (sim.filter((x) => (abs ? Math.abs(x) >= Math.abs(obs2) : x >= obs2)).length + 1) / (sim.length + 1);
 
 console.log(`\n${"═".repeat(78)}`);
 console.log("Por originador: ¿a quién le cambia la tasa al filtrarse?");
 console.log(`${"═".repeat(78)}\n`);
-console.log(`  vendedor        quedan          se caen         diferencia    p (permutación)`);
-console.log(`  ${"─".repeat(74)}`);
+console.log(
+  `  \x1b[90mCeldas emisión × vendedor congeladas (todo o nada): ` +
+    `${pct(shareCongelado)} de los préstamos.\x1b[0m` +
+    (shareCongelado > 0.5
+      ? `\n  \x1b[31m← el nulo restringido casi no tiene qué mover. Leer el irrestricto.\x1b[0m`
+      : ""),
+);
+console.log(`\n  vendedor        quedan          se caen         dif.      p restr.   p irrestr.`);
+console.log(`  ${"─".repeat(76)}`);
 
 const { q: gq, c: gc } = porGrupo(null);
 const filas = vendedores
@@ -535,62 +625,53 @@ const filas = vendedores
     const a = gq.get(v) ?? { n: 0, ev: 0 };
     const b = gc.get(v) ?? { n: 0, ev: 0 };
     const dif = obs.d.get(v) ?? null;
-    const sim = simD.get(v)!;
-    const pv = dif === null
-      ? null
-      : (sim.filter((x) => Math.abs(x) >= Math.abs(dif)).length + 1) / (sim.length + 1);
-    return { v, a, b, dif, pv };
+    return {
+      v, a, b, dif,
+      pR: dif === null ? null : pDe(dif, nuloR.simD.get(v)!),
+      pI: dif === null ? null : pDe(dif, nuloI.simD.get(v)!),
+    };
   })
   .sort((x, y) => (y.dif ?? -9) - (x.dif ?? -9));
 
-/** Bonferroni sobre los vendedores probados, en la misma escala del p empírico. */
-const alfaBonf = 0.05 / Math.max(1, filas.filter((f) => f.pv !== null).length);
+/** Bonferroni sobre los vendedores probados. */
+const alfaBonf = 0.05 / Math.max(1, filas.filter((f) => f.pI !== null).length);
 let apartados = 0;
 for (const f of filas) {
-  const marcado = f.pv !== null && f.pv < alfaBonf;
+  const marcado = f.pI !== null && f.pI < alfaBonf;
   if (marcado) apartados++;
   console.log(
     `  ${f.v.slice(0, 14).padEnd(15)} ${String(f.a.n).padStart(4)}p ${String(f.a.ev).padStart(3)}ev ` +
       `${(f.a.n ? pct(f.a.ev / f.a.n) : "—").padStart(6)}   ` +
       `${String(f.b.n).padStart(4)}p ${String(f.b.ev).padStart(3)}ev ` +
-      `${(f.b.n ? pct(f.b.ev / f.b.n) : "—").padStart(6)}   ` +
-      `${f.dif === null ? "—".padStart(9) : `${f.dif > 0 ? "+" : ""}${(f.dif * 100).toFixed(1)} pp`.padStart(9)}   ` +
-      `${f.pv === null ? "" : f.pv.toFixed(4).padStart(8)}` +
-      (marcado ? `  \x1b[1m←\x1b[0m` : ""),
+      `${(f.b.n ? pct(f.b.ev / f.b.n) : "—").padStart(6)}  ` +
+      `${f.dif === null ? "—".padStart(8) : `${f.dif > 0 ? "+" : ""}${(f.dif * 100).toFixed(1)}pp`.padStart(8)}   ` +
+      `${f.pR === null ? "" : f.pR.toFixed(4).padStart(8)}   ` +
+      `${f.pI === null ? "" : (marcado ? "\x1b[1m" : "") + f.pI.toFixed(4).padStart(8) + (marcado ? "\x1b[0m" : "")}`,
   );
 }
 
 console.log(
-  `\n  \x1b[1mHeterogeneidad: p = ${pQ.toFixed(4)}\x1b[0m` +
-    `  \x1b[90m(Q = ${obs.Q.toFixed(2)}, nulo p50 = ${[...simQ].sort((a, b) => a - b)[Math.floor(simQ.length / 2)]!.toFixed(2)})\x1b[0m`,
+  `\n  \x1b[1mHeterogeneidad\x1b[0m  Q = ${obs.Q.toFixed(2)}` +
+    `   restringido: p = ${pDe(obs.Q, nuloR.simQ, false).toFixed(4)}` +
+    `\x1b[90m (${pct(nuloR.inmoviles, 0)} inmóviles)\x1b[0m` +
+    `   irrestricto: p = ${pDe(obs.Q, nuloI.simQ, false).toFixed(4)}`,
 );
 console.log(
-  `  \x1b[90m${apartados} vendedor(es) pasan Bonferroni individual (p < ${alfaBonf.toFixed(4)}).\x1b[0m`,
+  `  \x1b[90m${apartados} vendedor(es) pasan Bonferroni con el nulo irrestricto (p < ${alfaBonf.toFixed(4)}).\x1b[0m`,
 );
 
-/**
- * POR QUÉ ESTA PRUEBA Y NO LA AGRUPADA.
- *
- * La diferencia agrupada de arriba suma los efectos de todos los vendedores, así
- * que uno que sube y otro que baja se cancelan y el resultado es cero. Con datos
- * sintéticos, un efecto de +4 y −4 pp lo detecta Q en 29 de 30 corridas y el
- * agrupado en 3 de 30 — o sea, en el ruido.
- *
- * Lo que autoriza a leer los SIR de `db:seller` es ESTA prueba, no la otra: el SIR
- * se calcula de a un originador por vez.
- */
 console.log(
-  `\n  \x1b[90mLa diferencia agrupada de arriba cancela signos opuestos: un vendedor que\x1b[0m`,
+  `\n  \x1b[90mLos dos nulos son una cota, no una elección. El restringido no le atribuye a\x1b[0m`,
 );
 console.log(
-  `  \x1b[90msube y otro que baja dan cero. Con un efecto sintético de +4 y −4 pp, esta\x1b[0m`,
+  `  \x1b[90mla falta de dato ninguna diferencia entre documentos, y por eso no ve nada\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mprueba lo encuentra en 29 de 30 corridas y la agrupada en 3 — el ruido.\x1b[0m`,
+  `  \x1b[90mcuando la falta es del par emisión-vendedor. El irrestricto tiene potencia\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mLos SIR se calculan de a un originador por vez, así que la que los autoriza\x1b[0m`,
+  `  \x1b[90mpero le carga todo lo que separa a una emisión de otra. El valor está entre\x1b[0m`,
 );
-console.log(`  \x1b[90mes esta.\x1b[0m`);
+console.log(`  \x1b[90mlos dos, y ninguno de los dos es "el" p-valor.\x1b[0m`);
 
 console.log(`\n\x1b[90m  ${estampa(estado)}\x1b[0m\n`);
