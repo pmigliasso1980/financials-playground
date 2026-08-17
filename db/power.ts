@@ -45,6 +45,7 @@
  */
 
 import { closePool, ping, query } from "./client.js";
+import { estadoCorpus, estampa } from "./procedencia.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -360,5 +361,20 @@ if (mde < EFECTO_AFIRMADO) {
     `  \x1b[90mproyecto viene diciendo la primera.\x1b[0m\n`,
   );
 }
+
+/**
+ * La estampa al pie, porque este veredicto depende del tamaño de la muestra.
+ *
+ * El MDE de este script ya se dio vuelta una vez cuando el corpus creció, y la
+ * versión vieja quedó citada en un documento durante semanas. Un número que
+ * depende de la muestra y no dice contra qué muestra se midió no se puede citar
+ * sin riesgo.
+ */
+const estado = await estadoCorpus();
+console.log(`${"─".repeat(78)}`);
+console.log(`  \x1b[90m${estampa(estado)}\x1b[0m`);
+console.log(
+  `  \x1b[90mSi este número se cita en algún lado, va con esta línea. Ver npm run db:procedencia.\x1b[0m\n`,
+);
 
 await closePool();

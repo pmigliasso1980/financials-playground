@@ -29,6 +29,7 @@
     "db:performance": "tsx db/servicerBatch.ts",
     "db:power": "tsx db/power.ts",
     "db:predictors": "tsx db/predictors.ts",
+    "db:procedencia": "tsx db/procedenciaCli.ts",
     "db:reconcile": "tsx db/reconcile.ts",
     "db:reset": "tsx db/migrate.ts --reset",
     "db:seller": "tsx db/sellerEffect.ts",
