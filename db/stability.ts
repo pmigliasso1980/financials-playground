@@ -264,6 +264,27 @@ console.log(
 console.log(`  \x1b[90mdirección: tendencia del mercado, no ruido de composición.\x1b[0m`);
 
 /**
+ * QUÉ REVELÓ EL NULO EN ESTE CORPUS, Y EN QUÉ DIRECCIÓN
+ *
+ * Los cocientes medidos: Tasa 10,9x · DSCR 10,0x · LTV 11,5x · Debt yield 5,8x ·
+ * Saldo 6,8x · Ocupación 3,4x. Ninguno abajo de 2x, así que el umbral del 20%
+ * tiene margen en las siete.
+ *
+ * La preocupación con la que se agregó esta columna era el Saldo: su nulo es 16%
+ * —ocho veces el del LTV, porque su mediana tiene colas gruesas— y con un umbral
+ * fijo de 20% eso deja poco aire. Pero el observado es 106%, así que el temor era
+ * un condicional que no se cumplió.
+ *
+ * Lo que la tabla sí muestra va en la dirección contraria. LTV y Debt yield están
+ * los dos en 21%, apenas arriba del umbral, y son 11,5x y 5,8x el ruido. El
+ * criterio del 20% casi los clasifica como estables cuando están abrumadoramente
+ * por encima del muestreo: acá el riesgo es que el umbral sea demasiado ESTRICTO.
+ *
+ * Eso no cambia el veredicto —las seis inestables lo son por las dos varas— pero sí
+ * cambia qué vara conviene mirar si mañana una métrica cae a 18%.
+ */
+
+/**
  * LAS DOS PREGUNTAS SON DISTINTAS Y CONVIENE NO MEZCLARLAS.
  *
  * El umbral del 20% pregunta si el desplazamiento es GRANDE. El nulo pregunta si es
