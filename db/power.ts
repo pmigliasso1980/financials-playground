@@ -212,6 +212,15 @@ console.log(`  Efecto que afirmaba el hallazgo muerto:        ${pct(EFECTO_AFIRM
  * "buscar más fuentes" es una estrategia o una ilusión.
  */
 const nTipico = median(anadas.map((a) => a.n).sort((a, b) => a - b));
+/**
+ * La SUMA, no la mediana por la cantidad de añadas.
+ *
+ * La primera versión imprimía `nTipico * anadas.length` y dio 600 — que es
+ * exactamente la suma real de 89+157+145+89+120. Coincidió por casualidad con
+ * estos cinco números y no va a coincidir en la próxima corrida. Una fórmula
+ * equivocada que devuelve el valor correcto es peor que una que falla.
+ */
+const totalMedido = anadas.reduce((x, a) => x + a.n, 0);
 const objetivo = 0.05;
 const factor = (mde / objetivo) ** 2;
 
@@ -283,18 +292,65 @@ console.log(
   `  por añada: de ${Math.round(nTipico)} a ~${Math.round(nTipico * factor).toLocaleString("en-US")}.\n`,
 );
 console.log(
-  `  \x1b[90mEl corpus tiene ${(nTipico * anadas.length).toLocaleString("en-US")} préstamos en las añadas medidas. Llegar a\x1b[0m`,
+  `  \x1b[90mEl corpus tiene ${totalMedido.toLocaleString("en-US")} préstamos en las añadas medidas.\x1b[0m`,
 );
 console.log(
   `  \x1b[90mese número por añada no es cuestión de cosechar más trusts: no existen\x1b[0m`,
 );
 console.log(`  \x1b[90mtantas emisiones CMBS por año.\x1b[0m\n`);
-console.log(
-  `  \x1b[90mLa salida no es más muestra sobre la misma variable. Es una variable de\x1b[0m`,
-);
-console.log(
-  `  \x1b[90mresultado menos ruidosa —morosidad es binaria y está en los mismos 10-D\x1b[0m`,
-);
-console.log(`  \x1b[90mque ya bajamos— o preguntas transversales, donde el n está en los miles.\x1b[0m\n`);
+/**
+ * LA CONCLUSIÓN DEPENDE DEL FACTOR, Y EL FACTOR CAMBIÓ.
+ *
+ * Este bloque afirmaba que "la salida no es más muestra" y que llegar al n
+ * necesario "no es cuestión de cosechar más trusts". Se escribió cuando el factor
+ * era mucho mayor; con el corpus de hoy es 2x, y a 2x cosechar más sí puede
+ * alcanzar.
+ *
+ * Peor: el veredicto de arriba ahora dice que el efecto afirmado SUPERA el piso de
+ * ruido, o sea que esa hipótesis no murió por falta de potencia sino porque el
+ * efecto no está. El proyecto viene resumiendo "cinco hipótesis muertas por falta
+ * de potencia" y para esta el propio verificador dice otra cosa.
+ *
+ * Así que la recomendación se calcula en vez de afirmarse.
+ */
+if (factor <= 3) {
+  console.log(
+    `  \x1b[33mA ${Math.round(factor)}x, cosechar más sí puede alcanzar.\x1b[0m Con ${anadas.length} añadas medidas y`,
+  );
+  console.log(
+    `  \x1b[90m~${Math.round(nTipico)} préstamos por añada, duplicar es plausible: hay más emisiones\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mpor año de las que tenemos cosechadas. Esta conclusión era la contraria\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mcuando el corpus era más chico, y conviene releerla cada vez que crece.\x1b[0m\n`,
+  );
+} else {
+  console.log(
+    `  \x1b[90mA ${Math.round(factor)}x no alcanza con cosechar: no existen tantas emisiones CMBS por\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90maño. La salida es una variable de resultado menos ruidosa —la morosidad es\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mbinaria y está en los mismos 10-D— o preguntas transversales.\x1b[0m\n`,
+  );
+}
+
+if (mde < EFECTO_AFIRMADO) {
+  console.log(
+    `  \x1b[33mOjo con el resumen del proyecto:\x1b[0m con esta muestra el efecto afirmado está`,
+  );
+  console.log(
+    `  \x1b[90mpor encima del piso de ruido, así que esa hipótesis no murió por falta de\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mpotencia — murió porque el efecto no está. Son dos cosas distintas y el\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mproyecto viene diciendo la primera.\x1b[0m\n`,
+  );
+}
 
 await closePool();
