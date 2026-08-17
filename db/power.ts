@@ -5,11 +5,12 @@
  *
  * POR QUÉ EXISTE ESTE ARCHIVO
  *
- * Tres hipótesis murieron en este proyecto: "la oficina se suscribe más
- * agresivo", "multifamily rompe la banda de LTV", y "el crecimiento del NOI
- * entregado se derrumbó entre 2021 y 2024". Cero sobrevivieron.
+ * Cinco hipótesis murieron en este proyecto: "la oficina se suscribe más
+ * agresivo", "multifamily rompe la banda de LTV", "el crecimiento del NOI
+ * entregado se derrumbó entre 2021 y 2024", "BANK suscribe cuatro veces mejor que
+ * BBCMS" y "LMF origina peor". Cero sobrevivieron.
  *
- * Tres de tres empieza a no ser mala suerte. La explicación más económica no es
+ * Cinco de cinco no es mala suerte. La explicación más económica no es
  * que el mercado sea aburrido: es que le estamos pidiendo al dato una precisión
  * que no tiene, y que cada "hallazgo" era ruido con forma de patrón.
  *
@@ -230,7 +231,21 @@ if (mde >= EFECTO_AFIRMADO) {
   console.log(`  \x1b[90mestratificar es evidencia de que no está.\x1b[0m\n`);
 }
 
-/** Pares de añadas cuyos intervalos NO se pisan: las únicas diferencias reales. */
+/**
+ * Pares cuyos intervalos NO se pisan — un criterio MÁS ESTRICTO que el MDE.
+ *
+ * Que dos IC del 95% no se solapen equivale a un test de la diferencia a un nivel
+ * cercano al 0,5%, no al 5%: cada intervalo ya carga sus propios 1,96 SE, así que
+ * exigir separación total pide ~2,8 SE de distancia cuando el MDE pide 1,96·√2 =
+ * 2,77 SE... para la diferencia, que tiene un SE mayor.
+ *
+ * La versión anterior de este comentario decía "las únicas diferencias reales", que
+ * le da a este criterio una autoridad que no tiene: es el más conservador de los
+ * dos que imprime este script, y presentarlo como definitivo hace parecer más
+ * indistinguibles a las añadas de lo que el MDE dice.
+ *
+ * Se deja porque es fácil de leer, pero etiquetado como lo que es.
+ */
 const distinguibles: string[] = [];
 for (let i = 0; i < anadas.length; i++) {
   for (let j = i + 1; j < anadas.length; j++) {
@@ -244,15 +259,18 @@ for (let i = 0; i < anadas.length; i++) {
 
 const pares = (anadas.length * (anadas.length - 1)) / 2;
 console.log(
-  `  Pares de añadas con intervalos que NO se pisan: ${distinguibles.length} de ${pares}`,
+  `  Pares con intervalos que NO se pisan: ${distinguibles.length} de ${pares}` +
+    `  \x1b[90m(criterio conservador)\x1b[0m`,
 );
 if (distinguibles.length > 0) {
   console.log(`  \x1b[90m${distinguibles.join(" · ")}\x1b[0m`);
 } else {
   console.log(
-    `  \x1b[90mNinguno. Todas las añadas son estadísticamente indistinguibles\x1b[0m`,
+    `  \x1b[90mNinguno bajo este criterio, que es el más exigente de los dos: pide más\x1b[0m`,
   );
-  console.log(`  \x1b[90mentre sí con esta muestra.\x1b[0m`);
+  console.log(
+    `  \x1b[90mseparación que el MDE de arriba. La conclusión que vale es el MDE.\x1b[0m`,
+  );
 }
 
 console.log(`\n${"─".repeat(78)}`);
@@ -265,7 +283,7 @@ console.log(
   `  por añada: de ${Math.round(nTipico)} a ~${Math.round(nTipico * factor).toLocaleString("en-US")}.\n`,
 );
 console.log(
-  `  \x1b[90mEl corpus tiene 8.935 préstamos y solo ~2.200 con desempeño. Llegar a\x1b[0m`,
+  `  \x1b[90mEl corpus tiene ${(nTipico * anadas.length).toLocaleString("en-US")} préstamos en las añadas medidas. Llegar a\x1b[0m`,
 );
 console.log(
   `  \x1b[90mese número por añada no es cuestión de cosechar más trusts: no existen\x1b[0m`,
