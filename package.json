@@ -60,7 +60,8 @@
     "taxonomy": "tsx harvest/taxonomy.ts",
     "test:all": "npm run typecheck && npm run harvest:env:test && npm run harvest:test && npm run harvest:real && npm run harvest:scale && npm run harvest:fixtures && npm run harvest:servicer:test",
     "typecheck": "tsc --noEmit",
-    "db:attrition": "tsx db/attrition.ts"
+    "db:attrition": "tsx db/attrition.ts",
+    "db:growth": "tsx db/growth.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",
