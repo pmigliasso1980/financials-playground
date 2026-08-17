@@ -396,14 +396,52 @@ check("descarta la fila que numera las columnas", () => {
    * sobre las 9.751 filas del corpus la distribución es continua desde 3. Un
    * préstamo tiene nombre o tiene saldo; esta fila no tiene ninguno.
    */
-  const numeradora = headers1.map((_, i) => String(i + 1));
-  const table = block(headers1, [numeradora, ...BLOCK_1_DATA], "con-numeradora");
+  /**
+   * La fila se construye con la forma REAL, no con una plausible.
+   *
+   * La primera versión de este test ponía un número en cada columna, así que la
+   * fila tenía valor en "Property Name" y el filtro —correctamente— no la
+   * descartaba. Las 5 fantasma que se encontraron en el corpus tienen el nombre
+   * vacío, el conteo nulo y la unidad nula: el único valor que sobrevive es el
+   * número de columna en la posición del tipo de propiedad.
+   *
+   * El test fallaba por estar mal escrito, no por el filtro. Vale como
+   * recordatorio de que un caso inventado "parecido" no prueba lo mismo que el
+   * caso observado.
+   */
+  const iTipo = headers1.indexOf("General Property Type");
+  const numeradora = headers1.map((_, i) => (i === iTipo ? "2" : ""));
+
+  /**
+   * Y hacen falta suficientes filas reales para no chocar con la guarda del 15%.
+   * Con 3 préstamos, descartar 1 es el 25% y el filtro se abstiene — que es el
+   * comportamiento correcto y hacía fallar el test por otra razón.
+   */
+  const prestamos = BLOCK_1_DATA.filter((r) => r[1] === "Loan");
+  const muchos = [numeradora, ...prestamos, ...prestamos, ...prestamos, ...prestamos];
+  const table = block(headers1, muchos, "con-numeradora");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
+
   eq(filtered.phantomRows, 1, "la fila numeradora");
+  eq(filtered.loanRows, 12, "los 12 préstamos reales quedan");
   assert(
     !filtered.rows.slice(table.headerRowIndex + 1).some((r) => r === numeradora),
     "la numeradora no debería quedar entre los datos",
   );
+});
+
+check("con pocas filas la guarda gana sobre el filtro", () => {
+  /**
+   * El mismo caso con 3 préstamos en vez de 12: descartar 1 sería el 25% y el
+   * filtro se abstiene. Preferimos una fila fantasma de más a borrar un cuarto
+   * de un pool chico por una hipótesis sobre dos columnas.
+   */
+  const iTipo = headers1.indexOf("General Property Type");
+  const numeradora = headers1.map((_, i) => (i === iTipo ? "2" : ""));
+  const prestamos = BLOCK_1_DATA.filter((r) => r[1] === "Loan");
+  const table = block(headers1, [numeradora, ...prestamos], "pocas-filas");
+  const filtered = keepLoanRows(table.rows, table.headerRowIndex);
+  eq(filtered.phantomRows, 0, "debería abstenerse con 1 de 4");
 });
 
 check("se abstiene si tendría que descartar demasiadas filas", () => {

@@ -156,11 +156,23 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
   const header = rows.slice(0, headerRowIndex + 1);
   const data = rows.slice(headerRowIndex + 1);
 
+  /**
+   * El filtro estructural va ANTES de clasificar, no después.
+   *
+   * La primera versión restaba las fantasma de `loanRows`, pero una fila que no
+   * es un préstamo tampoco tiene la columna de flag cargada, así que nunca se
+   * había contado: el descuento restaba algo que no estaba sumado y devolvía un
+   * conteo bajo por uno.
+   *
+   * Filtrando primero, `loanRows` cuenta lo que quedó y no hay que corregirlo.
+   */
+  const limpio = dropPhantomRows(data, headers);
+
   let loanRows = 0;
   let propertyRows = 0;
   const kept: unknown[][] = [];
 
-  for (const row of data) {
+  for (const row of limpio.kept) {
     const kind = classifyRow(row?.[flagCol]);
     if (kind === "property") {
       propertyRows++;
@@ -170,10 +182,9 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
     kept.push(row);
   }
 
-  const limpio = dropPhantomRows(kept, headers);
   return {
-    rows: [...header, ...limpio.kept],
-    loanRows: loanRows - limpio.dropped,
+    rows: [...header, ...kept],
+    loanRows,
     propertyRows,
     hadFlagColumn: true,
     phantomRows: limpio.dropped,
@@ -226,11 +237,13 @@ function keepLoanRowsByLoanId(
     };
   }
 
+  const limpio = dropPhantomRows(data, headers);
+
   let loanRows = 0;
   let propertyRows = 0;
   const kept: unknown[][] = [];
 
-  for (const row of data) {
+  for (const row of limpio.kept) {
     const raw = String(row?.[loanIdCol] ?? "").trim();
     const n = Number(raw);
 
@@ -251,10 +264,9 @@ function keepLoanRowsByLoanId(
     kept.push(row);
   }
 
-  const limpio = dropPhantomRows(kept, headers);
   return {
-    rows: [...header, ...limpio.kept],
-    loanRows: loanRows - limpio.dropped,
+    rows: [...header, ...kept],
+    loanRows,
     propertyRows,
     // Se filtró, aunque no por la columna de flag.
     hadFlagColumn: propertyRows > 0,
