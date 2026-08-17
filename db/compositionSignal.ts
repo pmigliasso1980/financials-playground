@@ -124,6 +124,24 @@ const tv = (a: number[], b: number[]) =>
 
 let significativas = 0;
 const detalle: Array<{ nombre: string; d: number; p: number; pool: number }> = [];
+/**
+ * LA PONDERACIÓN DE LA REFERENCIA, QUE ELEGÍ SIN PENSARLA.
+ *
+ * La mezcla de la cohorte se calcula juntando TODOS los préstamos de los pares:
+ * está ponderada por préstamo. Con 2026 al doble de su piso de concentración,
+ * BANK 2026-BNK52 (70) y Benchmark 2026-B42 (62) aportan el 14% de esos
+ * préstamos entre las dos, así que la "mezcla de mercado" es en buena medida la
+ * mezcla de esas dos emisiones.
+ *
+ * La alternativa es ponderar por emisión: promediar los vectores de composición
+ * de cada par, con cada emisión pesando igual. Ninguna de las dos es obviamente
+ * correcta —depende de si "el mercado" es un conjunto de préstamos o de deals—
+ * pero la conclusión del producto no debería depender de cuál elegí sin pensar.
+ *
+ * Se computan las dos y se comparan los conjuntos de emisiones significativas.
+ */
+const porEmisionSig = new Set<string>();
+const porPrestamoSig = new Set<string>();
 
 for (const [accession, e] of porEmision) {
   /**
@@ -145,6 +163,17 @@ for (const [accession, e] of porEmision) {
   const p = tipos.map((t) => (e.conteo.get(t) ?? 0) / Math.max(1, e.total));
   const dObs = tv(p, q);
 
+  /** La misma referencia, con cada emisión pesando igual en vez de por préstamo. */
+  const otras = [...porEmision].filter(([acc]) => acc !== accession);
+  const qEmision = tipos.map((t) => {
+    const suma = otras.reduce(
+      (x, [, o]) => x + (o.conteo.get(t) ?? 0) / Math.max(1, o.total),
+      0,
+    );
+    return suma / Math.max(1, otras.length);
+  });
+  const dEmision = tv(p, qEmision);
+
   // Acumulada de q, para muestrear.
   const acum: number[] = [];
   q.reduce((s, x) => (acum.push(s + x), s + x), 0);
@@ -165,6 +194,28 @@ for (const [accession, e] of porEmision) {
   const nuloP50 = sim[Math.floor(sim.length / 2)]!;
   const pVal = sim.filter((x) => x >= dObs).length / sim.length;
   if (pVal < ALFA) significativas++;
+  if (pVal < ALFA) porPrestamoSig.add(e.nombre);
+
+  /**
+   * El nulo se simula contra qEmision, no se reusa el de arriba: cambiar la
+   * referencia cambia también qué distancias produce el azar.
+   */
+  const acumE: number[] = [];
+  qEmision.reduce((x, v) => (acumE.push(x + v), x + v), 0);
+  const randE = rng(0xc0ffee);
+  const simE: number[] = [];
+  for (let b = 0; b < SIMULACIONES; b++) {
+    const c = new Array(tipos.length).fill(0);
+    for (let k = 0; k < e.total; k++) {
+      const u = randE();
+      let i = acumE.findIndex((a) => u < a);
+      if (i < 0) i = tipos.length - 1;
+      c[i]++;
+    }
+    simE.push(tv(c.map((x) => x / e.total), qEmision));
+  }
+  const pE = simE.filter((x) => x >= dEmision).length / simE.length;
+  if (pE < ALFA) porEmisionSig.add(e.nombre);
   detalle.push({ nombre: e.nombre, d: dObs, p: pVal, pool: e.total });
 
   const marca = pVal < ALFA ? "\x1b[32m" : "\x1b[90m";
@@ -203,6 +254,38 @@ console.log(
         `  separan una emisión de su cohorte, la comparación contra la cohorte no es un\n` +
         `  producto, y la pregunta a hacerle a estos datos es otra.`,
 );
+
+/**
+ * ¿Depende la conclusión de la ponderación que elegí sin pensarla?
+ *
+ * Si los dos conjuntos coinciden, la decisión no importaba y queda descartada.
+ * Si difieren, el hallazgo que sostiene la página depende de una elección
+ * arbitraria y hay que justificarla o reportar las dos.
+ */
+const soloPrestamo = [...porPrestamoSig].filter((x) => !porEmisionSig.has(x));
+const soloEmision = [...porEmisionSig].filter((x) => !porPrestamoSig.has(x));
+
+console.log(`\n${"─".repeat(78)}\n`);
+console.log(`  \x1b[1mPonderación de la referencia: por préstamo contra por emisión\x1b[0m\n`);
+console.log(
+  `    por préstamo (lo que usa la página)   ${porPrestamoSig.size} significativas`,
+);
+console.log(`    por emisión (cada deal pesa igual)   ${porEmisionSig.size} significativas`);
+console.log(
+  `    \x1b[90mcoinciden en ${[...porPrestamoSig].filter((x) => porEmisionSig.has(x)).length}\x1b[0m`,
+);
+if (soloPrestamo.length === 0 && soloEmision.length === 0) {
+  console.log(
+    `\n    \x1b[32mMismo conjunto.\x1b[0m La ponderación no cambia la conclusión y la decisión\n` +
+      `    queda descartada como fuente de duda.`,
+  );
+} else {
+  console.log(
+    `\n    \x1b[33mDifieren.\x1b[0m El hallazgo depende de una elección que hice sin pensarla.`,
+  );
+  for (const x of soloPrestamo) console.log(`      \x1b[90msolo por préstamo: ${x}\x1b[0m`);
+  for (const x of soloEmision) console.log(`      \x1b[90msolo por emisión:  ${x}\x1b[0m`);
+}
 
 const top = [...detalle].sort((a, b) => a.p - b.p || b.d - a.d).slice(0, 5);
 console.log(`\n  Las cinco más distintas:\n`);
