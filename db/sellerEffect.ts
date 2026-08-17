@@ -641,4 +641,231 @@ console.log(
   `  \x1b[90mprestó cada uno dentro de él—. Repartido = estilo persistente.\x1b[0m\n`,
 );
 
+// ---------------------------------------------------------------------------
+// 7. Producto dentro de tipo: el ataque con más prior de acertar
+// ---------------------------------------------------------------------------
+
+/**
+ * El mecanismo que ya mató una vez a este proyecto.
+ *
+ * BANK parecía suscribir 4 veces mejor. La explicación era NCB: cooperativas de
+ * vivienda, un producto que casi no incumple, viviendo DENTRO de la categoría
+ * multifamily —la de mayor riesgo del corpus—. `property_type` no distingue
+ * producto, así que la estandarización le asignaba a esos préstamos una tasa
+ * esperada alta y le regalaba a BANK un SIR bajo.
+ *
+ * Si LMF se especializa en algo análogo —hotelería de servicio limitado dentro
+ * de hospitality, un subtipo de multifamily, retail sin ancla— su 1,89 es el
+ * mismo artefacto con otro nombre.
+ *
+ * LA COLUMNA QUE NUNCA USAMOS
+ *
+ * `property_type_detailed` está en la taxonomía desde el principio y jamás entró
+ * a un análisis. Vive en `corpus.facts`, no en `corpus.loans`, porque es una
+ * métrica y no una etiqueta de fila.
+ *
+ * EL ORDEN, OTRA VEZ
+ *
+ * Cobertura primero. Si la columna aparece en pocos filings, el test no se puede
+ * hacer sobre los 270 préstamos de LMF y la respuesta correcta es "no se sabe" —
+ * peor que matarlo o confirmarlo, pero es la que hay.
+ */
+const { rows: covDet } = await query<{
+  n: string; con: string; lmf_n: string; lmf_con: string;
+}>(
+  `WITH base AS (${BASE}),
+   det AS (
+     SELECT b.*, nullif(btrim(fd.value), '') AS detalle
+       FROM base b
+       LEFT JOIN corpus.facts fd ON fd.loan_id = b.id
+                                AND fd.metric_key = 'property_type_detailed'
+   )
+   SELECT count(*)::text AS n,
+          count(*) FILTER (WHERE detalle IS NOT NULL)::text AS con,
+          count(*) FILTER (WHERE vendedor = 'LMF')::text AS lmf_n,
+          count(*) FILTER (WHERE vendedor = 'LMF' AND detalle IS NOT NULL)::text AS lmf_con
+     FROM det`,
+);
+
+const detN = Number(covDet[0]!.n);
+const detCon = Number(covDet[0]!.con);
+const lmfN = Number(covDet[0]!.lmf_n);
+const lmfCon = Number(covDet[0]!.lmf_con);
+
+console.log(`\n${"═".repeat(78)}`);
+console.log("Producto dentro de tipo: ¿el subtipo explica el residuo?");
+console.log(`${"═".repeat(78)}\n`);
+console.log(
+  `  property_type_detailed: ${detCon.toLocaleString("en-US")} de ${detN.toLocaleString("en-US")} ` +
+    `préstamos  →  ${detN > 0 && detCon / detN >= 0.5 ? "\x1b[32m" : "\x1b[31m"}` +
+    `${pct(detN > 0 ? detCon / detN : 0)}\x1b[0m`,
+);
+console.log(
+  `  \x1b[90men LMF: ${lmfCon} de ${lmfN}` +
+    `${lmfN > 0 ? ` (${pct(lmfCon / lmfN)})` : ""}\x1b[0m`,
+);
+
+if (detCon === 0) {
+  console.log(
+    `\n  \x1b[33mLa métrica no está poblada. Puede que el mapeo la capture y el corpus\x1b[0m`,
+  );
+  console.log(`  \x1b[90mno la haya guardado como fact. No se puede testear.\x1b[0m\n`);
+} else {
+  /**
+   * La mezcla de subtipos de los que se apartan, contra la del corpus.
+   *
+   * Si un originador concentra en un subtipo que el corpus tiene poco, ese
+   * subtipo es candidato a explicar su exceso — igual que las cooperativas
+   * explicaron a BANK.
+   */
+  const { rows: mezcla } = await query<{
+    v: string; detalle: string; n: string; ev: string; corpus_tasa: string;
+  }>(
+    `WITH base AS (${BASE}),
+     det AS (
+       SELECT b.*, nullif(btrim(fd.value), '') AS detalle
+         FROM base b
+         LEFT JOIN corpus.facts fd ON fd.loan_id = b.id
+                                  AND fd.metric_key = 'property_type_detailed'
+     ),
+     tasa_corpus AS (
+       SELECT detalle, sum(evento)::numeric / count(*) AS tasa
+         FROM det WHERE detalle IS NOT NULL GROUP BY detalle
+     )
+     SELECT d.vendedor AS v, d.detalle, count(*)::text AS n,
+            sum(d.evento)::text AS ev,
+            round(tc.tasa * 100, 1)::text AS corpus_tasa
+       FROM det d JOIN tasa_corpus tc ON tc.detalle = d.detalle
+      WHERE d.vendedor IN ('LMF', 'UBS AG', 'NCB') AND d.detalle IS NOT NULL
+      GROUP BY d.vendedor, d.detalle, tc.tasa
+     HAVING count(*) >= 10
+      ORDER BY d.vendedor, count(*) DESC`,
+  );
+
+  if (mezcla.length === 0) {
+    console.log(
+      `\n  \x1b[33mNingún subtipo llega a 10 préstamos en los originadores que se apartan.\x1b[0m\n`,
+    );
+  } else {
+    console.log(`\n  vendedor    subtipo                     n   ev    tasa   tasa corpus`);
+    console.log(`  ${"─".repeat(70)}`);
+    let prev = "";
+    for (const r of mezcla) {
+      const nn = Number(r.n), ev = Number(r.ev);
+      const et = r.v === prev ? "" : r.v;
+      prev = r.v;
+      console.log(
+        `  ${et.padEnd(11)} ${r.detalle.slice(0, 24).padEnd(26)} ${String(nn).padStart(4)} ` +
+          `${String(ev).padStart(4)}  ${pct(ev / nn).padStart(6)}   ${r.corpus_tasa.padStart(5)}%`,
+      );
+    }
+    console.log(
+      `\n  \x1b[90mSi la tasa del originador en un subtipo se parece a la del corpus EN ESE\x1b[0m`,
+    );
+    console.log(
+      `  \x1b[90mmismo subtipo, su exceso es composición: elige subtipos peores. Si es\x1b[0m`,
+    );
+    console.log(
+      `  \x1b[90mmás alta dentro del mismo subtipo, suscribe peor adentro de él.\x1b[0m\n`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8. El último corte, con las celdas al límite
+// ---------------------------------------------------------------------------
+
+/**
+ * El exceso de LMF en multifamily, añada por añada.
+ *
+ * El test de subtipo mostró que LMF no elige subtipos peores: está más alto
+ * DENTRO de Garden, Mid Rise y Multifamily/Retail —59 préstamos, 18 eventos,
+ * 30,5% contra ~8% del corpus en esos mismos subtipos—.
+ *
+ * Queda una pregunta y no da para más: ¿ese exceso vive en 2021-2022, cuando
+ * todo el mercado suscribió multifamily sobre crecimiento de renta que no se
+ * cumplió, o está en todas las añadas?
+ *
+ * POR QUÉ SE IMPRIME AUNQUE NO ALCANCE
+ *
+ * Las celdas van a quedar de cinco o seis préstamos. Eso NO permite concluir, y
+ * el script lo dice en vez de dejar que los porcentajes parezcan una respuesta.
+ * Se imprime igual porque la forma —todo en un año contra repartido— se puede
+ * mirar aunque cada celda individual no signifique nada, y porque la alternativa
+ * es no mirarlo y suponer.
+ *
+ * Es el mismo criterio que con el bloque de especialmente administrados: ver el
+ * dato crudo aunque el conteo no aguante una prueba formal.
+ */
+const SUBTIPOS_MF = ["Garden", "Mid Rise", "Multifamily/Retail"];
+
+const { rows: mfAnada } = await query<{
+  anada: string; n: string; ev: string; corpus_n: string; corpus_ev: string;
+}>(
+  `WITH base AS (${BASE}),
+   det AS (
+     SELECT b.*, nullif(btrim(fd.value), '') AS detalle
+       FROM base b
+       LEFT JOIN corpus.facts fd ON fd.loan_id = b.id
+                                AND fd.metric_key = 'property_type_detailed'
+   ),
+   mf AS (SELECT * FROM det WHERE detalle = ANY($1))
+   SELECT anada::text,
+          count(*) FILTER (WHERE vendedor = 'LMF')::text AS n,
+          sum(evento) FILTER (WHERE vendedor = 'LMF')::text AS ev,
+          count(*) FILTER (WHERE vendedor IS DISTINCT FROM 'LMF')::text AS corpus_n,
+          sum(evento) FILTER (WHERE vendedor IS DISTINCT FROM 'LMF')::text AS corpus_ev
+     FROM mf GROUP BY anada ORDER BY anada`,
+  [SUBTIPOS_MF],
+);
+
+console.log(`\n${"═".repeat(78)}`);
+console.log("LMF en multifamily, añada por añada  —  celdas al límite");
+console.log(`${"═".repeat(78)}\n`);
+console.log(`  añada     LMF n   ev     tasa      resto n   ev     tasa`);
+console.log(`  ${"─".repeat(62)}`);
+
+let mfN = 0;
+let mfEv = 0;
+let anadasConEvento = 0;
+for (const r of mfAnada) {
+  const nn = Number(r.n ?? 0);
+  const ev = Number(r.ev ?? 0);
+  const cn = Number(r.corpus_n ?? 0);
+  const cev = Number(r.corpus_ev ?? 0);
+  mfN += nn;
+  mfEv += ev;
+  if (ev > 0) anadasConEvento++;
+  console.log(
+    `  ${r.anada}   ${String(nn).padStart(7)} ${String(ev).padStart(4)}  ` +
+      `${(nn > 0 ? pct(ev / nn) : "—").padStart(7)}   ${String(cn).padStart(7)} ${String(cev).padStart(4)}  ` +
+      `${(cn > 0 ? pct(cev / cn) : "—").padStart(7)}`,
+  );
+}
+
+console.log(
+  `\n  \x1b[1mLMF total: ${mfEv} eventos sobre ${mfN} préstamos` +
+    `${mfN > 0 ? ` (${pct(mfEv / mfN)})` : ""}, en ${anadasConEvento} añadas\x1b[0m`,
+);
+
+/**
+ * El veredicto de tamaño va ANTES que la lectura, no después.
+ */
+const celdaMediana = mfAnada.length > 0 ? mfN / mfAnada.length : 0;
+console.log(
+  `\n  \x1b[90mCelda promedio de LMF: ${celdaMediana.toFixed(0)} préstamos.\x1b[0m` +
+    (celdaMediana < 15
+      ? `  \x1b[31m← no alcanza para concluir por añada\x1b[0m`
+      : `  \x1b[32m← suficiente para leer\x1b[0m`),
+);
+console.log(
+  `\n  \x1b[90mCon celdas así, lo único legible es la FORMA: si los eventos aparecen\x1b[0m`,
+);
+console.log(
+  `  \x1b[90men una sola añada es la apuesta de 2021-22 que hizo todo el mercado.\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mSi aparecen en varias, es un estilo. Ninguna celda individual prueba nada.\x1b[0m\n`,
+);
+
 await closePool();
