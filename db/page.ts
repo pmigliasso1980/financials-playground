@@ -341,6 +341,16 @@ if (args.includes("--todas")) {
   let totalEval = 0;
   let totalFuera = 0;
   const fueraPorMetrica = new Map<string, { fuera: number; eval: number }>();
+  /**
+   * Para la pregunta que me faltó medir: ¿las métricas fuera de rango predicen
+   * que la mezcla sea distinta?
+   *
+   * Afirmé que la coincidencia entre "5 de 6 fuera" y "mezcla significativa" era
+   * ruido, sin medirla, en el mismo párrafo donde criticaba hacer eso. Si las dos
+   * cifras correlacionan, la tabla de métricas no es decorativa: es una vista
+   * redundante de la misma señal, y eso cambia por qué se la degrada.
+   */
+  const pares_: Array<{ fuera: number; d: number }> = [];
 
   for (const c of cohorte) {
     const bm = await calcularBenchmark(c.nombre, candidatas);
@@ -369,6 +379,8 @@ if (args.includes("--todas")) {
       if (m.valor! < m.p25! || m.valor! > m.p75!) e.fuera++;
       fueraPorMetrica.set(m.spec.etiqueta, e);
     }
+
+    pares_.push({ fuera: fuera.length, d: bm.distancia - bm.distanciaNulo });
 
     console.log(
       `  ${c.nombre.slice(0, 34).padEnd(36)} ${String(c.pool).padStart(5)}   ` +
@@ -437,6 +449,61 @@ if (args.includes("--todas")) {
       : `\n  \x1b[32mLa tabla distingue:\x1b[0m ${pct(share)} contra la nula de 50% son ${z.toFixed(1)}\n` +
           `  errores estándar, más de lo que explica el muestreo.`,
   );
+  /**
+   * Correlación de Spearman entre "métricas fuera de rango" y "cuánto se aparta
+   * la mezcla por encima del nulo".
+   *
+   * Spearman y no Pearson: la cantidad de métricas fuera va de 0 a 6 y la
+   * distancia es continua y sesgada; el orden es lo único comparable.
+   *
+   * El exceso sobre el nulo (d - nulo) y no d crudo: d crece cuando el pool es
+   * chico, y la cantidad de métricas fuera también, así que correlacionarlos
+   * directo mediría el tamaño del pool en las dos puntas.
+   */
+  if (pares_.length >= 10) {
+    const rank = (xs: number[]) => {
+      const orden = xs.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
+      const r = new Array(xs.length).fill(0);
+      for (let k = 0; k < orden.length; ) {
+        let j = k;
+        while (j + 1 < orden.length && orden[j + 1]!.v === orden[k]!.v) j++;
+        const medio = (k + j) / 2 + 1;
+        for (let m = k; m <= j; m++) r[orden[m]!.i] = medio;
+        k = j + 1;
+      }
+      return r;
+    };
+    const rx = rank(pares_.map((p) => p.fuera));
+    const ry = rank(pares_.map((p) => p.d));
+    const n2 = pares_.length;
+    const mx = rx.reduce((a, b) => a + b, 0) / n2;
+    const my = ry.reduce((a, b) => a + b, 0) / n2;
+    let num = 0, dx = 0, dy = 0;
+    for (let i = 0; i < n2; i++) {
+      num += (rx[i]! - mx) * (ry[i]! - my);
+      dx += (rx[i]! - mx) ** 2;
+      dy += (ry[i]! - my) ** 2;
+    }
+    const rho = num / Math.sqrt(dx * dy);
+    /** t de Student con n-2 grados: el umbral de |t| ≈ 2 para 26 gl. */
+    const t = rho * Math.sqrt((n2 - 2) / Math.max(1e-9, 1 - rho * rho));
+
+    console.log(`\n${"─".repeat(78)}\n`);
+    console.log(
+      `  \x1b[1mMétricas fuera de rango contra exceso de distancia: rho = ${rho.toFixed(3)}\x1b[0m` +
+        ` \x1b[90m(t = ${t.toFixed(2)}, ${n2 - 2} gl)\x1b[0m`,
+    );
+    console.log(
+      Math.abs(t) >= 2
+        ? `\n  \x1b[33mCorrelacionan.\x1b[0m La tabla de métricas no es decorativa: es una vista\n` +
+            `  redundante de la misma señal que la composición. Degradarla sigue siendo\n` +
+            `  correcto —dice lo mismo peor— pero por una razón distinta de la que dije.`
+        : `\n  \x1b[32mNo correlacionan.\x1b[0m Que BNK52 tenga 5 métricas fuera y mezcla distinta,\n` +
+            `  y BANK5 ninguna y mezcla normal, es coincidencia de dos casos. Con 6 métricas\n` +
+            `  por emisión, tener 5 afuera pasa seguido por azar.`,
+    );
+  }
+
   console.log(`\n  ${cohorte.length} páginas en ${dir}\n`);
   await closePool();
   process.exit(0);
