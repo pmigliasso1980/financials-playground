@@ -563,15 +563,17 @@ if (AUDITORIA) {
     nombre: string; loan_id: string; tipo: string;
     prop_name: string | null; prop_count: string | null; unidad: string | null;
   }>(
-    `SELECT f.company_name AS nombre, l.loan_id, l.property_type AS tipo,
-            max(fa.value) FILTER (WHERE fa.metric_key = 'property_name')  AS prop_name,
+    `SELECT f.company_name AS nombre,
+            coalesce(l.loan_ref, 'fila ' || l.row_index) AS loan_id,
+            l.property_type AS tipo,
+            l.property_name AS prop_name,
             max(fa.value) FILTER (WHERE fa.metric_key = 'property_count') AS prop_count,
             max(fa.value) FILTER (WHERE fa.metric_key = 'unit_of_measure') AS unidad
        FROM corpus.loans l
        JOIN corpus.filings f ON f.accession = l.accession
        LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
       WHERE l.accession = ANY($1) AND l.property_type ~ '^[0-9.,[:space:]]+$'
-      GROUP BY f.company_name, l.loan_id, l.property_type
+      GROUP BY f.company_name, l.loan_ref, l.row_index, l.property_type, l.property_name
       ORDER BY 1, 2`,
     [accs],
   );
