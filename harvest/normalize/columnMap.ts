@@ -314,15 +314,61 @@ export const METRIC_SPECS: MetricSpec[] = [
     label: "Occupancy",
     unit: "percent",
     entity: "property",
+    /**
+     * EL ORDEN ACÁ NO ES COSMÉTICO: DESEMPATA.
+     *
+     * `scoreHeader` puntúa 1 - i*0.08 según la posición del patrón, así que dos
+     * encabezados que caen en el mismo patrón empatan, y `mapColumns` resuelve
+     * el empate por orden de columna.
+     *
+     * El Annex A conduit —que es plantilla compartida: los encabezados salen
+     * byte por byte iguales en BMO, Benchmark, Wells, JPMorgan y BANK— trae
+     * seis columnas de ocupación: `Leased Occupancy (%)`, `Underwritten Hotel
+     * Occupancy (%)` y la serie histórica `Most Recent` / `Second` / `Third`.
+     * Todas matcheaban solo `/occupancy/` y empataban en 0,76.
+     *
+     * Como `joinAnnexTables` une los bloques en una sola tabla y el mapeo corre
+     * una vez sobre los encabezados unidos, ganaba la que quedara primero — y
+     * eso depende del orden de los bloques, que varía por emisión.
+     *
+     * Cuando ganaba una columna de hotel, solo los hoteles quedaban con dato.
+     * En 7 emisiones de 2026 el conteo de préstamos con ocupación era
+     * exactamente el conteo de hoteles: BANK5 6 de 35 con 18% hospitality,
+     * BMO 2026-C15 cero de 16 sin ningún hotel.
+     *
+     * Peor que el agujero: los valores que sí había no eran la misma métrica
+     * que en las otras 21 emisiones. La cobertura se veía como 76% y adentro
+     * había dos cantidades distintas mezcladas.
+     */
     patterns: [
+      // La columna del conduit: cubre todo tipo de activo. Gana siempre que esté.
+      /leased\s*occ/i,
       /physical\s*occ/i,
       /%\s*occupied/i,
       /\boccupied\b.*%/i,
+      // Genérico: incluye "Underwritten Hotel Occupancy" y "Most Recent
+      // Occupancy". Son ocupación de verdad y sirven cuando no hay Leased
+      // —una emisión mono-hotel no tiene otra cosa—, pero pierden contra ella.
       /\boccupancy\b/i,
     ],
-    // "area", "sf" y "rentable" aparecen cuando un encabezado de grupo tipo
-    // "Physical & Occupancy" se pega a una columna de superficie.
-    exclude: [/economic/i, /\bdate\b/i, /\barea\b/i, /rentable/i, /\bsf\b/i, /square/i],
+    /**
+     * "area", "sf" y "rentable" aparecen cuando un encabezado de grupo tipo
+     * "Physical & Occupancy" se pega a una columna de superficie.
+     *
+     * La serie histórica ordinal se excluye entera: "Second/Third/Fourth/Fifth
+     * Most Recent" son fotos viejas del mismo activo, no la ocupación vigente.
+     * "Most Recent" a secas NO se excluye — en varios formatos es la columna
+     * corriente y la única que hay.
+     */
+    exclude: [
+      /economic/i,
+      /\bdate\b/i,
+      /\barea\b/i,
+      /rentable/i,
+      /\bsf\b/i,
+      /square/i,
+      /(second|third|fourth|fifth)\s+most\s+recent/i,
+    ],
   },
   {
     key: "unit_of_measure",

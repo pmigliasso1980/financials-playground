@@ -25,7 +25,7 @@ import type { MetricKey } from "./columnMap.js";
  * empeoró la cobertura del corpus. Subir cuando se agregan o redefinen
  * métricas, no cuando se ajusta un patrón.
  */
-export const TAXONOMY_VERSION = "2026.08.9";
+export const TAXONOMY_VERSION = "2026.08.10";
 
 export interface MetricDefinition {
   /** Qué mide, en una oración que entienda alguien del rubro. */
