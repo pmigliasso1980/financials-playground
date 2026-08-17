@@ -160,6 +160,24 @@ export async function findServicerReports(
      */
     preferMonths?: number[];
     minScore?: number;
+    /**
+     * Muestreo temporal: en vez de preferir abril, tomar un informe cada N
+     * meses hacia atrás desde el más reciente.
+     *
+     * POR QUÉ EXISTE
+     *
+     * El orden por defecto sirve para el NOI, donde abril es el único mes que
+     * trae ejercicios cerrados. Para la morosidad es al revés: lo que importa
+     * es la historia, porque la tabla del 10-D lista los préstamos que están en
+     * special servicing HOY y pierde los que entraron y se resolvieron.
+     *
+     * Un préstamo que transfirió en 2022 y se resolvió en 2023 es invisible en
+     * el informe de 2026, pero aparece en los de esos meses con su
+     * `transfer_date`. Como un caso suele quedarse seis meses o más en special
+     * servicing, muestrear semestralmente atrapa casi todos sin bajar los
+     * sesenta informes de cada trust.
+     */
+    everyMonths?: number;
     fetchOpts?: FetchOptions;
   } = {},
 ): Promise<ServicerReportRef[]> {
@@ -207,12 +225,40 @@ export async function findServicerReports(
     return idx === -1 ? preferMonths.length : idx;
   };
 
-  candidates.sort((a, b) => {
-    const ra = monthRank(a.periodOfReport || a.filedAt);
-    const rb = monthRank(b.periodOfReport || b.filedAt);
-    if (ra !== rb) return ra - rb;
-    return b.filedAt.localeCompare(a.filedAt);
-  });
+  if (opts.everyMonths && opts.everyMonths > 0) {
+    /**
+     * Cronológico descendente y después uno cada N meses.
+     *
+     * El filtro es por distancia real entre períodos, no "uno de cada N de la
+     * lista": los trusts no publican todos los meses y contar posiciones daría
+     * espaciados distintos según cuántos informes falten.
+     */
+    candidates.sort((a, b) =>
+      (b.periodOfReport || b.filedAt).localeCompare(a.periodOfReport || a.filedAt),
+    );
+    const espaciados: typeof candidates = [];
+    let ultimo: Date | null = null;
+    for (const c of candidates) {
+      const f = new Date(c.periodOfReport || c.filedAt);
+      if (Number.isNaN(f.getTime())) continue;
+      if (
+        ultimo === null ||
+        (ultimo.getTime() - f.getTime()) / 86_400_000 >= opts.everyMonths * 30.44 - 10
+      ) {
+        espaciados.push(c);
+        ultimo = f;
+      }
+    }
+    candidates.length = 0;
+    candidates.push(...espaciados);
+  } else {
+    candidates.sort((a, b) => {
+      const ra = monthRank(a.periodOfReport || a.filedAt);
+      const rb = monthRank(b.periodOfReport || b.filedAt);
+      if (ra !== rb) return ra - rb;
+      return b.filedAt.localeCompare(a.filedAt);
+    });
+  }
 
   const picks: ServicerReportRef[] = [];
   for (const c of candidates) {

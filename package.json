@@ -40,6 +40,7 @@
     "harvest:diagnose": "tsx harvest/diagnose.ts",
     "harvest:env:test": "tsx harvest/env.test.ts",
     "harvest:fixtures": "tsx harvest/fixtures.test.ts",
+    "harvest:history": "tsx harvest/historyProbe.ts",
     "harvest:inspect": "tsx harvest/inspect.ts",
     "harvest:real": "tsx harvest/real.test.ts",
     "harvest:scale": "tsx harvest/scale.test.ts",
