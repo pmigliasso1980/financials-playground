@@ -242,6 +242,11 @@ Con esos controles LMF pasaba Bonferroni (z = 3,49, p ≈ 0,0005) y UBS no
 (z = 2,86, p ≈ 0,0042). NCB medía producto —cooperativas de vivienda— no
 habilidad.
 
+> Esas dos z se calcularon a mano para este documento: **el script no aplicaba
+> corrección por comparaciones múltiples**, así que su conteo de "se apartan" y el
+> del documento nunca fueron comparables. Cuando se le agregó, el orden se dio
+> vuelta al sumar el control de saldo — ver la sección de UBS AG más abajo.
+
 **Pero faltaba un control, y era el que importaba.** `db:mechanism` fue a buscar
 qué distingue a los préstamos de LMF que el apalancamiento no captura:
 solo-interés, reservas de reposición, proyección de NOI sobre histórico. Los tres
@@ -284,16 +289,78 @@ BMO y MSMCH sí resultaron apuestas de ciclo: 72% de los eventos de BMO en 2023,
 
 **No está confundido con la emisora.** LMF coloca en cuatro shelves distintos.
 
-### Lo que todavía puede matarlo
+### El decimocuarto ataque: producto dentro de tipo, que no lo mató
 
-`property_type` no captura **producto**. Las cooperativas viven dentro de
-multifamily y ese mecanismo exacto mató el efecto emisora. Si LMF se especializa
-en un subproducto de riesgo distinto dentro de su tipo, el 1,89 es el mismo
-artefacto con otro nombre. La columna `property_type_detailed` ya está en la
-taxonomía y nunca se usó.
+Esta sección decía que el control pendiente más peligroso era el subtipo:
+`property_type` no captura **producto**, las cooperativas viven dentro de
+multifamily, y ese mecanismo exacto mató el efecto emisora. Era el ataque con
+mejor prior de todos los que quedaban.
 
-Faltan además geografía y tamaño de préstamo. Y el sesgo de stock sigue siendo
-estructural para todos por igual.
+Se corrió. El estrato pasó a ser `property_type_detailed × añada × DSCR × LTV ×
+saldo`.
+
+| estrato | LMF: obs | esperado | SIR |
+|---|---|---|---|
+| tipo grueso × añada × DSCR × LTV × saldo | 30 | 19,8 | **1,51** |
+| subtipo × añada × DSCR × LTV × saldo | 27 | 17,9 | **1,51** |
+
+**No movió nada.** El exceso de LMF no es producto dentro de tipo, y el
+mecanismo que explicó a BANK no explica a LMF.
+
+Tres razones para creerle a ese cero en vez de sospechar que el control no se
+aplicó:
+
+- El sub-muestreo sí ocurrió: la cobertura de subtipo es 75% y los observados de
+  LMF bajaron de 30 a 27. Son muestras distintas que dan el mismo cociente, no la
+  misma corrida dos veces.
+- El estrato no colapsó. Con ~100 celdas para 168 eventos era el riesgo obvio, y
+  la firma no aparece: 1 de 13 originadores con el esperado pegado al observado, y
+  la autorreferencia de los principales entre 21% y 32%.
+- La pérdida del 25% de la muestra corre **en contra** del escéptico, no a favor.
+  El subconjunto con subtipo es más rico en eventos que el total —13,8% contra
+  11,2% en LMF— así que la atrición no borró el exceso: lo dejó intacto sobre una
+  base más chica.
+
+Lo que sí hizo el corte fue ensanchar el intervalo. Con 27 eventos en vez de 30,
+el IC de LMF queda en **[1,00 , 2,20]**: pegado al nulo, sin excluirlo. Sigue sin
+pasar Bonferroni. Así que el resultado no reivindica a LMF ni lo entierra —
+sobrevivió al mejor ataque que quedaba y sigue sin ser citable.
+
+**Lo que queda abierto, y no lo puede cerrar este corpus.** Faltan geografía y
+calidad del sponsor. Y sobre las tres cosas que sí se controlaron hay una lectura
+que el documento debe cargar: subtipo, saldo y en parte LTV pueden ser
+**estrategia de LMF y no confundidos**. Si LMF elige prestar chico, en Mid Rise y
+más apalancado, controlar por eso le saca crédito por sus propias decisiones. Un
+control sobre un mediador hace desaparecer el efecto por construcción. Las dos
+lecturas son defendibles y el dato no las separa; lo que cambia es la pregunta:
+
+> sin controles → «¿el libro de LMF rinde peor?» — sí, 11,2% contra ~3%, y eso no
+> está en disputa.
+> con controles → «¿LMF rinde peor que otro prestamista que hace el mismo préstamo?»
+> — no se puede afirmar.
+
+### UBS AG: el que nadie miró, y que este corpus no puede medir
+
+Agregar Bonferroni al script —que le faltaba— cambió quién era el candidato. Con
+tipo × añada × DSCR × LTV × saldo, **LMF no pasa (z = 2,28) y UBS AG sí
+(z = 2,97 contra un umbral de 2,91)**. El proyecto le dedicó trece ataques a LMF
+y ninguno a UBS. La diferencia entre los dos no era la evidencia: era la atención.
+
+El control correcto para UBS es el subtipo, porque **6 de sus 13 eventos están en
+11 préstamos de Limited Service, al 54,5% contra 9,2% del corpus en ese mismo
+subtipo**. Hoteles de servicio limitado y full service son productos distintos
+adentro de Hospitality.
+
+Ese control no se puede correr. UBS tiene 177 préstamos y con el estrato completo
+quedan 121, abajo del pool mínimo de 150 fijado antes de mirar. Bajar el umbral
+ahora sería elegirlo sabiendo a quién deja entrar.
+
+Lo que sí se puede decir sin ningún umbral: **sacando esos 11 préstamos, UBS pasa
+de 7,3% a 4,2%** (7 eventos sobre 166). La mitad de su exceso son once préstamos.
+Eso no es un descarte —es una descripción, y elegir el peor subtipo para quitarlo
+siempre baja la tasa— pero fija la escala de lo que se estaría investigando.
+
+**El estado de UBS AG es "no medido", que no es lo mismo que "no se aparta".**
 
 ---
 
