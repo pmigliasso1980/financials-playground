@@ -598,6 +598,75 @@ if (AUDITORIA) {
     console.log(`    \x1b[90marreglo está en la detección de encabezado, no en el tipo.\x1b[0m`);
   }
 
+  /**
+   * PRÉSTAMOS FANTASMA: filas cargadas como préstamo que no son préstamos.
+   *
+   * Los 5 con property_type numérico resultaron no tener nombre, ni conteo de
+   * propiedades, ni unidad de medida, y 3 de los 5 están en row_index 0 — la
+   * primera fila después del encabezado, que en el Annex A suele numerar las
+   * columnas. Un "2" en la posición del tipo de propiedad es justo lo que deja
+   * esa fila.
+   *
+   * No era corrimiento de columnas ni celda sucia, que eran las dos causas que
+   * yo había planteado como si fueran exhaustivas. Era una tercera.
+   *
+   * POR QUÉ IMPORTA MÁS QUE LOS 5 CASOS
+   *
+   * El pool es el denominador de todo lo que hace esta herramienta: la posición
+   * ordinal, los porcentajes de composición, y la nota que dice cuánto vale
+   * cada préstamo. Una fila fantasma no rompe nada visiblemente — corre los
+   * porcentajes un punto y nadie se enteraría.
+   *
+   * Se cuentan por cantidad de facts porque es la definición operativa: un
+   * préstamo real del Annex A conduit tiene decenas de observaciones. Una fila
+   * con dos o tres no es un préstamo con pocos datos, es otra cosa.
+   */
+  const { rows: fantasmas } = await query<{
+    nombre: string; pool: string; flacos: string; vacios: string; min_facts: string;
+  }>(
+    `WITH conteo AS (
+       SELECT l.accession, l.id, count(fa.id) AS facts
+         FROM corpus.loans l
+         LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
+        WHERE l.accession = ANY($1)
+        GROUP BY l.accession, l.id
+     )
+     SELECT f.company_name AS nombre,
+            count(*)::text AS pool,
+            count(*) FILTER (WHERE c.facts <= 5)::text AS flacos,
+            count(*) FILTER (WHERE c.facts = 0)::text AS vacios,
+            min(c.facts)::text AS min_facts
+       FROM conteo c JOIN corpus.filings f ON f.accession = c.accession
+      GROUP BY f.company_name
+     HAVING count(*) FILTER (WHERE c.facts <= 5) > 0
+      ORDER BY count(*) FILTER (WHERE c.facts <= 5) DESC`,
+    [accs],
+  );
+
+  const totalFlacos = fantasmas.reduce((a, r) => a + Number(r.flacos), 0);
+  console.log(
+    `\n  Filas con 5 facts o menos — ¿son préstamos?  \x1b[1m${totalFlacos} en ${fantasmas.length} emisiones\x1b[0m\n`,
+  );
+  for (const r of fantasmas) {
+    console.log(
+      `    ${r.nombre.slice(0, 40).padEnd(42)} ${String(r.flacos).padStart(3)} de ${String(r.pool).padStart(3)}` +
+        `  \x1b[90mmínimo ${r.min_facts} facts\x1b[0m` +
+        (Number(r.vacios) > 0 ? `  \x1b[31m${r.vacios} sin ningún fact\x1b[0m` : ""),
+    );
+  }
+  if (totalFlacos > 0) {
+    console.log(
+      `\n    \x1b[90mUn préstamo real del Annex A conduit tiene decenas de observaciones.\x1b[0m`,
+    );
+    console.log(
+      `    \x1b[90mSi estas filas no son préstamos, el pool está inflado y con él el\x1b[0m`,
+    );
+    console.log(
+      `    \x1b[90mdenominador de cada posición ordinal y de cada porcentaje de\x1b[0m`,
+    );
+    console.log(`    \x1b[90mcomposición que imprime esta herramienta.\x1b[0m`);
+  }
+
   console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);
   if (dups.length === 0) {
     console.log(`    \x1b[32mNinguna: ${cohorte.length} nombres distintos en ${cohorte.length} emisiones.\x1b[0m`);
