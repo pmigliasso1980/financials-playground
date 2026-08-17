@@ -103,6 +103,37 @@ const CON_APALANCAMIENTO = process.argv.includes("--con-apalancamiento");
  */
 const CON_LTV = process.argv.includes("--con-ltv");
 
+/**
+ * `--con-tamano`: agrega el tercil de saldo del préstamo.
+ *
+ * POR QUÉ APARECE RECIÉN AHORA
+ *
+ * `db:mechanism` fue a buscar el mecanismo del residuo de LMF —solo-interés,
+ * reservas, proyección de NOI— y no encontró ninguno: todos los candidatos
+ * salieron planos o en contra. Lo único que se movió fue el saldo: mediana de
+ * 5,9M contra 11,3M del resto en los mismos subtipos.
+ *
+ * El tamaño no estaba controlado en ninguno de los doce ataques anteriores.
+ *
+ * CONFUNDIDO O MEDIADOR: LA DISTINCIÓN IMPORTA
+ *
+ * Si los préstamos chicos incumplen más por razones ajenas al prestamista
+ * —sponsors menos institucionales, mercados secundarios, menos escrutinio— el
+ * tamaño es un confundido y hay que controlarlo.
+ *
+ * Si LMF ELIGE prestar chico, el tamaño está en el camino causal de su
+ * estrategia, y controlarlo es sobre-controlar: le saca crédito por una decisión
+ * que es suya.
+ *
+ * Las dos lecturas son defendibles y el dato no las separa. Lo que sí hace el
+ * control es cambiar la pregunta, y conviene decir cuál queda:
+ *
+ *   sin control  →  "¿el libro de LMF rinde peor?"           (ya sabemos que sí)
+ *   con control  →  "¿LMF rinde peor que otros prestamistas
+ *                    haciendo préstamos del mismo tamaño?"   (la de un benchmark)
+ */
+const CON_TAMANO = process.argv.includes("--con-tamano");
+
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
 function wilson(k: number, total: number): [number, number] {
@@ -421,8 +452,11 @@ const { rows: sirV } = await query<{
        JOIN corpus.loans t ON t.id = b.id
    ),
    con_dscr AS (
-     SELECT b.*, ds.value::numeric AS dscr, lt.value::numeric AS ltv
+     SELECT b.*, ds.value::numeric AS dscr, lt.value::numeric AS ltv,
+            am.value::numeric AS saldo
        FROM base b
+       LEFT JOIN corpus.facts am ON am.loan_id = b.id AND am.metric_key = 'loan_amount'
+                                AND am.value ~ '^[0-9.]+$'
        LEFT JOIN corpus.facts ds ON ds.loan_id = b.id AND ds.metric_key = 'dscr'
                                 AND ds.value ~ '^[0-9.]+$' AND ds.value::numeric < 20
        LEFT JOIN corpus.facts lt ON lt.loan_id = b.id AND lt.metric_key = 'ltv'
@@ -431,15 +465,18 @@ const { rows: sirV } = await query<{
    con_tipo AS (
      SELECT c.*,
             ${CON_APALANCAMIENTO || CON_LTV ? "ntile(3) OVER (ORDER BY dscr NULLS LAST)" : "0"}::int AS tercil,
-            ${CON_LTV ? "ntile(3) OVER (ORDER BY ltv NULLS LAST)" : "0"}::int AS tercil_ltv
+            ${CON_LTV ? "ntile(3) OVER (ORDER BY ltv NULLS LAST)" : "0"}::int AS tercil_ltv,
+            ${CON_TAMANO ? "ntile(3) OVER (ORDER BY saldo NULLS LAST)" : "0"}::int AS tercil_saldo
        FROM con_dscr c
       WHERE vendedor IS NOT NULL AND tipo IS NOT NULL
         ${CON_APALANCAMIENTO || CON_LTV ? "AND dscr IS NOT NULL" : ""}
         ${CON_LTV ? "AND ltv IS NOT NULL" : ""}
+        ${CON_TAMANO ? "AND saldo IS NOT NULL" : ""}
    ),
    tasas AS (
-     SELECT tipo, anada, tercil, tercil_ltv, sum(evento)::numeric / count(*) AS tasa
-       FROM con_tipo GROUP BY tipo, anada, tercil, tercil_ltv
+     SELECT tipo, anada, tercil, tercil_ltv, tercil_saldo,
+            sum(evento)::numeric / count(*) AS tasa
+       FROM con_tipo GROUP BY tipo, anada, tercil, tercil_ltv, tercil_saldo
    )
    SELECT c.vendedor AS v, count(*)::text AS n,
           sum(c.evento)::text AS obs,
@@ -447,7 +484,7 @@ const { rows: sirV } = await query<{
           count(DISTINCT c.shelf)::text AS shelves
      FROM con_tipo c JOIN tasas t
        ON t.tipo = c.tipo AND t.anada = c.anada AND t.tercil = c.tercil
-      AND t.tercil_ltv = c.tercil_ltv
+      AND t.tercil_ltv = c.tercil_ltv AND t.tercil_saldo = c.tercil_saldo
     GROUP BY c.vendedor
    HAVING count(*) >= ${MIN_POOL}
     ORDER BY sum(c.evento)::numeric / nullif(sum(t.tasa), 0)`,
@@ -466,7 +503,7 @@ function byar(obs: number, esp: number): [number, number] {
 console.log(`\n${"═".repeat(78)}`);
 console.log(
   `Originadores: SIR por TIPO × AÑADA${CON_APALANCAMIENTO || CON_LTV ? " × DSCR" : ""}` +
-    `${CON_LTV ? " × LTV" : ""} (pool ≥ ${MIN_POOL})`,
+    `${CON_LTV ? " × LTV" : ""}${CON_TAMANO ? " × SALDO" : ""} (pool ≥ ${MIN_POOL})`,
 );
 console.log(`${"═".repeat(78)}\n`);
 console.log(`  vendedor          emis.       n   obs   esperado    SIR         IC 95%`);
@@ -501,7 +538,8 @@ for (const r of sirV) {
 
 console.log(
   `\n  ${apartados} de ${sirV.length} originadores se apartan del promedio ajustado por ` +
-    `tipo y añada${CON_APALANCAMIENTO || CON_LTV ? ", DSCR" : ""}${CON_LTV ? " y LTV" : ""}.`,
+    `tipo y añada${CON_APALANCAMIENTO || CON_LTV || CON_TAMANO ? ", DSCR" : ""}` +
+    `${CON_LTV ? ", LTV" : ""}${CON_TAMANO ? " y saldo" : ""}.`,
 );
 
 /**

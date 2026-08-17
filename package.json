@@ -19,6 +19,7 @@
     "db:explain": "tsx db/explain.ts",
     "db:identities": "tsx db/identities.ts",
     "db:join": "tsx db/servicerJoin.ts",
+    "db:mechanism": "tsx db/mechanism.ts",
     "db:migrate": "tsx db/migrate.ts",
     "db:outcomes": "tsx db/outcomes.ts",
     "db:performance": "tsx db/servicerBatch.ts",
