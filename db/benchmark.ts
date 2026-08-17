@@ -686,12 +686,19 @@ if (AUDITORIA) {
    * Este histograma decide entre esas dos cosas, y es lo que había que mirar
    * antes de fijar cualquier número.
    */
+  /**
+   * SOBRE TODO EL CORPUS, NO SOBRE LA COHORTE.
+   *
+   * La primera versión lo calculaba sobre las 28 emisiones de 2026, pero el
+   * umbral que este histograma justifica se aplica en la cosecha de las 233.
+   * Elegir un corte corpus-wide mirando el 12% es el mismo error de unidad que
+   * ya apareció dos veces hoy: medir donde es cómodo y aplicar donde importa.
+   */
   const { rows: histo } = await query<{ tramo: string; n: string }>(
     `WITH conteo AS (
        SELECT l.id, count(fa.id) AS facts
          FROM corpus.loans l
          LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
-        WHERE l.accession = ANY($1)
         GROUP BY l.id
      )
      SELECT CASE
@@ -703,10 +710,12 @@ if (AUDITORIA) {
             END AS tramo,
             count(*)::text AS n
        FROM conteo GROUP BY 1 ORDER BY 1`,
-    [accs],
   );
 
-  console.log(`\n  Observations por fila — ¿dos poblaciones o un gradiente?\n`);
+  const totalCorpus = histo.reduce((a, h) => a + Number(h.n), 0);
+  console.log(
+    `\n  Observations por fila en TODO el corpus (${totalCorpus} préstamos) — ¿dos poblaciones?\n`,
+  );
   const maxN = Math.max(...histo.map((h) => Number(h.n)));
   for (const h of histo) {
     const n = Number(h.n);
@@ -726,8 +735,10 @@ if (AUDITORIA) {
   );
   console.log(
     vacios.length >= 3
-      ? `    \x1b[32mHay hueco: las dos poblaciones están separadas y el umbral puede\x1b[0m\n` +
-          `    \x1b[32mubicarse adentro sin cortar préstamos reales.\x1b[0m`
+      ? `    \x1b[32mHay hueco entre ${Math.min(...vacios)} y ${Math.max(...vacios)}.\x1b[0m` +
+          ` El umbral actual es 3 y está pegado al borde de\n` +
+          `    la población fantasma. Corriéndolo a ${Math.max(...vacios)} se descartan sin tocar\n` +
+          `    ninguna fila del otro lado.`
       : `    \x1b[33mSin hueco claro: cualquier umbral por conteo corta en zona poblada.\x1b[0m\n` +
           `    \x1b[33mHabría que descartar por otra señal —fila sin nombre ni saldo— y no\x1b[0m\n` +
           `    \x1b[33mpor cantidad de observations.\x1b[0m`,
