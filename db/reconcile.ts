@@ -1,48 +1,47 @@
 /**
- * Qué columna sin mapear vale lo que la aritmética dice que falta.
+ * Por qué dos scripts cuentan distinto la misma cosa.
  *
  *   npm run db:reconcile
+ *   npm run db:reconcile -- --anada 2025
  *
- * EL PROBLEMA QUE RESUELVE
+ * EL PROBLEMA
  *
- * Cuando el debt yield no cierra, ya sabemos cuánto tendría que valer el saldo:
- * si el emisor publica 13,7% y el NOI es 97.102.547, el denominador tiene que
- * ser 708.777.715. El LTV lo confirma por otro camino —tasación × LTV da
- * 709.200.000, 0,06% de diferencia— así que el número no es una estimación.
+ * "Cuántas emisiones de 2026 tienen una mezcla más distinta que el azar" tiene dos
+ * respuestas en este repo: `db:composition-signal` cuenta 13 y `db:catalog` cuenta
+ * 8. Un comentario viejo decía 10, que no era ninguno de los dos.
  *
- * Lo que faltaba era saber de qué columna sacarlo. Eso se venía haciendo a mano:
- * mirar la lista de ochenta y siete encabezados sin mapear y elegir el que
- * sonara mejor. Durante la sesión que motivó este archivo hice tres predicciones
- * de ese tipo y acerté una; cada una costó una recosecha de diez minutos.
+ * Ninguno está mal. Son definiciones distintas con el mismo nombre, y la
+ * hipótesis era que las diferencias fueran dos: la referencia incluye o no a las
+ * mono-tipo, y el catálogo además exige que las dos ponderaciones coincidan.
  *
- * Con `corpus.unmapped_cells` la pregunta deja de ser interpretativa: qué celda
- * de ESTA MISMA FILA vale 708.777.715. Es una comparación numérica.
+ * PERO UNA HIPÓTESIS NO ES UNA EXPLICACIÓN
  *
- * DOS HIPÓTESIS, NO UNA
+ * Suponer la descomposición y no verificarla es exactamente lo que esta sesión ya
+ * cobró varias veces. Así que se aplica un filtro por vez y se cuenta:
  *
- * Un saldo que falta puede faltar de dos maneras distintas, y conviene no
- * mezclarlas porque el arreglo es distinto:
+ *   A  referencia = todas las emisiones · se cuentan todas          (composition-signal)
+ *   B  referencia sin mono-tipo · se cuentan todas
+ *   C  referencia sin mono-tipo · se cuentan solo los conduits
+ *   D  C + las dos ponderaciones de acuerdo                         (catalog)
  *
- *   REEMPLAZO   la celda vale el sénior entero → `loan_amount` apunta a la
- *               columna equivocada y hay que moverlo
- *   COMPLEMENTO la celda vale (sénior − loan_amount) → `loan_amount` está bien
- *               y lo que falta es el pari passu que se le suma
+ * Si A → D no cierra pasando por B y C, hay una diferencia que nadie identificó y
+ * el script lo dice en vez de dejar el hueco.
  *
- * Tysons Corner es del segundo tipo: los 2.460.000 que guardamos son de verdad
- * la rebanada de este trust, y lo que falta son los 706 millones del companion.
- * Mapear `loan_amount` a la columna del sénior lo "arreglaría" rompiendo el
- * significado de la métrica.
+ * LO QUE YA APARECIÓ HACIÉNDOLO
  *
- * QUÉ NO HACE ESTE ARCHIVO
- *
- * No cambia nada. Propone. La prueba de una propuesta es agregarle el patrón a
- * `columnMap.ts`, recosechar y ver si las identidades suben —sobre el corpus
- * entero, no sobre las emisiones que motivaron el cambio—. Esa distinción no es
- * teórica: un patrón que agregué para arreglar 144 préstamos rompió 13 en una
- * emisión que ya cerraba, y el neto positivo lo habría tapado.
+ * Una tercera diferencia, que era un defecto y no un parámetro: `cohortBenchmark`
+ * usaba la MISMA lista para mostrar la tabla y para calcular la distancia, y esa
+ * lista filtra los tipos ausentes en la emisión y marginales en la cohorte. Con
+ * eso el vector de referencia sumaba 0,985 en vez de 1, la distancia quedaba
+ * subestimada, y el 1,5% de masa sobrante se le asignaba a la última categoría del
+ * orden SQL. Sobre un caso sintético son 0,75 puntos de distancia — chico, pero
+ * sistemático y en una sola dirección. Ya está arreglado; esta corrida mide el
+ * resto.
  */
 
 import { closePool, ping, query } from "./client.js";
+import { aparte } from "./compositionDistance.js";
+import { CONCENTRACION_TIPO, pct } from "./cohortBenchmark.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -51,161 +50,148 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Cuán cerca tiene que estar la celda del valor implícito para contar. */
-const TOLERANCE = 0.01;
-/** Debajo de esto una coincidencia es ruido: hay muchos números chicos. */
-const MIN_MAGNITUDE = 100_000;
+const args = process.argv.slice(2);
+const iA = args.indexOf("--anada");
+const ANADA = iA === -1 ? String(new Date().getFullYear()) : args[iA + 1]!;
+const ALFA = 0.05;
 
-const money = (v: number) =>
-  v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v.toLocaleString("en-US");
+/** El mismo CASE que usan los dos scripts. Si diverge, la comparación no vale. */
+const CANON = `CASE
+    WHEN l.property_type ~* 'multifamily|cooperative|garden|low rise|mid rise|student' THEN 'Multifamily'
+    WHEN l.property_type ~* 'retail|anchored|single tenant' THEN 'Retail'
+    WHEN l.property_type ~* 'office|cbd|suburban|medical' THEN 'Office'
+    WHEN l.property_type ~* 'industrial|warehouse|flex' THEN 'Industrial'
+    WHEN l.property_type ~* 'storage' THEN 'Self Storage'
+    WHEN l.property_type ~* 'hospitality|hotel|service|extended stay' THEN 'Hospitality'
+    WHEN l.property_type ~* 'mixed' THEN 'Mixed Use'
+    WHEN l.property_type ~* 'manufactured' THEN 'Manufactured'
+    ELSE 'Sin clasificar'
+  END`;
 
-const fact = (alias: string, key: string) =>
-  `LEFT JOIN corpus.facts ${alias} ON ${alias}.loan_id = l.id ` +
-  `AND ${alias}.metric_key = '${key}' AND ${alias}.value ~ '^-?[0-9.]+$'`;
-
-const SENIOR =
-  "coalesce(sen.value::numeric, amt.value::numeric + coalesce(npp.value::numeric, 0))";
-const JOINS =
-  `${fact("dy", "debt_yield")} ${fact("noi", "noi_underwritten")} ` +
-  `${fact("amt", "loan_amount")} ${fact("npp", "balance_pari_passu_non_trust")} ` +
-  `${fact("sen", "balance_senior_total")}`;
-
-console.log(`\n${"═".repeat(78)}`);
-console.log("Reconciliador — qué columna vale lo que falta");
-console.log(`${"═".repeat(78)}`);
-
-const { rows: haveCells } = await query<{ n: string }>(
-  "SELECT count(*)::text AS n FROM corpus.unmapped_cells",
+const { rows } = await query<{ accession: string; nombre: string; tipo: string; n: string }>(
+  `SELECT l.accession, f.company_name AS nombre, ${CANON} AS tipo, count(*)::text AS n
+     FROM corpus.loans l
+     JOIN corpus.filings f ON f.accession = l.accession
+    WHERE l.property_type IS NOT NULL
+      AND extract(year FROM f.filed_at) = $1
+    GROUP BY l.accession, f.company_name, ${CANON}`,
+  [Number(ANADA)],
 );
-if (Number(haveCells[0]?.n ?? 0) === 0) {
-  console.log(
-    `\n  \x1b[33mNo hay celdas sin mapear guardadas.\x1b[0m\n` +
-      `  \x1b[90mCorré la migración y recosechá:\x1b[0m\n\n` +
-      `    npm run db:migrate\n` +
-      `    npm run harvest:batch -- --limit 300 --years 7 --refresh-stale\n`,
-  );
-  await closePool();
+await closePool();
+
+if (rows.length === 0) {
+  console.log(`\n  Sin emisiones en ${ANADA}.\n`);
   process.exit(0);
 }
 
-console.log(
-  `\n\x1b[90m  ${Number(haveCells[0]!.n).toLocaleString("en-US")} celdas numéricas de columnas sin mapear.\x1b[0m`,
-);
-console.log(
-  `\x1b[90m  Para cada préstamo cuyo debt yield no cierra, el saldo implícito es\x1b[0m`,
-);
-console.log(`\x1b[90m  NOI / debt yield publicado. Buscamos qué celda vale eso.\x1b[0m\n`);
+const tipos = [...new Set(rows.map((r) => r.tipo))].sort();
+interface Em { nombre: string; conteo: Map<string, number>; total: number }
+const ems = new Map<string, Em>();
+for (const r of rows) {
+  const e = ems.get(r.accession) ?? { nombre: r.nombre, conteo: new Map(), total: 0 };
+  e.conteo.set(r.tipo, Number(r.n));
+  e.total += Number(r.n);
+  ems.set(r.accession, e);
+}
+
+/** Mono-tipo con el mismo umbral que el benchmark: 80% en un solo tipo. */
+const esMono = (e: Em) =>
+  Math.max(...[...e.conteo.values()]) / Math.max(1, e.total) >= CONCENTRACION_TIPO;
+
+const vecP = (e: Em) => tipos.map((t) => (e.conteo.get(t) ?? 0) / Math.max(1, e.total));
+
+/** Referencia por préstamo: se juntan todos los préstamos de las emisiones dadas. */
+function refPorPrestamo(otras: Em[]) {
+  const acc = new Map<string, number>();
+  let total = 0;
+  for (const o of otras) {
+    for (const [t, n] of o.conteo) acc.set(t, (acc.get(t) ?? 0) + n);
+    total += o.total;
+  }
+  return tipos.map((t) => (acc.get(t) ?? 0) / Math.max(1, total));
+}
+
+/** Referencia por emisión: cada deal pesa igual. */
+const refPorEmision = (otras: Em[]) =>
+  tipos.map((t) => {
+    const s = otras.reduce((x, o) => x + (o.conteo.get(t) ?? 0) / Math.max(1, o.total), 0);
+    return s / Math.max(1, otras.length);
+  });
 
 /**
- * Los préstamos que fallan, con su saldo implícito y el faltante.
- *
- * `implicito` es el denominador que haría cerrar la cuenta; `faltante` es lo que
- * habría que sumarle al saldo que ya tenemos para llegar ahí. Cada uno se busca
- * por separado porque distinguen reemplazo de complemento.
+ * Un paso de la descomposición: qué emisiones dan significativo con esta
+ * referencia y este universo de conteo.
  */
-const FAILING = `
-  SELECT l.id AS loan_id,
-         (noi.value::numeric / NULLIF(dy.value::numeric, 0)) AS implicito,
-         (noi.value::numeric / NULLIF(dy.value::numeric, 0)) - ${SENIOR} AS faltante
-    FROM corpus.loans l
-    ${JOINS}
-   WHERE dy.value IS NOT NULL AND noi.value IS NOT NULL AND amt.value IS NOT NULL
-     AND amt.value::numeric <> 0 AND dy.value::numeric <> 0
-     AND abs((noi.value::numeric / NULLIF(${SENIOR}, 0))
-             / NULLIF(dy.value::numeric, 0) - 1) > ${TOLERANCE}
-`;
-
-interface Candidate {
-  header: string;
-  loans: string;
-  filings: string;
-  ejemplo_valor: string;
-  ejemplo_implicito: string;
+function paso(refSinMono: boolean, contarSoloConduits: boolean, exigirRobusto: boolean) {
+  const sig = new Set<string>();
+  for (const [acc, e] of ems) {
+    if (contarSoloConduits && esMono(e)) continue;
+    const otras = [...ems]
+      .filter(([a]) => a !== acc)
+      .map(([, o]) => o)
+      .filter((o) => !refSinMono || !esMono(o));
+    const p = vecP(e);
+    const pPre = aparte(p, refPorPrestamo(otras), e.total).p;
+    if (pPre >= ALFA) continue;
+    if (exigirRobusto) {
+      const pEm = aparte(p, refPorEmision(otras), e.total).p;
+      if (pEm >= ALFA !== (pPre >= ALFA)) continue;
+    }
+    sig.add(e.nombre);
+  }
+  return sig;
 }
 
-async function candidatesFor(
-  columna: "implicito" | "faltante",
-): Promise<Candidate[]> {
-  const { rows } = await query<Candidate>(
-    `WITH fallan AS (${FAILING})
-     SELECT uc.header,
-            count(DISTINCT uc.loan_id)::text     AS loans,
-            count(DISTINCT l.accession)::text    AS filings,
-            max(uc.value_num)::text              AS ejemplo_valor,
-            max(f.${columna})::text              AS ejemplo_implicito
-       FROM fallan f
-       JOIN corpus.unmapped_cells uc ON uc.loan_id = f.loan_id
-       JOIN corpus.loans l ON l.id = f.loan_id
-      WHERE f.${columna} > ${MIN_MAGNITUDE}
-        AND abs(uc.value_num / NULLIF(f.${columna}, 0) - 1) <= ${TOLERANCE}
-      GROUP BY uc.header
-      ORDER BY count(DISTINCT uc.loan_id) DESC
-      LIMIT 10`,
-  );
-  return rows;
-}
+const universo = (soloConduits: boolean) =>
+  [...ems.values()].filter((e) => !soloConduits || !esMono(e)).length;
 
-const bloques: Array<{ titulo: string; nota: string; col: "implicito" | "faltante" }> = [
-  {
-    titulo: "REEMPLAZO — la celda vale el sénior entero",
-    nota: "loan_amount apunta a la columna equivocada. Mover el mapeo.",
-    col: "implicito",
-  },
-  {
-    titulo: "COMPLEMENTO — la celda vale lo que le falta al saldo",
-    nota: "loan_amount está bien; falta el pari passu que se le suma.",
-    col: "faltante",
-  },
+const A = paso(false, false, false);
+const B = paso(true, false, false);
+const C = paso(true, true, false);
+const D = paso(true, true, true);
+
+console.log(`\n${"═".repeat(78)}`);
+console.log(`Por qué 13 y 8 son el mismo dato — cohorte ${ANADA}`);
+console.log(`${"═".repeat(78)}\n`);
+console.log(
+  `  ${ems.size} emisiones · ${[...ems.values()].filter(esMono).length} mono-tipo ` +
+    `(≥ ${pct(CONCENTRACION_TIPO)} en un tipo)\n`,
+);
+console.log(`  paso                                            de          cuenta   cambio`);
+console.log(`  ${"─".repeat(74)}`);
+
+const filas: Array<{ et: string; s: Set<string>; n: number }> = [
+  { et: "A  ref = todas · cuenta todas", s: A, n: universo(false) },
+  { et: "B  ref sin mono-tipo", s: B, n: universo(false) },
+  { et: "C  + cuenta solo conduits", s: C, n: universo(true) },
+  { et: "D  + ponderaciones de acuerdo", s: D, n: universo(true) },
 ];
-
-let algunaPropuesta = false;
-
-for (const b of bloques) {
-  const rows = await candidatesFor(b.col);
-  console.log(`${"─".repeat(78)}`);
-  console.log(b.titulo);
-  console.log(`${"─".repeat(78)}`);
-  console.log(`\x1b[90m  ${b.nota}\x1b[0m\n`);
-
-  if (rows.length === 0) {
-    console.log(`  \x1b[90mNinguna columna sin mapear coincide.\x1b[0m\n`);
-    continue;
+let prev: Set<string> | null = null;
+for (const f of filas) {
+  const d = prev === null ? "" : `${f.s.size - prev.size >= 0 ? "+" : ""}${f.s.size - prev.size}`;
+  console.log(
+    `  ${f.et.padEnd(46)} ${String(f.n).padStart(3)}      ${String(f.s.size).padStart(6)}   ${d.padStart(6)}`,
+  );
+  if (prev) {
+    for (const x of [...prev].filter((v) => !f.s.has(v))) {
+      console.log(`  \x1b[90m    − ${x.slice(0, 50)}\x1b[0m`);
+    }
+    for (const x of [...f.s].filter((v) => !prev!.has(v))) {
+      console.log(`  \x1b[90m    + ${x.slice(0, 50)}\x1b[0m`);
+    }
   }
-
-  algunaPropuesta = true;
-  for (const r of rows) {
-    console.log(
-      `  ${String(r.loans).padStart(4)} préstamos · ${String(r.filings).padStart(2)} emisiones  \x1b[1m${r.header}\x1b[0m`,
-    );
-    console.log(
-      `       \x1b[90mej.: la celda vale ${money(Number(r.ejemplo_valor))} y hacía falta ${money(Number(r.ejemplo_implicito))}\x1b[0m`,
-    );
-  }
-  console.log();
+  prev = f.s;
 }
 
-console.log(`${"─".repeat(78)}`);
-if (algunaPropuesta) {
-  console.log(
-    `\n  \x1b[90mCada línea es una propuesta de mapeo derivada de la aritmética, no del\x1b[0m`,
-  );
-  console.log(
-    `  \x1b[90mnombre del encabezado. La prueba es agregar el patrón, recosechar y\x1b[0m`,
-  );
-  console.log(
-    `  \x1b[90mcorrer db:identities — mirando el total del corpus, no las emisiones\x1b[0m`,
-  );
-  console.log(`  \x1b[90mque motivaron el cambio.\x1b[0m\n`);
-} else {
-  console.log(
-    `\n  \x1b[33mNingún saldo implícito coincide con una celda sin mapear.\x1b[0m`,
-  );
-  console.log(
-    `  \x1b[90mEl número que falta no está impreso en esa fila del Annex A: puede\x1b[0m`,
-  );
-  console.log(
-    `  \x1b[90mvenir de otra tabla del documento, o el emisor no lo publica.\x1b[0m\n`,
-  );
-}
-
-await closePool();
+console.log(
+  `\n  \x1b[90mA es la definición de db:composition-signal. D es la de db:catalog.\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mSi los conteos que imprimen esos dos scripts no coinciden con A y D,\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mqueda una diferencia sin identificar y esta descomposición no cierra.\x1b[0m`,
+);
+console.log(
+  `\n  \x1b[1mCorré los dos y compará:\x1b[0m npm run db:composition-signal · npm run db:catalog\n`,
+);

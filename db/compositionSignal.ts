@@ -38,6 +38,7 @@
 
 import { closePool, ping, query } from "./client.js";
 import { pct } from "./cohortBenchmark.js";
+import { aparte, SIMULACIONES, tv } from "./compositionDistance.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -50,23 +51,9 @@ const args = process.argv.slice(2);
 const iA = args.indexOf("--anada");
 const ANADA = iA === -1 ? String(new Date().getFullYear()) : args[iA + 1]!;
 
-/** Fijados antes de mirar. */
-const SIMULACIONES = 4000;
+/** Fijado antes de mirar. Las simulaciones y la semilla viven en el módulo. */
 const ALFA = 0.05;
 
-/**
- * Generador con semilla, para que la misma corrida dé el mismo resultado.
- *
- * Un p-valor que cambia entre corridas no se puede citar, y el proyecto ya usa
- * semilla fija en los bootstrap por la misma razón.
- */
-function rng(semilla: number) {
-  let s = semilla >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
 
 /** Las categorías gruesas, las mismas que usa el benchmark. */
 const CANON = `CASE
@@ -117,10 +104,6 @@ console.log(
 );
 console.log(`  emisión                            pool   distancia   nulo p50   p-valor`);
 console.log(`  ${"─".repeat(74)}`);
-
-/** Variación total entre dos vectores de proporciones. */
-const tv = (a: number[], b: number[]) =>
-  0.5 * a.reduce((s, x, i) => s + Math.abs(x - b[i]!), 0);
 
 let significativas = 0;
 const detalle: Array<{ nombre: string; d: number; p: number; pool: number }> = [];
@@ -174,48 +157,19 @@ for (const [accession, e] of porEmision) {
   });
   const dEmision = tv(p, qEmision);
 
-  // Acumulada de q, para muestrear.
-  const acum: number[] = [];
-  q.reduce((s, x) => (acum.push(s + x), s + x), 0);
-
-  const rand = rng(0xc0ffee);
-  const sim: number[] = [];
-  for (let b = 0; b < SIMULACIONES; b++) {
-    const c = new Array(tipos.length).fill(0);
-    for (let k = 0; k < e.total; k++) {
-      const u = rand();
-      let i = acum.findIndex((a) => u < a);
-      if (i < 0) i = tipos.length - 1;
-      c[i]++;
-    }
-    sim.push(tv(c.map((x) => x / e.total), q));
+  const porPrestamo = aparte(p, q, e.total);
+  const nuloP50 = porPrestamo.nulo;
+  const pVal = porPrestamo.p;
+  if (pVal < ALFA) {
+    significativas++;
+    porPrestamoSig.add(e.nombre);
   }
-  sim.sort((a, b) => a - b);
-  const nuloP50 = sim[Math.floor(sim.length / 2)]!;
-  const pVal = sim.filter((x) => x >= dObs).length / sim.length;
-  if (pVal < ALFA) significativas++;
-  if (pVal < ALFA) porPrestamoSig.add(e.nombre);
 
   /**
-   * El nulo se simula contra qEmision, no se reusa el de arriba: cambiar la
-   * referencia cambia también qué distancias produce el azar.
+   * El nulo se resimula adentro de `aparte`: cambiar la referencia cambia también
+   * qué distancias produce el azar.
    */
-  const acumE: number[] = [];
-  qEmision.reduce((x, v) => (acumE.push(x + v), x + v), 0);
-  const randE = rng(0xc0ffee);
-  const simE: number[] = [];
-  for (let b = 0; b < SIMULACIONES; b++) {
-    const c = new Array(tipos.length).fill(0);
-    for (let k = 0; k < e.total; k++) {
-      const u = randE();
-      let i = acumE.findIndex((a) => u < a);
-      if (i < 0) i = tipos.length - 1;
-      c[i]++;
-    }
-    simE.push(tv(c.map((x) => x / e.total), qEmision));
-  }
-  const pE = simE.filter((x) => x >= dEmision).length / simE.length;
-  if (pE < ALFA) porEmisionSig.add(e.nombre);
+  if (aparte(p, qEmision, e.total).p < ALFA) porEmisionSig.add(e.nombre);
   detalle.push({ nombre: e.nombre, d: dObs, p: pVal, pool: e.total });
 
   const marca = pVal < ALFA ? "\x1b[32m" : "\x1b[90m";

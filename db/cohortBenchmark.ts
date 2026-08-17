@@ -20,6 +20,7 @@
  */
 
 import { query } from "./client.js";
+import { aparte } from "./compositionDistance.js";
 
 /** Fijados antes de ver ningún dato. */
 export const MIN_PARES = 15;
@@ -145,23 +146,6 @@ export interface Benchmark {
   /** true si las dos ponderaciones dan el mismo veredicto al 5%. */
   robusto: boolean;
 }
-
-/** Variación total: la mitad de la suma de diferencias absolutas. */
-const tv = (a: number[], b: number[]) =>
-  0.5 * a.reduce((x, v, i) => x + Math.abs(v - b[i]!), 0);
-
-/**
- * Generador con semilla: un p-valor que cambia entre corridas no se puede citar.
- */
-function rng(semilla: number) {
-  let s = semilla >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
-const SIMULACIONES = 4000;
 
 /**
  * Las emisiones disponibles, con lo necesario para decidir quién entra a la
@@ -393,8 +377,7 @@ export async function calcularBenchmark(
     [accessions, objetivo.accession],
   );
 
-  const composicion: Composicion[] = mezcla
-    .map((r) => {
+  const filaComp = (r: { tipo: string; propio: string | null; cohorte: string | null }) => {
       const propio = Number(r.propio ?? 0);
       const cohorte = Number(r.cohorte ?? 0);
       const diferencia = propio - cohorte;
@@ -417,9 +400,33 @@ export async function calcularBenchmark(
         /** Cuántos préstamos explican la diferencia, que no es lo mismo que `prestamos`. */
         prestamosDif: Math.round(Math.abs(diferencia) / punto),
       };
-    })
-    // Un tipo ausente en esta emisión y marginal en la cohorte no informa nada.
-    .filter((r) => r.propio > 0 || r.cohorte >= 0.02);
+  };
+
+  /**
+   * EL FILTRO DE PRESENTACIÓN NO PUEDE TOCAR EL VECTOR DEL ESTADÍSTICO.
+   *
+   * Había una sola lista: se filtraban los tipos ausentes y marginales, y esa
+   * misma lista filtrada alimentaba la distancia. Con eso, un tipo con 0% en la
+   * emisión y 1,5% en la cohorte desaparecía del vector, y pasaban dos cosas.
+   *
+   * La distancia quedaba SUBESTIMADA, porque esa diferencia de 1,5 puntos era
+   * real y dejaba de sumarse.
+   *
+   * Y el nulo quedaba mal de una forma peor: la acumulada de q terminaba en 0,985
+   * en vez de 1, así que el 1,5% de los sorteos caía fuera de rango y el
+   * `if (i < 0) i = q.length - 1` se lo asignaba a la ÚLTIMA categoría del orden.
+   * Una masa de probabilidad que pertenecía a un tipo terminaba en otro, elegido
+   * por cómo ordenaba el SQL.
+   *
+   * Ninguna de las dos cosas se nota mirando el resultado: la distancia sigue
+   * pareciendo razonable y el p-valor sigue saliendo. Apareció reconciliando por
+   * qué este archivo cuenta 8 emisiones distintas y `db:composition-signal`
+   * cuenta 13.
+   *
+   * Ahora son dos listas: `paraMostrar` se filtra, `composicionCompleta` no.
+   */
+  const composicionCompleta: Composicion[] = mezcla.map(filaComp);
+  const composicion = composicionCompleta.filter((r) => r.propio > 0 || r.cohorte >= 0.02);
 
   /**
    * ¿Se aparta la mezcla más de lo que produce el azar?
@@ -433,69 +440,35 @@ export async function calcularBenchmark(
    * referencia hacia multifamily y haría que todos los conduits parecieran
    * apartarse en la misma dirección.
    */
-  const conMezcla = composicion.filter((c) => c.propio > 0 || c.cohorte > 0);
+  const conMezcla = composicionCompleta;
   const pVec = conMezcla.map((c) => c.propio);
   const qVec = conMezcla.map((c) => c.cohorte);
-  const distancia = tv(pVec, qVec);
-
-  const acum: number[] = [];
-  qVec.reduce((x, v) => (acum.push(x + v), x + v), 0);
-  const rand = rng(0xc0ffee);
-  const sim: number[] = [];
-  for (let b = 0; b < SIMULACIONES; b++) {
-    const c = new Array(qVec.length).fill(0);
-    for (let k = 0; k < objetivo.pool; k++) {
-      const u = rand();
-      let i = acum.findIndex((a) => u < a);
-      if (i < 0) i = qVec.length - 1;
-      c[i]++;
-    }
-    sim.push(tv(c.map((x) => x / objetivo.pool), qVec));
-  }
-  sim.sort((a, b) => a - b);
+  const porPrestamo = aparte(pVec, qVec, objetivo.pool);
 
   /**
    * La misma medición con la referencia ponderada por emisión.
    *
-   * El nulo se resimula: cambiar la referencia cambia también qué distancias
-   * produce el azar, así que reusar el anterior compararía contra el nulo
-   * equivocado.
+   * El nulo se resimula adentro de `aparte`: cambiar la referencia cambia también
+   * qué distancias produce el azar, así que reusar el anterior compararía contra
+   * el nulo equivocado.
    */
-  const qEmision = conMezcla.map((_, i) => {
-    const suma = pares.reduce((x, par) => {
-      const t = conMezcla[i]!.tipo;
-      const propioPar = composicionDe.get(par.accession)?.get(t) ?? 0;
-      return x + propioPar;
-    }, 0);
+  const qEmision = conMezcla.map((c) => {
+    const suma = pares.reduce(
+      (x, par) => x + (composicionDe.get(par.accession)?.get(c.tipo) ?? 0),
+      0,
+    );
     return suma / Math.max(1, pares.length);
   });
-  const dEmision = tv(pVec, qEmision);
-
-  const acumE: number[] = [];
-  qEmision.reduce((x, v) => (acumE.push(x + v), x + v), 0);
-  const randE = rng(0xc0ffee);
-  const simE: number[] = [];
-  for (let b = 0; b < SIMULACIONES; b++) {
-    const c = new Array(qEmision.length).fill(0);
-    for (let k = 0; k < objetivo.pool; k++) {
-      const u = randE();
-      let i = acumE.findIndex((a) => u < a);
-      if (i < 0) i = qEmision.length - 1;
-      c[i]++;
-    }
-    simE.push(tv(c.map((x) => x / objetivo.pool), qEmision));
-  }
-  const pValor = sim.filter((x) => x >= distancia).length / sim.length;
-  const pValorPorEmision = simE.filter((x) => x >= dEmision).length / simE.length;
+  const porEmision = aparte(pVec, qEmision, objetivo.pool);
 
   return {
     ...base,
     metricas,
     composicion,
-    distancia,
-    distanciaNulo: sim[Math.floor(sim.length / 2)]!,
-    pValor,
-    pValorPorEmision,
-    robusto: pValor < 0.05 === pValorPorEmision < 0.05,
+    distancia: porPrestamo.distancia,
+    distanciaNulo: porPrestamo.nulo,
+    pValor: porPrestamo.p,
+    pValorPorEmision: porEmision.p,
+    robusto: porPrestamo.p < 0.05 === porEmision.p < 0.05,
   };
 }
