@@ -1,17 +1,31 @@
 /**
  * Contra qué corpus se emitió este veredicto, y si caducó.
  *
- * POR QUÉ EXISTE
+ * POR QUÉ EXISTE, Y LA HISTORIA CORREGIDA
  *
- * `db:power` decía que la muestra no podía detectar el efecto afirmado. El corpus
- * creció, el MDE bajó de más de 10,5% a 6,7%, y ese veredicto pasó a decir lo
- * contrario — pero nadie lo releyó, así que `docs/hallazgo-suscripcion.md` siguió
- * atribuyéndole la muerte del hallazgo a una herramienta cuyo veredicto ya se
- * había dado vuelta.
+ * La primera versión de este comentario decía que el veredicto de `db:power` había
+ * caducado: que el MDE superaba al efecto afirmado y se dio vuelta al crecer el
+ * corpus. Eso es falso — el MDE era 6,6% cuando se escribió el documento y es 6,7%
+ * hoy, y `docs/hallazgo-suscripcion.md` ya lo decía bien en una sección titulada
+ * "Qué NO explica el fracaso".
  *
- * El problema no fue el cálculo: fue que un veredicto que depende del tamaño del
- * corpus no avisa cuando el corpus cambia. Dos de los ocho errores de esta sesión
- * son de esa forma, y buscarlos de uno en uno no evita el noveno.
+ * Lo que pasó de verdad es más simple y más incómodo: los resúmenes de trabajo que
+ * se escribieron alrededor del documento afirmaban que las hipótesis murieron "por
+ * falta de potencia", cuando el documento decía lo contrario. Y al auditarlo se
+ * inventó una historia de caducidad para explicar la discrepancia, sin haber leído
+ * la sección que la resolvía.
+ *
+ * Así que el módulo sigue valiendo, por una razón distinta de la que decía:
+ *
+ * Un número que depende de la muestra y se cita sin decir contra qué muestra se
+ * midió no se puede verificar. Nadie podía chequear "MDE 6,7%" sin volver a
+ * correrlo, y esa fricción es la que permitió que un resumen dijera una cosa y el
+ * documento otra durante semanas. La estampa no evita el error de lectura, pero lo
+ * hace comprobable en una línea.
+ *
+ * Y el registro de umbrales resuelve un problema real distinto: hay seis números
+ * arbitrarios repartidos en cinco archivos, con tres tipos de justificación muy
+ * distinta, y hasta ahora eso no estaba escrito en ningún lado.
  *
  * QUÉ HACE, Y QUÉ NO
  *

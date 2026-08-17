@@ -308,19 +308,22 @@ console.log(
  * hallazgo que la refuta porque nadie relee lo que quedó alrededor del cambio.
  */
 /**
- * LA CONCLUSIÓN DEPENDE DEL FACTOR, Y EL FACTOR CAMBIÓ.
+ * LA RECOMENDACIÓN SE CALCULA, NO SE AFIRMA.
  *
- * Este bloque afirmaba que "la salida no es más muestra" y que llegar al n
- * necesario "no es cuestión de cosechar más trusts". Se escribió cuando el factor
- * era mucho mayor; con el corpus de hoy es 2x, y a 2x cosechar más sí puede
- * alcanzar.
+ * Este bloque decía que "la salida no es más muestra" y que llegar al n necesario
+ * "no es cuestión de cosechar más trusts". El factor real es 2x, y
+ * `docs/hallazgo-suscripcion.md` ya decía que 2x es alcanzable —enumerando de
+ * dónde saldría: cobertura del 10-D del 26-48%, 176 préstamos sin pegar, seis
+ * emisiones BANK sin años completos, y las añadas 2025-2026 sin madurar—.
  *
- * Peor: el veredicto de arriba ahora dice que el efecto afirmado SUPERA el piso de
- * ruido, o sea que esa hipótesis no murió por falta de potencia sino porque el
- * efecto no está. El proyecto viene resumiendo "cinco hipótesis muertas por falta
- * de potencia" y para esta el propio verificador dice otra cosa.
+ * O sea que el script y el documento se contradecían, y el documento tenía razón.
+ * Ahora la recomendación se deriva del factor en vez de estar escrita a mano, que
+ * es lo que evita que vuelvan a divergir.
  *
- * Así que la recomendación se calcula en vez de afirmarse.
+ * (Una versión anterior de este comentario decía que el factor "era mucho mayor"
+ * cuando se escribió el texto viejo. Eso no está verificado: el documento registra
+ * un MDE de 6,6% y un factor de 2x desde el principio. La contradicción era entre
+ * dos textos, no entre dos épocas.)
  */
 if (factor <= 3) {
   console.log(
