@@ -340,27 +340,64 @@ if (args.includes("--todas")) {
     );
   }
 
-  console.log(`\n${"─".repeat(78)}\n`);
-  console.log(`  Por métrica — cuántas emisiones se apartan del rango intercuartil:\n`);
-  for (const [etiqueta, e] of fueraPorMetrica) {
-    const share = e.eval ? e.fuera / e.eval : 0;
-    console.log(
-      `    ${etiqueta.padEnd(14)} ${String(e.fuera).padStart(3)} de ${String(e.eval).padStart(3)}   ` +
-        `${share >= 0.4 ? "\x1b[32m" : share >= 0.2 ? "\x1b[33m" : "\x1b[31m"}${pct(share)}\x1b[0m`,
-    );
-  }
+  console.log(`\n${"─".repeat(78)}`);
 
+  /**
+   * EL VALOR NULO ES 50%, NO CERO.
+   *
+   * El rango intercuartil contiene el 50% de una distribución por definición. Si
+   * esta emisión es intercambiable con sus pares, la probabilidad de caer afuera
+   * del rango de los otros es 50%. Un 50% observado no es señal: es exactamente
+   * lo que predice el azar.
+   *
+   * La primera versión comparaba contra 0,25 —un umbral que escribí antes de
+   * medir, sin preguntarme cuál era el valor esperado bajo la nula— e imprimió
+   * "la tabla distingue" ante el resultado que significa justo lo contrario.
+   * Sexto veredicto de esta sesión calculado contra la referencia equivocada.
+   *
+   * Ahora el contraste es contra 50% con su error estándar. Con n emisiones,
+   * SE = sqrt(0,25/n): con 28 son 9,4 puntos, así que hace falta salirse de
+   * 50 ± 19 para afirmar algo con dos errores estándar.
+   */
   const share = totalEval ? totalFuera / totalEval : 0;
+  const n = cohorte.length;
+  const se = Math.sqrt(0.25 / Math.max(1, n));
+  const z = (share - 0.5) / se;
+
   console.log(
     `\n  \x1b[1m${totalFuera} de ${totalEval} mediciones fuera del rango (${pct(share)})\x1b[0m`,
   );
   console.log(
-    share < 0.25
-      ? `\n  \x1b[31mLa tabla de métricas casi no distingue emisiones.\x1b[0m Por construcción el 50%\n` +
-          `  de una distribución cae en el rango intercuartil; si el observado no supera\n` +
-          `  eso, la mitad de la página es decorativa y lo que informa es la composición.`
-      : `\n  \x1b[32mLa tabla de métricas distingue.\x1b[0m Contra el 50% que caería adentro por\n` +
-          `  construcción, ${pct(share)} afuera es señal y no ruido de muestreo.`,
+    `  \x1b[90mBajo azar puro se esperaría 50%: el rango intercuartil contiene la mitad de\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90muna distribución por definición. Con ${n} emisiones, SE = ${pct(se, 1)} y el\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mobservado está a ${z.toFixed(2)} errores estándar de la nula.\x1b[0m`,
+  );
+
+  console.log(`\n  Por métrica, contra la nula de 50%:\n`);
+  for (const [etiqueta, e] of fueraPorMetrica) {
+    const sh = e.eval ? e.fuera / e.eval : 0;
+    const seM = Math.sqrt(0.25 / Math.max(1, e.eval));
+    const zM = (sh - 0.5) / seM;
+    console.log(
+      `    ${etiqueta.padEnd(14)} ${String(e.fuera).padStart(3)} de ${String(e.eval).padStart(3)}   ` +
+        `${pct(sh).padStart(4)}   ` +
+        `${Math.abs(zM) >= 2 ? "\x1b[32m" : "\x1b[90m"}z = ${zM >= 0 ? "+" : ""}${zM.toFixed(2)}\x1b[0m` +
+        (Math.abs(zM) >= 2 ? "" : `  \x1b[90mindistinguible del azar\x1b[0m`),
+    );
+  }
+
+  console.log(
+    Math.abs(z) < 2
+      ? `\n  \x1b[31mLa tabla de métricas no distingue emisiones.\x1b[0m El resultado es\n` +
+          `  indistinguible de tomar una emisión al azar de la cohorte, así que las seis\n` +
+          `  filas con su barra no informan más que una línea diciendo "los términos son\n` +
+          `  de mercado". Lo que sí varía entre emisiones es la composición.`
+      : `\n  \x1b[32mLa tabla distingue:\x1b[0m ${pct(share)} contra la nula de 50% son ${z.toFixed(1)}\n` +
+          `  errores estándar, más de lo que explica el muestreo.`,
   );
   console.log(`\n  ${cohorte.length} páginas en ${dir}\n`);
   await closePool();
