@@ -726,22 +726,52 @@ if (AUDITORIA) {
     );
   }
 
-  /** El hueco: tramos de conteo bajo sin ninguna fila. */
-  const presentes = new Set(histo.map((h) => h.tramo.trim()));
-  const vacios: number[] = [];
-  for (let k = 1; k <= 10; k++) if (!presentes.has(String(k))) vacios.push(k);
+  /**
+   * EL HUECO TIENE QUE SER CONTIGUO Y ESTAR ENTRE LAS DOS POBLACIONES.
+   *
+   * La versión anterior juntaba todos los tramos vacíos y reportaba mínimo y
+   * máximo como si fueran un rango. Sobre el corpus completo los vacíos son
+   * {1, 2, 8} y eso imprimió "hay hueco entre 1 y 8, corré el umbral a 8" —
+   * falso: entre 3 y 7 hay 51 filas que ese corte habría eliminado.
+   *
+   * Dos defectos distintos en la misma línea. Los tramos por debajo del mínimo
+   * poblado no son un hueco, son el piso de la distribución. Y un solo tramo
+   * vacío entre vecinos poblados no separa poblaciones: es ruido de conteo.
+   *
+   * Es el quinto veredicto de esta sesión calculado sobre un conjunto que no es
+   * el que la frase describe. La tabla estuvo bien las cinco veces.
+   */
+  const presentes = new Set(
+    histo.map((h) => h.tramo.trim()).filter((t) => /^\d+$/.test(t)).map(Number),
+  );
+  const piso = Math.min(...presentes);
+  const techo = Math.max(...presentes);
+
+  /** La corrida contigua de tramos vacíos más larga, solo entre piso y techo. */
+  let mejor: number[] = [];
+  let actual: number[] = [];
+  for (let k = piso; k <= techo; k++) {
+    if (presentes.has(k)) {
+      if (actual.length > mejor.length) mejor = actual;
+      actual = [];
+    } else actual.push(k);
+  }
+  if (actual.length > mejor.length) mejor = actual;
+
+  const vacios = [...Array(10).keys()].map((k) => k + 1).filter((k) => !presentes.has(k));
   console.log(
-    `\n    \x1b[90mSin filas en: ${vacios.length ? vacios.join(", ") : "ningún conteo de 1 a 10"} observations.\x1b[0m`,
+    `\n    \x1b[90mSin filas en: ${vacios.length ? vacios.join(", ") : "ningún conteo de 1 a 10"}.` +
+      ` Población más flaca: ${piso} observations.\x1b[0m`,
   );
   console.log(
-    vacios.length >= 3
-      ? `    \x1b[32mHay hueco entre ${Math.min(...vacios)} y ${Math.max(...vacios)}.\x1b[0m` +
-          ` El umbral actual es 3 y está pegado al borde de\n` +
-          `    la población fantasma. Corriéndolo a ${Math.max(...vacios)} se descartan sin tocar\n` +
-          `    ninguna fila del otro lado.`
-      : `    \x1b[33mSin hueco claro: cualquier umbral por conteo corta en zona poblada.\x1b[0m\n` +
-          `    \x1b[33mHabría que descartar por otra señal —fila sin nombre ni saldo— y no\x1b[0m\n` +
-          `    \x1b[33mpor cantidad de observations.\x1b[0m`,
+    mejor.length >= 3
+      ? `    \x1b[32mHueco contiguo en ${mejor[0]}-${mejor[mejor.length - 1]}:\x1b[0m las dos poblaciones están\n` +
+          `    separadas y el umbral puede ir adentro sin cortar filas reales.`
+      : `    \x1b[33mNo hay hueco: el vacío contiguo más largo es de ${mejor.length} tramo(s).\x1b[0m\n` +
+          `    \x1b[33mLa distribución es continua desde ${piso}, así que cualquier umbral por\x1b[0m\n` +
+          `    \x1b[33mconteo corta en zona poblada. El criterio correcto es estructural:\x1b[0m\n` +
+          `    \x1b[33muna fila sin nombre y sin saldo no es un préstamo, tenga 3 o 30\x1b[0m\n` +
+          `    \x1b[33mobservations.\x1b[0m`,
   );
 
   console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);
