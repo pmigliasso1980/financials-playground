@@ -132,8 +132,21 @@ for (const e of emisiones.slice(0, N)) {
       if (puntuadas.length < 2) continue;
 
       const max = Math.max(...puntuadas.map((x) => x.s));
-      // Encabezados idénticos repetidos no son ambigüedad: son la misma columna.
-      const ganadoras = [...new Set(puntuadas.filter((x) => x.s === max).map((x) => x.h))];
+      /**
+       * Encabezados repetidos no son ambigüedad: son la misma columna en dos
+       * bloques. La comparación ignora espacios y mayúsculas porque el Annex A
+       * trae "# of Properties" en un bloque y "#of Properties" en otro — un
+       * espacio de diferencia que la sonda reportaba como métrica ambigua.
+       *
+       * Es un falso positivo mío, no un defecto de la taxonomía: las dos
+       * columnas contienen lo mismo y da igual cuál gane.
+       */
+      const clave = (h: string) => h.replace(/\s+/g, "").toLowerCase();
+      const porClave = new Map<string, string>();
+      for (const x of puntuadas.filter((x) => x.s === max)) {
+        if (!porClave.has(clave(x.h))) porClave.set(clave(x.h), x.h);
+      }
+      const ganadoras = [...porClave.values()];
       if (ganadoras.length < 2) continue;
 
       propios.push({ metrica: spec.key, score: max, headers: ganadoras, emision: e.nombre });

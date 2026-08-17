@@ -498,6 +498,37 @@ if (AUDITORIA) {
       GROUP BY f.company_name HAVING count(*) > 1`,
     [accs],
   );
+  /**
+   * Las categorías de property_type que hay guardadas.
+   *
+   * Hasta la taxonomía 2026.08.11, "General Property Type" y "Detailed Property
+   * Type" empataban y ganaba la que quedara primero tras el join. Si en alguna
+   * emisión ganó la detallada, acá tienen que aparecer categorías finas
+   * ("Anchored Retail", "Limited Service") mezcladas con las gruesas.
+   *
+   * Es el control de que el arreglo sirvió para algo: una lista corta de
+   * categorías gruesas significa que ahora todas las emisiones usan la misma
+   * taxonomía. Una lista larga con variantes significa que sigue mezclado.
+   */
+  const { rows: cats } = await query<{ tipo: string; n: string; emisiones: string }>(
+    `SELECT coalesce(property_type, '(sin tipo)') AS tipo,
+            count(*)::text AS n,
+            count(DISTINCT accession)::text AS emisiones
+       FROM corpus.loans WHERE accession = ANY($1)
+      GROUP BY 1 ORDER BY count(*) DESC`,
+    [accs],
+  );
+  console.log(`\n  Categorías de property_type en la cohorte — ${cats.length} distintas\n`);
+  for (const c of cats) {
+    console.log(
+      `    ${c.tipo.slice(0, 34).padEnd(36)} ${String(c.n).padStart(4)} préstamos` +
+        ` \x1b[90men ${c.emisiones} emisiones\x1b[0m` +
+        (Number(c.emisiones) === 1 && Number(c.n) >= 3
+          ? `  \x1b[33m← solo en una: ¿taxonomía distinta?\x1b[0m`
+          : ""),
+    );
+  }
+
   console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);
   if (dups.length === 0) {
     console.log(`    \x1b[32mNinguna: ${cohorte.length} nombres distintos en ${cohorte.length} emisiones.\x1b[0m`);
