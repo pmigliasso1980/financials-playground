@@ -58,6 +58,26 @@
  * alrededor de cero en vez de alrededor de la media del nulo, así que con todas
  * las réplicas iguales a la observada imprimía "3,84 pp" —el tamaño del efecto—
  * y se leía como un nulo sano.
+ *
+ * Y EL TEST AGRUPADO TAMPOCO ALCANZA
+ *
+ * La primera corrida sobre el corpus dio 0,26 pp de diferencia y p = 0,86: ninguna
+ * señal de que el filtro seleccione por desempeño. Pero la tabla por originador
+ * mostraba a LMF subiendo y a WFB bajando, y las dos cosas eran ciertas: una
+ * diferencia agrupada suma efectos de signo opuesto y los cancela.
+ *
+ * Un test que no puede distinguir "no hay selección" de "hay selección en las dos
+ * direcciones" no sirve para autorizar los SIR, que se calculan de a un originador
+ * por vez. Así que la pregunta agrupada se conserva —contesta algo, y es lo que
+ * hay que saber sobre el corpus entero— pero la que decide es la de heterogeneidad.
+ *
+ * Calibración de esa segunda, 30 corridas por escenario:
+ *
+ *   falta al azar, sin efecto                        → Q 3/30 · agrupado 0/30
+ *   efecto de 4 pp igual en todos los vendedores     → Q 30/30 · agrupado 30/30
+ *   efecto de +4 y −4 pp que se cancela              → Q 29/30 · agrupado 3/30
+ *
+ * La tercera fila es el corpus.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -406,59 +426,171 @@ console.log(
 );
 
 // ---------------------------------------------------------------------------
-// 4. Por originador: ¿a quién le cambia la tasa al filtrarse?
+// 4. Por originador: la selección que el test agrupado no puede ver
 // ---------------------------------------------------------------------------
 
+/**
+ * LA COMPARACIÓN CORRECTA ES CONTRA LOS QUE SE CAEN, NO CONTRA EL POOL.
+ *
+ * La primera versión mostraba la tasa filtrada contra la tasa CRUDA, y la cruda
+ * contiene a los filtrados. Comparar un subconjunto contra el conjunto que lo
+ * incluye atenúa la diferencia por construcción: mide una fracción de la brecha
+ * real, y esa fracción depende de cuánto se retuvo.
+ *
+ * En LMF la diferencia pasa de "+2,5 pp" a **+8,2 pp** al compararla contra los
+ * 89 préstamos que sí se cayeron. Es el mismo dato leído contra el grupo que
+ * corresponde.
+ */
 const porVendedor = new Map<string, Prestamo[]>();
 for (const p of prestamos) {
   const xs = porVendedor.get(p.vendedor) ?? [];
   xs.push(p);
   porVendedor.set(p.vendedor, xs);
 }
+const vendedores = [...porVendedor].filter(([, xs]) => xs.length >= MIN_POOL).map(([v]) => v);
 
-console.log(`\n${"═".repeat(78)}`);
-console.log("Por originador: la tasa antes y después del filtro");
-console.log(`${"═".repeat(78)}\n`);
-console.log(`  vendedor         pool   tasa cruda    quedan   tasa filtrada    cambio`);
-console.log(`  ${"─".repeat(72)}`);
+/**
+ * LA CELDA DE PERMUTACIÓN ES EMISIÓN × VENDEDOR.
+ *
+ * Permutar solo dentro de la emisión rompería también la relación entre vendedor
+ * y falta de dato, que no es lo que se está probando: un vendedor puede publicar
+ * peor sin que eso tenga nada que ver con el desempeño. Fijando la celda en
+ * emisión × vendedor se conserva cuántos préstamos de cada vendedor sobreviven en
+ * cada documento, y lo único que se rompe es el vínculo con el evento.
+ */
+const celdas = new Map<string, Prestamo[]>();
+for (const p of prestamos) {
+  const k = `${p.accession}|${p.vendedor}`;
+  const xs = celdas.get(k) ?? [];
+  xs.push(p);
+  celdas.set(k, xs);
+}
 
-const filas = [...porVendedor]
-  .filter(([, xs]) => xs.length >= MIN_POOL)
-  .map(([v, xs]) => {
-    const q = xs.filter(completo);
-    const tc = xs.reduce((t, p) => t + p.evento, 0) / xs.length;
-    const tf = q.length === 0 ? null : q.reduce((t, p) => t + p.evento, 0) / q.length;
-    return { v, n: xs.length, q: q.length, tc, tf };
-  })
-  .sort((a, b) => (b.tf === null ? -1 : a.tf === null ? 1 : b.tf - b.tc - (a.tf - a.tc)));
-
-for (const f of filas) {
-  const cambio = f.tf === null ? null : f.tf - f.tc;
-  const sale = f.q < MIN_POOL;
-  console.log(
-    `  ${f.v.slice(0, 16).padEnd(17)} ${String(f.n).padStart(4)} ${pct(f.tc).padStart(11)}   ` +
-      `${String(f.q).padStart(6)} ${(f.tf === null ? "—" : pct(f.tf)).padStart(14)}   ` +
-      `${cambio === null ? "" : `${cambio > 0 ? "+" : ""}${(cambio * 100).toFixed(1)} pp`.padStart(8)}` +
-      (sale ? `  \x1b[33m← sale de la tabla\x1b[0m` : ""),
-  );
+interface Corte { n: number; ev: number }
+function porGrupo(marca: Map<Prestamo, boolean> | null) {
+  const q = new Map<string, Corte>();
+  const c = new Map<string, Corte>();
+  for (const p of prestamos) {
+    const dentro = marca ? marca.get(p)! : completo(p);
+    const t = dentro ? q : c;
+    const cur = t.get(p.vendedor) ?? { n: 0, ev: 0 };
+    cur.n++;
+    cur.ev += p.evento;
+    t.set(p.vendedor, cur);
+  }
+  return { q, c };
 }
 
 /**
- * El cambio de tasa por originador NO se puede leer de a uno.
- *
- * Con doce originadores mirando cuál se movió más, el máximo de doce diferencias
- * ruidosas siempre parece grande. Lo que sí se puede leer es si los cambios están
- * centrados en cero o corridos: si el filtro fuera ciego al evento, subir y bajar
- * deberían repartirse parejo.
+ * Q pondera cada diferencia por el n armónico de los dos grupos, así que un
+ * vendedor con 19 préstamos caídos pesa lo que corresponde y no lo mismo que uno
+ * con 400. Su distribución no se conoce, y no hace falta: la da la permutación.
  */
-const cambios = filas.filter((f) => f.tf !== null).map((f) => f.tf! - f.tc);
-const suben = cambios.filter((c) => c > 0).length;
+function estadistico(marca: Map<Prestamo, boolean> | null) {
+  const { q, c } = porGrupo(marca);
+  let Q = 0;
+  const d = new Map<string, number>();
+  for (const v of vendedores) {
+    const a = q.get(v) ?? { n: 0, ev: 0 };
+    const b = c.get(v) ?? { n: 0, ev: 0 };
+    if (a.n === 0 || b.n === 0) continue;
+    const dif = a.ev / a.n - b.ev / b.n;
+    d.set(v, dif);
+    Q += ((a.n * b.n) / (a.n + b.n)) * dif * dif;
+  }
+  return { Q, d };
+}
+
+const obs = estadistico(null);
+const simQ: number[] = [];
+const simD = new Map<string, number[]>(vendedores.map((v) => [v, []]));
+for (let r = 0; r < REPLICAS; r++) {
+  const rand = rng(0xa77 + r * 97);
+  const marca = new Map<Prestamo, boolean>();
+  for (const [, xs] of celdas) {
+    const k = xs.filter(completo).length;
+    const idx = xs.map((_, i) => i);
+    for (let i = idx.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [idx[i], idx[j]] = [idx[j]!, idx[i]!];
+    }
+    for (let i = 0; i < idx.length; i++) marca.set(xs[idx[i]!]!, i < k);
+  }
+  const st = estadistico(marca);
+  simQ.push(st.Q);
+  for (const v of vendedores) simD.get(v)!.push(st.d.get(v) ?? 0);
+}
+
+const pQ = (simQ.filter((x) => x >= obs.Q).length + 1) / (simQ.length + 1);
+
+console.log(`\n${"═".repeat(78)}`);
+console.log("Por originador: ¿a quién le cambia la tasa al filtrarse?");
+console.log(`${"═".repeat(78)}\n`);
+console.log(`  vendedor        quedan          se caen         diferencia    p (permutación)`);
+console.log(`  ${"─".repeat(74)}`);
+
+const { q: gq, c: gc } = porGrupo(null);
+const filas = vendedores
+  .map((v) => {
+    const a = gq.get(v) ?? { n: 0, ev: 0 };
+    const b = gc.get(v) ?? { n: 0, ev: 0 };
+    const dif = obs.d.get(v) ?? null;
+    const sim = simD.get(v)!;
+    const pv = dif === null
+      ? null
+      : (sim.filter((x) => Math.abs(x) >= Math.abs(dif)).length + 1) / (sim.length + 1);
+    return { v, a, b, dif, pv };
+  })
+  .sort((x, y) => (y.dif ?? -9) - (x.dif ?? -9));
+
+/** Bonferroni sobre los vendedores probados, en la misma escala del p empírico. */
+const alfaBonf = 0.05 / Math.max(1, filas.filter((f) => f.pv !== null).length);
+let apartados = 0;
+for (const f of filas) {
+  const marcado = f.pv !== null && f.pv < alfaBonf;
+  if (marcado) apartados++;
+  console.log(
+    `  ${f.v.slice(0, 14).padEnd(15)} ${String(f.a.n).padStart(4)}p ${String(f.a.ev).padStart(3)}ev ` +
+      `${(f.a.n ? pct(f.a.ev / f.a.n) : "—").padStart(6)}   ` +
+      `${String(f.b.n).padStart(4)}p ${String(f.b.ev).padStart(3)}ev ` +
+      `${(f.b.n ? pct(f.b.ev / f.b.n) : "—").padStart(6)}   ` +
+      `${f.dif === null ? "—".padStart(9) : `${f.dif > 0 ? "+" : ""}${(f.dif * 100).toFixed(1)} pp`.padStart(9)}   ` +
+      `${f.pv === null ? "" : f.pv.toFixed(4).padStart(8)}` +
+      (marcado ? `  \x1b[1m←\x1b[0m` : ""),
+  );
+}
+
 console.log(
-  `\n  \x1b[90mSuben ${suben} de ${cambios.length}. Si el filtro fuera ciego al evento se esperaría\x1b[0m`,
+  `\n  \x1b[1mHeterogeneidad: p = ${pQ.toFixed(4)}\x1b[0m` +
+    `  \x1b[90m(Q = ${obs.Q.toFixed(2)}, nulo p50 = ${[...simQ].sort((a, b) => a - b)[Math.floor(simQ.length / 2)]!.toFixed(2)})\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mla mitad. Ninguna fila individual significa nada: el máximo de ${cambios.length} diferencias\x1b[0m`,
+  `  \x1b[90m${apartados} vendedor(es) pasan Bonferroni individual (p < ${alfaBonf.toFixed(4)}).\x1b[0m`,
 );
-console.log(`  \x1b[90mruidosas siempre parece grande.\x1b[0m`);
+
+/**
+ * POR QUÉ ESTA PRUEBA Y NO LA AGRUPADA.
+ *
+ * La diferencia agrupada de arriba suma los efectos de todos los vendedores, así
+ * que uno que sube y otro que baja se cancelan y el resultado es cero. Con datos
+ * sintéticos, un efecto de +4 y −4 pp lo detecta Q en 29 de 30 corridas y el
+ * agrupado en 3 de 30 — o sea, en el ruido.
+ *
+ * Lo que autoriza a leer los SIR de `db:seller` es ESTA prueba, no la otra: el SIR
+ * se calcula de a un originador por vez.
+ */
+console.log(
+  `\n  \x1b[90mLa diferencia agrupada de arriba cancela signos opuestos: un vendedor que\x1b[0m`,
+);
+console.log(
+  `  \x1b[90msube y otro que baja dan cero. Con un efecto sintético de +4 y −4 pp, esta\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mprueba lo encuentra en 29 de 30 corridas y la agrupada en 3 — el ruido.\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mLos SIR se calculan de a un originador por vez, así que la que los autoriza\x1b[0m`,
+);
+console.log(`  \x1b[90mes esta.\x1b[0m`);
 
 console.log(`\n\x1b[90m  ${estampa(estado)}\x1b[0m\n`);
