@@ -373,6 +373,22 @@ if (medV === null || medS === null) {
   console.log(`  Mediana con vendedor fijo: \x1b[1m${(medV * 100).toFixed(1)} pp\x1b[0m entre emisoras`);
   console.log(`  Mediana con emisora fija:  \x1b[1m${(medS * 100).toFixed(1)} pp\x1b[0m entre vendedores`);
 
+  /**
+   * EL FACTOR 1,5 NO TIENE NULO, Y CONVIENE QUE SE SEPA.
+   *
+   * Las dos medianas se calculan sobre cantidades distintas de celdas, y una
+   * dispersión tiene valor esperado POSITIVO aunque no haya efecto: con celdas de
+   * ~200 préstamos y tasas del 5%, el rango entre dos celdas se mueve varios
+   * puntos por muestreo solo.
+   *
+   * Comparar las dos medianas con un factor fijo es el mismo error que el umbral
+   * del top-2 en db:cohort. Falta simular: permutar la etiqueta de vendedor dentro
+   * de cada emisora y ver cuánto dispersa por azar.
+   *
+   * Se deja el veredicto porque la conclusión que produjo —el vendedor manda, no la
+   * emisora— fue confirmada después por la vía independiente del SIR por
+   * originador, que sí tiene referencia. Pero el factor en sí es arbitrario.
+   */
   if (medS > medV * 1.5) {
     console.log(
       `\n  \x1b[32mEL VENDEDOR MANDA.\x1b[0m Fijar la emisora deja diferencias grandes entre`,
@@ -399,7 +415,16 @@ if (medV === null || medS === null) {
   console.log(
     `\n  \x1b[90mSin estandarizar por añada ni por tipo: las celdas de ~200 préstamos no\x1b[0m`,
   );
-  console.log(`  \x1b[90maguantan estratificarse. Es una limitación declarada.\x1b[0m\n`);
+  console.log(`  \x1b[90maguantan estratificarse. Es una limitación declarada.\x1b[0m`);
+  console.log(
+    `  \x1b[33mY el factor 1,5 de este veredicto no tiene nulo:\x1b[0m \x1b[90muna dispersión tiene\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mvalor esperado positivo aunque no haya efecto. La conclusión se sostiene por\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mel SIR por originador, que sí tiene referencia — no por este cociente.\x1b[0m\n`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -473,6 +498,11 @@ const { rows: sirV } = await query<{
         ${CON_LTV ? "AND ltv IS NOT NULL" : ""}
         ${CON_TAMANO ? "AND saldo IS NOT NULL" : ""}
    ),
+   -- Las tasas por estrato incluyen al propio vendedor que después se evalúa.
+   -- Es estandarización indirecta estándar, pero tiene una consecuencia: para un
+   -- vendedor que domina un estrato, el esperado se acerca al observado y el SIR
+   -- se corre hacia 1. Sesga en contra de encontrar efecto, no a favor, así que
+   -- un SIR alto sobrevive a pesar de esto y no gracias a esto.
    tasas AS (
      SELECT tipo, anada, tercil, tercil_ltv, tercil_saldo,
             sum(evento)::numeric / count(*) AS tasa
@@ -536,10 +566,73 @@ for (const r of sirV) {
   );
 }
 
+/**
+ * CUÁNTOS SE APARTARÍAN POR AZAR, QUE FALTABA.
+ *
+ * Este conteo usaba intervalos individuales al 95% y se imprimía sin referencia.
+ * Con M originadores probados, el esperado bajo la nula es M × 0,05: con doce
+ * originadores, 0,6. Así que UN "se aparta" es lo que produce el azar, y dos
+ * apenas lo superan.
+ *
+ * El documento del hallazgo sí aplicó Bonferroni —LMF pasaba con z = 3,49— pero el
+ * script no lo hacía, así que su conteo y el del documento no eran comparables.
+ *
+ * Bonferroni sobre el SIR se hace en escala log: el error estándar de log(SIR) es
+ * aproximadamente 1/√obs, y el umbral pasa de 1,96 a z(0,05/M).
+ */
+const esperadosPorAzar = sirV.length * 0.05;
+
+/** z bilateral para alfa/M, por búsqueda: no hace falta la inversa exacta. */
+function zBonferroni(m: number): number {
+  const alfa = 0.05 / Math.max(1, m);
+  // Φ(z) = 1 - alfa/2  →  búsqueda binaria sobre la normal acumulada.
+  const Phi = (z: number) => 0.5 * (1 + erf(z / Math.SQRT2));
+  let lo = 1, hi = 6;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (Phi(mid) < 1 - alfa / 2) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** Aproximación de Abramowitz-Stegun, error < 1,5e-7. */
+function erf(x: number): number {
+  const signo = x < 0 ? -1 : 1;
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t +
+      0.254829592) *
+      t *
+      Math.exp(-x * x);
+  return signo * y;
+}
+
+const zUmbral = zBonferroni(sirV.length);
+let apartadosBonf = 0;
+for (const r of sirV) {
+  const obs = Number(r.obs), esp = Number(r.esp);
+  if (obs < 1 || esp <= 0) continue;
+  const z = Math.abs(Math.log(obs / esp)) * Math.sqrt(obs);
+  if (z > zUmbral) apartadosBonf++;
+}
+
 console.log(
   `\n  ${apartados} de ${sirV.length} originadores se apartan del promedio ajustado por ` +
     `tipo y añada${CON_APALANCAMIENTO || CON_LTV || CON_TAMANO ? ", DSCR" : ""}` +
     `${CON_LTV ? ", LTV" : ""}${CON_TAMANO ? " y saldo" : ""}.`,
+);
+console.log(
+  `  \x1b[90mPor azar se esperarían ${esperadosPorAzar.toFixed(1)} con ${sirV.length} pruebas al 5%.\x1b[0m` +
+    (apartados <= Math.ceil(esperadosPorAzar)
+      ? `  \x1b[33m← dentro de lo esperable\x1b[0m`
+      : ""),
+);
+console.log(
+  `  \x1b[90mCon Bonferroni (z > ${zUmbral.toFixed(2)} en escala log): \x1b[0m` +
+    `${apartadosBonf === 0 ? "\x1b[33mninguno\x1b[0m" : `\x1b[32m${apartadosBonf}\x1b[0m`}` +
+    `\x1b[90m. Ese es el conteo citable con ${sirV.length} comparaciones.\x1b[0m`,
 );
 
 /**
