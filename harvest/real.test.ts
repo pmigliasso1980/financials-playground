@@ -197,10 +197,20 @@ check("las añadas de EGI y gastos también se separan", () => {
   ]);
   const byKey = new Map(matches.map((m) => [m.metric.key, m.header]));
 
-  assert(/third/i.test(byKey.get("egi_prior_period") ?? ""), "EGI de período anterior");
-  assert(/underwritten/i.test(byKey.get("effective_gross_income") ?? ""), "EGI underwritten");
-  assert(/third/i.test(byKey.get("expenses_prior_period") ?? ""), "gastos de período anterior");
-  assert(/underwritten/i.test(byKey.get("operating_expenses") ?? ""), "gastos underwritten");
+  /**
+   * Una clave por columna. La versión anterior afirmaba esto mismo con cuatro
+   * claves para ocho columnas, y pasaba por el orden del fixture: los pares
+   * empataban en el puntaje y el desempate era posicional. Con las claves
+   * separadas, si el mapeo se rompe la afirmación falla.
+   */
+  assert(/underwritten/i.test(byKey.get("egi_underwritten") ?? ""), "EGI underwritten");
+  assert(/most recent/i.test(byKey.get("egi_most_recent") ?? ""), "EGI most recent");
+  assert(/second/i.test(byKey.get("egi_second_most_recent") ?? ""), "EGI second most recent");
+  assert(/third/i.test(byKey.get("egi_third_most_recent") ?? ""), "EGI third most recent");
+  assert(/underwritten/i.test(byKey.get("expenses_underwritten") ?? ""), "gastos underwritten");
+  assert(/most recent/i.test(byKey.get("expenses_most_recent") ?? ""), "gastos most recent");
+  assert(/second/i.test(byKey.get("expenses_second_most_recent") ?? ""), "gastos second most recent");
+  assert(/third/i.test(byKey.get("expenses_third_most_recent") ?? ""), "gastos third most recent");
 });
 
 check("las estructuras de deuda no se confunden entre sí", () => {

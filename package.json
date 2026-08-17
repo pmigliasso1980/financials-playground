@@ -52,6 +52,7 @@
     "harvest:servicer": "tsx harvest/servicerProbe.ts",
     "harvest:servicer:test": "tsx harvest/servicer.test.ts",
     "harvest:test": "tsx harvest/test.ts",
+    "harvest:ties": "tsx harvest/tieProbe.ts",
     "sync:docs": "bash scripts/sync-docs.sh",
     "taxonomy": "tsx harvest/taxonomy.ts",
     "test:all": "npm run typecheck && npm run harvest:env:test && npm run harvest:test && npm run harvest:real && npm run harvest:scale && npm run harvest:fixtures && npm run harvest:servicer:test",

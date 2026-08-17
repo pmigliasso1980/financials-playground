@@ -24,8 +24,14 @@ export type MetricKey =
   | "noi_most_recent"
   | "noi_second_most_recent"
   | "noi_third_most_recent"
-  | "egi_prior_period"
-  | "expenses_prior_period"
+  | "egi_underwritten"
+  | "egi_most_recent"
+  | "egi_second_most_recent"
+  | "egi_third_most_recent"
+  | "expenses_underwritten"
+  | "expenses_most_recent"
+  | "expenses_second_most_recent"
+  | "expenses_third_most_recent"
   | "net_cash_flow"
   | "dscr_ncf"
   | "debt_yield_ncf"
@@ -65,8 +71,6 @@ export type MetricKey =
   | "city"
   | "state"
   | "zip"
-  | "effective_gross_income"
-  | "operating_expenses"
   | "cap_rate"
   | "debt_service_pi"
   | "debt_service_io"
@@ -261,39 +265,104 @@ export const METRIC_SPECS: MetricSpec[] = [
     ],
     exclude: [/most\s*recent/i, /t-?12/i, /ttm/i, /trailing/i, /ncf/i, ...NOI_SATELLITES],
   },
-  // EGI y gastos tienen las mismas añadas que el NOI.
+  /**
+   * EGI Y GASTOS: UNA CLAVE POR COLUMNA, COMO EL NOI.
+   *
+   * Antes eran cuatro claves para ocho columnas: `effective_gross_income`
+   * juntaba "Underwritten EGI" con "Most Recent EGI", y `egi_prior_period`
+   * juntaba "Second" con "Third Most Recent". Los pares empataban en el puntaje
+   * y `mapColumns` desempataba por orden de columna, que depende de cómo
+   * quedaron los bloques tras `joinAnnexTables` y varía por emisión.
+   *
+   * Detectado con `harvest:ties`: las cuatro claves empataban en las 6
+   * emisiones muestreadas, una por añada.
+   *
+   * Underwritten y Most Recent no son variantes de lo mismo: uno es la
+   * proyección del suscriptor y el otro lo que el edificio produjo. Es
+   * exactamente la distinción que sostiene la medición de Griffin, y estaba
+   * decidida por el orden de las columnas.
+   *
+   * `real.test.ts` ya afirmaba la intención correcta —EGI a underwritten,
+   * prior_period a third— y pasaba, pero por el orden del fixture, no por la
+   * taxonomía. Una validación que no podía fallar.
+   *
+   * El NOI ya tenía las cuatro claves separadas desde el principio. Esto es
+   * copiarle la estructura, no inventar una.
+   */
   {
-    key: "egi_prior_period",
-    label: "Prior Period EGI",
+    key: "egi_third_most_recent",
+    label: "Third Most Recent EGI",
+    unit: "currency",
+    entity: "property",
+    patterns: [/\bthird\s*most\s*recent\b.*\begi\b/i, /\bthird\s*most\s*recent\s*effective\s*gross/i],
+  },
+  {
+    key: "egi_second_most_recent",
+    label: "Second Most Recent EGI",
+    unit: "currency",
+    entity: "property",
+    patterns: [/\bsecond\s*most\s*recent\b.*\begi\b/i, /\bsecond\s*most\s*recent\s*effective\s*gross/i],
+  },
+  {
+    key: "egi_most_recent",
+    label: "Most Recent EGI",
+    unit: "currency",
+    entity: "property",
+    patterns: [/\bmost\s*recent\b.*\begi\b/i, /\bmost\s*recent\s*effective\s*gross/i],
+    exclude: [/\b(second|third|fourth)\s*most\s*recent\b/i],
+  },
+  {
+    key: "egi_underwritten",
+    label: "Underwritten EGI",
     unit: "currency",
     entity: "property",
     patterns: [
-      /\b(second|third|fourth)\s*most\s*recent\b.*\begi\b/i,
-      /\b(second|third|fourth)\s*most\s*recent\s*effective\s*gross/i,
+      /\bunderwritten\b.*\begi\b/i,
+      /\bu\/?w\b.*\begi\b/i,
+      /\bunderwritten\s*effective\s*gross/i,
+      // Respaldo: un Annex A con una sola columna de EGI, sin calificar.
+      /\begi\b/i,
+      /effective\s*gross\s*income/i,
     ],
+    exclude: [/most\s*recent/i],
   },
   {
-    key: "effective_gross_income",
-    label: "Effective Gross Income",
+    key: "expenses_third_most_recent",
+    label: "Third Most Recent Expenses",
     unit: "currency",
     entity: "property",
-    patterns: [/\begi\b/i, /effective\s*gross\s*income/i],
+    patterns: [/\bthird\s*most\s*recent\b.*expenses?/i],
+  },
+  {
+    key: "expenses_second_most_recent",
+    label: "Second Most Recent Expenses",
+    unit: "currency",
+    entity: "property",
+    patterns: [/\bsecond\s*most\s*recent\b.*expenses?/i],
+  },
+  {
+    key: "expenses_most_recent",
+    label: "Most Recent Expenses",
+    unit: "currency",
+    entity: "property",
+    patterns: [/\bmost\s*recent\b.*expenses?/i],
     exclude: [/\b(second|third|fourth)\s*most\s*recent\b/i],
   },
   {
-    key: "expenses_prior_period",
-    label: "Prior Period Expenses",
+    key: "expenses_underwritten",
+    label: "Underwritten Expenses",
     unit: "currency",
     entity: "property",
-    patterns: [/\b(second|third|fourth)\s*most\s*recent\b.*expenses?/i],
-  },
-  {
-    key: "operating_expenses",
-    label: "Operating Expenses",
-    unit: "currency",
-    entity: "property",
-    patterns: [/operating\s*expenses?/i, /\bopex\b/i, /total\s*expenses?/i, /^\s*expenses?\b/i, /\bexpenses?\s*\(\$\)/i],
-    exclude: [/\b(second|third|fourth)\s*most\s*recent\b/i],
+    patterns: [
+      /\bunderwritten\b.*expenses?/i,
+      /\bu\/?w\b.*expenses?/i,
+      /operating\s*expenses?/i,
+      /\bopex\b/i,
+      /total\s*expenses?/i,
+      /^\s*expenses?\b/i,
+      /\bexpenses?\s*\(\$\)/i,
+    ],
+    exclude: [/most\s*recent/i],
   },
   /**
    * Ocupancia física y económica son métricas distintas: la económica descuenta
@@ -491,7 +560,15 @@ export const METRIC_SPECS: MetricSpec[] = [
     unit: "currency",
     entity: "property",
     patterns: [/appraised\s*value/i, /appraisal\s*value/i, /^\s*value\b/i],
-    exclude: [/date/i, /per\s*/i],
+    /**
+     * "Appraised Value Type" es una columna de TEXTO ("As Is", "As Stabilized")
+     * y empataba en 1,00 con "Appraised Value ($)".
+     *
+     * El exclude de "per" estaba sin anclar: matcheaba la subcadena adentro de
+     * cualquier palabra —"Property" la contiene— así que excluía encabezados
+     * que no tenían nada que ver. Anclado con \b hace lo que decía hacer.
+     */
+    exclude: [/date/i, /\bper\b/i, /\btype\b/i],
   },
   /**
    * NOTA SOBRE ESTRUCTURAS DE DEUDA
@@ -823,8 +900,22 @@ export const METRIC_SPECS: MetricSpec[] = [
     label: "Property Type",
     unit: "text",
     entity: "property",
-    patterns: [/property\s*type/i, /^\s*type\b/i, /asset\s*type/i],
-    exclude: [/loan/i, /rate/i, /sub/i],
+    /**
+     * "General Property Type" y "Detailed Property Type" empataban en 1,00, así
+     * que qué taxonomía quedaba guardada dependía del orden de los bloques.
+     *
+     * No son granularidades intercambiables: la general da ~9 categorías
+     * ("Retail"), la detallada decenas ("Anchored Retail", "Unanchored"). Esta
+     * columna es el estrato de la exclusión mono-tipo, de la composición del
+     * benchmark y de toda comparación por tipo — mezclarlas hace incomparables
+     * dos emisiones sin que nada lo indique.
+     *
+     * Se prefiere la general: menos categorías, más pares por celda, y es la
+     * que ya usan los cortes existentes. La detallada tiene su propia clave,
+     * `property_type_detailed`.
+     */
+    patterns: [/general\s*property\s*type/i, /property\s*type/i, /^\s*type\b/i, /asset\s*type/i],
+    exclude: [/loan/i, /rate/i, /sub/i, /detailed/i],
   },
   {
     key: "loan_seller",

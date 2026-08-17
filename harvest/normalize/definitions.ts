@@ -25,7 +25,7 @@ import type { MetricKey } from "./columnMap.js";
  * empeoró la cobertura del corpus. Subir cuando se agregan o redefinen
  * métricas, no cuando se ajusta un patrón.
  */
-export const TAXONOMY_VERSION = "2026.08.10";
+export const TAXONOMY_VERSION = "2026.08.11";
 
 export interface MetricDefinition {
   /** Qué mide, en una oración que entienda alguien del rubro. */
@@ -229,14 +229,24 @@ export const DEFINITIONS: Partial<Record<MetricKey, MetricDefinition>> = {
     disambiguation:
       "Siempre menor que el NOI. Los ratios calculados sobre NCF son más conservadores que los calculados sobre NOI, y un Annex A publica ambos.",
   },
-  effective_gross_income: {
+  egi_underwritten: {
     family: "Resultado operativo",
     definition:
-      "Ingreso bruto potencial menos vacancia, concesiones e incobrables. El numerador antes de restar gastos.",
+      "Ingreso bruto potencial menos vacancia, concesiones e incobrables, según la proyección del suscriptor. El numerador antes de restar gastos.",
+    disambiguation:
+      "Es una proyección, no una medición: no confundir con egi_most_recent, que es lo que el edificio produjo en el último período informado.",
   },
-  operating_expenses: {
+  egi_most_recent: {
     family: "Resultado operativo",
-    definition: "Gastos operativos del período. EGI menos gastos da el NOI.",
+    definition: "EGI efectivamente realizado en el último período informado.",
+  },
+  expenses_underwritten: {
+    family: "Resultado operativo",
+    definition: "Gastos operativos proyectados por el suscriptor. EGI menos gastos da el NOI.",
+  },
+  expenses_most_recent: {
+    family: "Resultado operativo",
+    definition: "Gastos operativos efectivamente incurridos en el último período informado.",
   },
 
   // -------------------------------------------------------------------------
