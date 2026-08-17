@@ -22,3 +22,4 @@ docs/vendor/*
 
 # Instantáneas del corpus para comparar entre corridas.
 .snapshots/
+out/

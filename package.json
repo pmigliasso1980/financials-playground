@@ -24,6 +24,7 @@
     "db:mechanism": "tsx db/mechanism.ts",
     "db:migrate": "tsx db/migrate.ts",
     "db:outcomes": "tsx db/outcomes.ts",
+    "db:page": "tsx db/page.ts",
     "db:performance": "tsx db/servicerBatch.ts",
     "db:power": "tsx db/power.ts",
     "db:predictors": "tsx db/predictors.ts",
