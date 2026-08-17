@@ -292,12 +292,20 @@ console.log(
   `  por añada: de ${Math.round(nTipico)} a ~${Math.round(nTipico * factor).toLocaleString("en-US")}.\n`,
 );
 console.log(
-  `  \x1b[90mEl corpus tiene ${totalMedido.toLocaleString("en-US")} préstamos en las añadas medidas.\x1b[0m`,
+  `  \x1b[90mEl corpus tiene ${totalMedido.toLocaleString("en-US")} préstamos en las añadas medidas.\x1b[0m\n`,
 );
-console.log(
-  `  \x1b[90mese número por añada no es cuestión de cosechar más trusts: no existen\x1b[0m`,
-);
-console.log(`  \x1b[90mtantas emisiones CMBS por año.\x1b[0m\n`);
+/**
+ * Acá terminaban dos líneas que decían "ese número por añada no es cuestión de
+ * cosechar más trusts: no existen tantas emisiones CMBS por año".
+ *
+ * Al reemplazar la primera línea del párrafo corté la oración y dejé la cola
+ * apuntando a la conclusión anterior, así que la salida afirmaba eso y dos
+ * líneas después "a 2x, cosechar más sí puede alcanzar". Dos veredictos opuestos
+ * en la misma pantalla, uno vivo y otro fósil.
+ *
+ * Es el mismo patrón del día en su forma más simple: la frase sobrevive al
+ * hallazgo que la refuta porque nadie relee lo que quedó alrededor del cambio.
+ */
 /**
  * LA CONCLUSIÓN DEPENDE DEL FACTOR, Y EL FACTOR CAMBIÓ.
  *
