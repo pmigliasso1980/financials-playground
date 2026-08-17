@@ -779,15 +779,40 @@ if (AUDITORIA) {
     `\n    \x1b[90mSin filas en: ${vacios.length ? vacios.join(", ") : "ningún conteo de 1 a 10"}.` +
       ` Población más flaca: ${piso} observations.\x1b[0m`,
   );
+  /**
+   * ESTE HISTOGRAMA YA NO DECIDE UN UMBRAL, Y NO DEBERÍA PARECER QUE LO HACE.
+   *
+   * Se escribió para elegir un corte por cantidad de observations. La medición
+   * sobre las 233 emisiones cerró esa puerta: la distribución es continua desde
+   * 3, cualquier corte elimina préstamos reales, y el filtro terminó siendo
+   * estructural —una fila sin letras en ninguna celda no es un préstamo—.
+   *
+   * Después de aplicarlo aparece un hueco contiguo en la cola baja, y la versión
+   * anterior de esta línea decía "el umbral puede ir adentro". Es circular: el
+   * hueco existe PORQUE el filtro sacó esas filas. Recomendaba como hallazgo lo
+   * que era consecuencia del arreglo, y en la dirección que ya habíamos
+   * descartado.
+   *
+   * Ahora solo describe la forma. La cola baja que queda es cobertura parcial
+   * —tarea #40— y no filas fantasma.
+   */
+  const colaBaja = histo
+    .filter((h) => /^\s*\d+$/.test(h.tramo) && Number(h.tramo) <= 10)
+    .reduce((a, h) => a + Number(h.n), 0);
   console.log(
-    mejor.length >= 3
-      ? `    \x1b[32mHueco contiguo en ${mejor[0]}-${mejor[mejor.length - 1]}:\x1b[0m las dos poblaciones están\n` +
-          `    separadas y el umbral puede ir adentro sin cortar filas reales.`
-      : `    \x1b[33mNo hay hueco: el vacío contiguo más largo es de ${mejor.length} tramo(s).\x1b[0m\n` +
-          `    \x1b[33mLa distribución es continua desde ${piso}, así que cualquier umbral por\x1b[0m\n` +
-          `    \x1b[33mconteo corta en zona poblada. El criterio correcto es estructural:\x1b[0m\n` +
-          `    \x1b[33muna fila sin nombre y sin saldo no es un préstamo, tenga 3 o 30\x1b[0m\n` +
-          `    \x1b[33mobservations.\x1b[0m`,
+    `    \x1b[90m${colaBaja} filas con 10 observations o menos sobre ${totalCorpus}.\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90mNo se descarta por conteo: la distribución es continua desde ${piso} y\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90mcualquier corte eliminaría préstamos reales. El filtro es estructural\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90m—una fila sin letras en ninguna celda no es un préstamo— así que lo que\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90mqueda acá es cobertura parcial, no filas fantasma. Tarea #40.\x1b[0m`,
   );
 
   console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);

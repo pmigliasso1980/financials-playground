@@ -121,10 +121,32 @@ function dropPhantomRows(
     return conDigito ? /\d/.test(v) : true;
   };
 
+  /**
+   * SEGUNDO CRITERIO, SIN UMBRALES: una fila sin una sola letra no es un préstamo.
+   *
+   * El primero —nombre vacío y saldo vacío— no alcanzaba. La fila que numera las
+   * columnas trae un número en CADA celda, así que la de nombre no está vacía:
+   * tiene "5", el número de esa columna. En la base aparecía con nombre vacío
+   * porque aguas abajo un nombre puramente numérico se rechaza al guardarlo, y
+   * eso me hizo creer que la celda venía vacía del documento.
+   *
+   * Peor: el test que escribí primero usaba la forma correcta —números en todas
+   * las columnas—, falló, y en vez de arreglar el filtro ajusté el test para que
+   * coincidiera con lo que el filtro hacía. Test verde, bug vivo. Las dos filas
+   * de BMO 2026-5C15 sobrevivieron a la recosecha y lo dejaron a la vista.
+   *
+   * Un préstamo del Annex A tiene nombre de propiedad, tipo, ciudad, estado:
+   * texto en varias columnas. Una fila de numeración es todo dígitos. No hace
+   * falta elegir ningún número para distinguirlas.
+   */
+  const sinLetras = (row: unknown[]) =>
+    !row?.some((c) => /[a-zA-Z]/.test(String(c ?? "")));
+
   const kept: unknown[][] = [];
   const fantasma: unknown[][] = [];
   for (const row of data) {
-    if (tiene(row, nameCol, false) || tiene(row, amountCol, true)) kept.push(row);
+    const pareceLoan = tiene(row, nameCol, false) || tiene(row, amountCol, true);
+    if (pareceLoan && !sinLetras(row)) kept.push(row);
     else fantasma.push(row);
   }
 

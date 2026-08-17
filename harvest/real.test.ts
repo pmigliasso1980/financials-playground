@@ -409,8 +409,15 @@ check("descarta la fila que numera las columnas", () => {
    * recordatorio de que un caso inventado "parecido" no prueba lo mismo que el
    * caso observado.
    */
-  const iTipo = headers1.indexOf("General Property Type");
-  const numeradora = headers1.map((_, i) => (i === iTipo ? "2" : ""));
+  /**
+   * La fila numeradora REAL: un número en cada columna, no celdas vacías.
+   *
+   * Esta era la primera versión del test. Falló, y en vez de arreglar el filtro
+   * cambié el test a celdas vacías para que pasara — con el resultado de que las
+   * dos filas de BMO 2026-5C15 sobrevivieron a una recosecha completa. Vuelve a
+   * la forma real, que es la que el filtro tiene que aguantar.
+   */
+  const numeradora = headers1.map((_, i) => String(i + 1));
 
   /**
    * Y hacen falta suficientes filas reales para no chocar con la guarda del 15%.
@@ -436,8 +443,7 @@ check("con pocas filas la guarda gana sobre el filtro", () => {
    * filtro se abstiene. Preferimos una fila fantasma de más a borrar un cuarto
    * de un pool chico por una hipótesis sobre dos columnas.
    */
-  const iTipo = headers1.indexOf("General Property Type");
-  const numeradora = headers1.map((_, i) => (i === iTipo ? "2" : ""));
+  const numeradora = headers1.map((_, i) => String(i + 1));
   const prestamos = BLOCK_1_DATA.filter((r) => r[1] === "Loan");
   const table = block(headers1, [numeradora, ...prestamos], "pocas-filas");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
