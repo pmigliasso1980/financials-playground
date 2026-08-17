@@ -1,6 +1,10 @@
 # Cuatro hipótesis muertas y el instrumento que las mató
 
-> **Estado: el hallazgo principal de este proyecto es falso.**
+> **Estado: cuatro hipótesis murieron; una sobrevive.**
+> El hallazgo original —el derrumbe del crecimiento del NOI por añada— es falso.
+> Lo que quedó en pie está un nivel más abajo: entre originadores, no entre
+> emisoras. Ver "Lo primero que sobrevivió".
+>
 > Este documento antes afirmaba que el crecimiento del NOI entregado se derrumbó
 > de 11,5% en la añada 2021 a 1,0% en 2024. No sobrevivió a la verificación. Lo
 > que sigue es el registro de cómo murió y de lo que quedó en pie, porque eso es
@@ -218,6 +222,53 @@ además de refutar.
 **Regla práctica:** después de tres ataques fallidos a un hallazgo, dejar de
 atacarlo y formular la explicación alternativa más específica posible. Si no se
 puede formular ninguna, ese es el dato.
+
+---
+
+## Lo primero que sobrevivió
+
+Después de matar el efecto emisora, la variación quedó donde correspondía: entre
+**originadores**. Comparando cada préstamo contra otros del mismo tipo de
+propiedad, la misma añada, el mismo tercil de DSCR y el mismo tercil de LTV:
+
+| originador | SIR | IC 95% | préstamos | eventos |
+|---|---|---|---|---|
+| NCB | 0,00 | [0,00 , 0,57] | 365 | 0 |
+| LMF | 1,89 | [1,28 , 2,70] | 270 | 30 |
+| UBS AG | 2,21 | [1,18 , 3,78] | 172 | 13 |
+
+Con corrección de Bonferroni sobre 14 pruebas (p < 0,0036), usando
+SE de log(SIR) ≈ 1/√observados: **LMF sobrevive** (z = 3,49, p ≈ 0,0005), **UBS
+no** (z = 2,86, p ≈ 0,0042). NCB sobrevive por intervalo pero mide producto —
+presta a cooperativas de vivienda— no habilidad.
+
+### Por qué este resultado es distinto de los cuatro que murieron
+
+**Está en la unidad de análisis correcta.** El originador decide a quién presta;
+la emisora solo elige a quién comprarle.
+
+**Sobrevivió un test bidireccional.** Los controles por tipo, DSCR y LTV solo
+podían achicar el residuo, y lo achicaron: 3,61 → 2,26 → 1,89. Un control que
+reduce es débilmente informativo. La distribución por añada podía moverlo en las
+dos direcciones: si los 30 eventos de LMF estaban amontonados en 2021-2022 era
+una apuesta de ciclo, no suscripción. Están repartidos en **las cinco añadas**,
+con 34% en su peor año contra 12% de su pool ahí.
+
+BMO y MSMCH sí resultaron apuestas de ciclo: 72% de los eventos de BMO en 2023,
+67% de los de MSMCH en 2021.
+
+**No está confundido con la emisora.** LMF coloca en cuatro shelves distintos.
+
+### Lo que todavía puede matarlo
+
+`property_type` no captura **producto**. Las cooperativas viven dentro de
+multifamily y ese mecanismo exacto mató el efecto emisora. Si LMF se especializa
+en un subproducto de riesgo distinto dentro de su tipo, el 1,89 es el mismo
+artefacto con otro nombre. La columna `property_type_detailed` ya está en la
+taxonomía y nunca se usó.
+
+Faltan además geografía y tamaño de préstamo. Y el sesgo de stock sigue siendo
+estructural para todos por igual.
 
 ---
 
