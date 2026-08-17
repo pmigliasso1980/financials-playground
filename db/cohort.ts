@@ -59,7 +59,14 @@ const ANADA = aFlag === -1 ? null : Number(process.argv[aFlag + 1]);
  * algo.
  */
 const MIN_PARES = 15;
-const CONCENTRACION_MAXIMA = 0.3;
+/**
+ * Cuánto puede pesar el top-2 por encima de su piso antes de llamarlo concentrado.
+ *
+ * No es un porcentaje del total: es un múltiplo de 2/N, que es lo que pesarían las
+ * dos más grandes si todos los pools fueran iguales. 1,6x significa que las dos
+ * más grandes se llevan un 60% más de lo que les tocaría.
+ */
+const EXCESO_MAXIMO = 1.6;
 
 const pct = (v: number, d = 0) => `${(v * 100).toFixed(d)}%`;
 
@@ -101,11 +108,33 @@ for (const c of cohortes) {
   const em = Number(c.emisiones);
   const top2 = Number(c.top2);
   const suficiente = em - 1 >= MIN_PARES;
-  const concentrada = top2 > CONCENTRACION_MAXIMA;
+
+  /**
+   * EL TOP-2 SE COMPARA CONTRA SU PISO, NO CONTRA UN NÚMERO FIJO.
+   *
+   * La versión anterior marcaba `top2 > 0,3` sin mirar cuántas emisiones tiene
+   * la añada. Pero el top-2 de N emisiones tiene un piso de 2/N incluso con
+   * pools perfectamente iguales: con 6 emisiones el piso es 33%, con 3 es 67%.
+   * O sea que para cualquier añada de 6 o menos la marca se encendía siempre,
+   * tuviera o no concentración real. Un test que no puede no disparar no informa.
+   *
+   * Es la misma clase de error que el "50% fuera del rango intercuartil" de
+   * `db:page --todas`: el observado y el valor de referencia coincidían por
+   * construcción y lo leí como hallazgo.
+   *
+   * El cociente contra el piso sí es comparable entre añadas: 1,0 significa
+   * pools del mismo tamaño y 2,0 que las dos más grandes pesan el doble de lo
+   * que les tocaría. El umbral se aplica ahí.
+   */
+  const piso = 2 / Math.max(1, em);
+  const exceso = top2 / piso;
+  const concentrada = em > 2 && exceso > EXCESO_MAXIMO;
+
   console.log(
     `  ${c.anada}   ${String(em).padStart(9)}   ${String(c.prestamos).padStart(9)}   ` +
       `${Number(c.mediana_pool).toFixed(0).padStart(12)}   ` +
-      `${(concentrada ? "\x1b[31m" : "\x1b[90m")}${pct(top2).padStart(12)}\x1b[0m` +
+      `${(concentrada ? "\x1b[31m" : "\x1b[90m")}${pct(top2).padStart(7)}\x1b[0m` +
+      ` \x1b[90m(piso ${pct(piso)}, ${exceso.toFixed(2)}x)\x1b[0m` +
       (suficiente ? "  \x1b[32m✓\x1b[0m" : `  \x1b[31m← ${em - 1} pares\x1b[0m`),
   );
 }
@@ -117,10 +146,13 @@ console.log(
   `  \x1b[90mmínimos, "está entre las más agresivas de su cohorte" significa algo.\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mEl top-2 marca concentración: si dos emisiones son más del ${pct(CONCENTRACION_MAXIMA)} del\x1b[0m`,
+  `  \x1b[90mEl top-2 se compara contra su piso de 2/N, no contra un porcentaje fijo: con\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mtotal, la referencia es en buena medida esas dos.\x1b[0m`,
+  `  \x1b[90m6 emisiones el piso ya es 33% aunque los pools sean iguales. Se marca arriba\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mde ${EXCESO_MAXIMO}x el piso, que sí significa que la referencia son esas dos.\x1b[0m`,
 );
 
 // ---------------------------------------------------------------------------
