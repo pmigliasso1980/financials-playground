@@ -126,15 +126,27 @@ for (const c of cohortes) {
    * pools del mismo tamaño y 2,0 que las dos más grandes pesan el doble de lo
    * que les tocaría. El umbral se aplica ahí.
    */
-  const piso = 2 / Math.max(1, em);
+  /**
+   * El piso se topea en 1: con una o dos emisiones el top-2 ES el total.
+   *
+   * La primera versión calculaba 2/N sin tope e imprimía "piso 200%" para las
+   * añadas de una sola emisión, con un exceso de 0,50x. Un piso mayor al 100% no
+   * existe, y el cociente contra él invierte el sentido: la añada más concentrada
+   * posible aparecía como la menos.
+   *
+   * Arreglando una clase B introduje una clase A en la misma línea.
+   */
+  const piso = Math.min(1, 2 / Math.max(1, em));
   const exceso = top2 / piso;
-  const concentrada = em > 2 && exceso > EXCESO_MAXIMO;
+  /** Con 2 o menos emisiones el cociente es siempre 1,0: no hay nada que medir. */
+  const medible = em > 2;
+  const concentrada = medible && exceso > EXCESO_MAXIMO;
 
   console.log(
     `  ${c.anada}   ${String(em).padStart(9)}   ${String(c.prestamos).padStart(9)}   ` +
       `${Number(c.mediana_pool).toFixed(0).padStart(12)}   ` +
       `${(concentrada ? "\x1b[31m" : "\x1b[90m")}${pct(top2).padStart(7)}\x1b[0m` +
-      ` \x1b[90m(piso ${pct(piso)}, ${exceso.toFixed(2)}x)\x1b[0m` +
+      ` \x1b[90m(piso ${pct(piso)}${medible ? `, ${exceso.toFixed(2)}x` : ", sin medir"})\x1b[0m` +
       (suficiente ? "  \x1b[32m✓\x1b[0m" : `  \x1b[31m← ${em - 1} pares\x1b[0m`),
   );
 }
