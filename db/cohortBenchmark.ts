@@ -106,9 +106,18 @@ export interface Benchmark {
    * Cuánto se aparta la mezcla de propiedades, y si eso supera al azar.
    *
    * Medido con `db:composition-signal` sobre la cohorte 2026: 10 de 25 conduits
-   * se apartan más que el azar, contra 1,25 esperadas. Las seis métricas, en
-   * cambio, son indistinguibles de la nula (z = 0,00). Lo que informa sobre una
-   * emisión conduit es qué compró, no en qué términos.
+   * se apartan más que el azar, contra 1,25 esperadas. El test se verificó antes
+   * de usarlo generando emisiones DESDE la nula: encontró 2 de 28, contra 1,4
+   * esperadas.
+   *
+   * Las seis métricas rastrean lo mismo más débilmente —rho = 0,59 entre cuántas
+   * se apartan y cuánto se aparta la mezcla— porque la composición causa el
+   * desvío: los hoteles se suscriben distinto que los departamentos.
+   *
+   * (Una versión anterior de este comentario decía que las métricas eran
+   * "indistinguibles de la nula, z = 0,00". Ese test comparaba cada emisión
+   * contra el rango intercuartil de las otras del mismo conjunto, donde la tasa
+   * marginal es 50% por intercambiabilidad exista o no señal: no tenía potencia.)
    */
   distancia: number;
   distanciaNulo: number;

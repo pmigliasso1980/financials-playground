@@ -453,11 +453,16 @@ if (args.includes("--todas")) {
     const sh = e.eval ? e.fuera / e.eval : 0;
     const seM = Math.sqrt(0.25 / Math.max(1, e.eval));
     const zM = (sh - 0.5) / seM;
+    /**
+     * Sin veredicto por métrica: el z hereda el problema del agregado.
+     *
+     * Decía "indistinguible del azar", que es la conclusión del test sin
+     * potencia. El z no podía ser otro, así que llamarlo indistinguible le
+     * atribuye a los datos algo que fija la construcción.
+     */
     console.log(
       `    ${etiqueta.padEnd(14)} ${String(e.fuera).padStart(3)} de ${String(e.eval).padStart(3)}   ` +
-        `${pct(sh).padStart(4)}   ` +
-        `${Math.abs(zM) >= 2 ? "\x1b[32m" : "\x1b[90m"}z = ${zM >= 0 ? "+" : ""}${zM.toFixed(2)}\x1b[0m` +
-        (Math.abs(zM) >= 2 ? "" : `  \x1b[90mindistinguible del azar\x1b[0m`),
+        `${pct(sh).padStart(4)}   \x1b[90mz = ${zM >= 0 ? "+" : ""}${zM.toFixed(2)}\x1b[0m`,
     );
   }
 
