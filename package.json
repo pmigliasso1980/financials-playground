@@ -12,6 +12,7 @@
     "db:analyze": "tsx db/analyze.ts",
     "db:bias": "tsx db/bias.ts",
     "db:challenge": "tsx db/challenge.ts",
+    "db:cohort": "tsx db/cohort.ts",
     "db:composition": "tsx db/composition.ts",
     "db:coverage": "tsx db/coverage.ts",
     "db:delinquency": "tsx db/delinquency.ts",
