@@ -471,27 +471,35 @@ console.log(
 console.log(`\n${"─".repeat(78)}\n`);
 
 /**
- * El contraste, contra las cuatro pruebas y no contra cero.
+ * EL CIERRE ES EL RESULTADO CONTROLADO, NO EL CRUDO.
  *
- * Con cuatro métricas al 5% se espera 0,2 falsos positivos, así que una
- * significativa ya es más de lo esperable — pero una sola métrica de cuatro con
- * p apenas debajo de 0,05 tampoco es un mecanismo demostrado.
+ * La versión anterior imprimía "2 candidatas a mecanismo" DESPUÉS de la sección
+ * estratificada que dice que nada sobrevive. Lo último que se leía era la
+ * conclusión más débil, y las dos convivían en la misma pantalla contradiciéndose.
+ *
+ * Es el patrón que este proyecto viene persiguiendo todo el día, cometido diez
+ * minutos después de arreglarlo en otro archivo. Ahora el conteo crudo se etiqueta
+ * como lo que es —sin control— y el veredicto es el estratificado.
  */
 const esperadas = METRICAS.length * 0.05;
 console.log(
-  `  \x1b[1m${significativas} de ${METRICAS.length} métricas se apartan más que el azar\x1b[0m` +
-    ` \x1b[90m(esperadas por azar: ${esperadas.toFixed(1)})\x1b[0m`,
+  `  \x1b[90mSin control: ${significativas} de ${METRICAS.length} métricas se apartan del azar ` +
+    `(esperadas ${esperadas.toFixed(1)}).\x1b[0m`,
 );
 console.log(
-  significativas === 0
-    ? `\n  \x1b[33mNingún mecanismo en estas cuatro.\x1b[0m Y ahora eso significa algo: antes el\n` +
-        `  script no tenía referencia, así que "no encontré nada" era compatible con no\n` +
-        `  poder encontrar nada. Con permutación, la ausencia es informativa dentro de\n` +
-        `  lo que la muestra permite.`
-    : `\n  \x1b[32m${significativas} candidata(s) a mecanismo.\x1b[0m Una diferencia en solo-interés o en la\n` +
-        `  proyección de NOI explica por qué el mismo DSCR y el mismo LTV rinden distinto.\n` +
-        `  Una diferencia en el SALDO no es mecanismo: es un confundido nuevo y queda como\n` +
-        `  el próximo control.`,
+  `  \x1b[90mCon control por tamaño: ${sigEstrat} de ${METRICAS.length - 1}.\x1b[0m`,
+);
+console.log(
+  sigEstrat === 0
+    ? `\n  \x1b[1mNo hay mecanismo identificable en estas cuatro métricas.\x1b[0m Lo que aparecía\n` +
+        `  sin control era el saldo: LMF presta más chico y los préstamos chicos tienen\n` +
+        `  reservas proporcionalmente más finas.\n\n` +
+        `  \x1b[90mY eso ahora significa algo, que es la diferencia con la versión anterior de\x1b[0m\n` +
+        `  \x1b[90meste script: no tenía referencia, así que "no encontré" era compatible con\x1b[0m\n` +
+        `  \x1b[90m"no podía encontrar". Con permutación calibrada, la ausencia es informativa\x1b[0m\n` +
+        `  \x1b[90mdentro de lo que ${delVendedor.length} préstamos permiten.\x1b[0m`
+    : `\n  \x1b[32m${sigEstrat} candidata(s) sobreviven al control por tamaño.\x1b[0m Antes de creerlo conviene\n` +
+        `  atacarlo con la misma saña que a los cinco hallazgos anteriores sobre LMF.`,
 );
 
 console.log(
