@@ -170,6 +170,49 @@ const { rows: ventana } = await query<{
      FROM x GROUP BY anada ORDER BY anada`,
 );
 
+/**
+ * ¿LA VENTANA SE CORRELACIONA CON EL ORIGINADOR? ESTO ES LO QUE DECIDE.
+ *
+ * Que la exposición varíe dentro de la añada no basta para invalidar nada: si
+ * varía al azar respecto de quién originó, es ruido y se promedia. El SIR queda
+ * mal solo si un originador coloca sistemáticamente en las emisiones que miramos
+ * más tarde.
+ *
+ * Se mide el desvío de exposición de cada vendedor DENTRO de su añada, que es la
+ * escala en la que el SIR estandariza. Un vendedor con +0,5 años sobre la media de
+ * sus añadas tuvo medio año más para acumular transferencias.
+ *
+ * LA TRADUCCIÓN A SESGO, CON SU SUPUESTO A LA VISTA
+ *
+ * Si la tasa de transferencia por año fuera constante, los eventos esperados
+ * escalan con la exposición y el sesgo del SIR es aproximadamente
+ * (1 + desvío/exposición media). Es una aproximación grosera —el hazard del CMBS
+ * no es constante, sube en los primeros años y alrededor del vencimiento— pero
+ * sirve para saber si el problema es del 3% o del 40%.
+ */
+const { rows: expoVendedor } = await query<{
+  v: string; prestamos: string; expo: string; desvio: string;
+}>(
+  `WITH x AS (
+     SELECT l.id, nullif(btrim(l.loan_seller), '') AS vendedor,
+            extract(year FROM f.filed_at)::int AS anada,
+            (sr.period_of_report - f.filed_at) / 365.25 AS anios
+       FROM corpus.loans l
+       JOIN corpus.filings f ON f.accession = l.accession
+       JOIN corpus.servicer_reports sr ON sr.deal_accession = f.accession
+      WHERE sr.period_of_report IS NOT NULL AND f.filed_at IS NOT NULL
+   ),
+   media AS (SELECT anada, avg(anios) AS m FROM x GROUP BY anada)
+   SELECT x.vendedor AS v, count(*)::text AS prestamos,
+          round(avg(x.anios)::numeric, 2)::text AS expo,
+          round(avg(x.anios - m.m)::numeric, 3)::text AS desvio
+     FROM x JOIN media m ON m.anada = x.anada
+    WHERE x.vendedor IS NOT NULL
+    GROUP BY x.vendedor
+   HAVING count(*) >= ${MIN_POOL}
+    ORDER BY avg(x.anios - m.m) DESC`,
+);
+
 /** Cuántos 10-D distintos hay por trust: la otra vía de crecimiento. */
 const { rows: periodos } = await query<{ deals: string; reportes: string; p50: string }>(
   `WITH x AS (
@@ -327,13 +370,43 @@ for (const v of ventana) {
   );
 }
 console.log(
-  `\n  \x1b[90mSi el rango dentro de una añada es grande, estandarizar por añada NO iguala\x1b[0m`,
+  `\n  \x1b[90mQue varíe no basta: si varía al azar respecto de quién originó, se promedia.\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mla exposición, y un originador que coloca en las emisiones observadas más\x1b[0m`,
+  `  \x1b[90mEl SIR queda mal solo si un vendedor coloca en las emisiones vistas más tarde.\x1b[0m\n`,
+);
+console.log(`  vendedor        préstamos   exposición   desvío dentro de su añada   sesgo aprox.`);
+console.log(`  ${"─".repeat(76)}`);
+const expoMedia =
+  expoVendedor.reduce((t, r) => t + Number(r.expo) * Number(r.prestamos), 0) /
+  Math.max(1, expoVendedor.reduce((t, r) => t + Number(r.prestamos), 0));
+let peor = 0;
+for (const r of expoVendedor) {
+  const d = Number(r.desvio);
+  const sesgo = 1 + d / Math.max(0.01, expoMedia);
+  peor = Math.max(peor, Math.abs(sesgo - 1));
+  console.log(
+    `  ${r.v.slice(0, 14).padEnd(15)} ${String(r.prestamos).padStart(7)} ` +
+      `${(Number(r.expo).toFixed(2) + " años").padStart(13)}   ` +
+      `${`${d > 0 ? "+" : ""}${d.toFixed(3)} años`.padStart(18)}       ` +
+      `${sesgo.toFixed(3).padStart(7)}` +
+      (Math.abs(sesgo - 1) > 0.1 ? `  \x1b[33m←\x1b[0m` : ""),
+  );
+}
+console.log(
+  `\n  \x1b[90mSesgo aprox. = 1 + desvío / exposición media (${expoMedia.toFixed(2)} años), suponiendo\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mtarde acumula más eventos sin suscribir peor. Estuvo en todos los SIR.\x1b[0m`,
+  `  \x1b[90mtasa de transferencia constante por año. El hazard real no es constante, así\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mque esto dice el orden de magnitud, no el número. El peor caso es ` +
+    `${pct(peor, 1)}.\x1b[0m`,
+);
+console.log(
+  peor > 0.1
+    ? `  \x1b[31mA esa escala hay que rehacer los SIR con tiempo-persona en vez de conteo.\x1b[0m`
+    : `  \x1b[32mA esa escala no explica un SIR de 1,51: el confundido existe y es chico.\x1b[0m`,
 );
 console.log(
   `\n  \x1b[90m  Emisiones nuevas de EDGAR: suben el denominador. Si son de añadas recientes\x1b[0m`,
