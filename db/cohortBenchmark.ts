@@ -56,6 +56,21 @@ export interface Emision {
   pool: number;
   tipoDominante: string | null;
   shareDominante: number;
+  /**
+   * Cuántos de esos préstamos tienen tipo de propiedad.
+   *
+   * `pool` cuenta todos los préstamos de la emisión y la composición se calcula
+   * solo sobre los que tienen tipo, así que los dos números no son el mismo. La
+   * diferencia se veía impresa —BMO 2026-C15 sale con pool 14 en
+   * `db:composition-signal` y 15 acá— y nadie la había mirado.
+   *
+   * Importa porque el nulo se simula sacando n préstamos al azar: hacerlo con 15
+   * cuando la mezcla se midió sobre 14 le da al nulo menos dispersión de la que
+   * corresponde, y eso corre el p-valor HACIA "distinta". Un sesgo chico —el ruido
+   * escala con 1/√n, así que 15 contra 14 son ~1,5%— pero en la dirección de
+   * encontrar señal, y en el estadístico que encabeza el producto.
+   */
+  poolTipado: number;
 }
 
 export interface MetricaResultado {
@@ -160,10 +175,13 @@ export interface Benchmark {
 export async function cargarCandidatas(): Promise<Emision[]> {
   const { rows } = await query<{
     accession: string; nombre: string; anada: string; filed: string;
-    pool: string; tipo_dominante: string | null; share_dominante: string | null;
+    pool: string; pool_tipado: string; tipo_dominante: string | null;
+    share_dominante: string | null;
   }>(
     `WITH pools AS (
-       SELECT accession, count(*) AS pool FROM corpus.loans GROUP BY accession
+       SELECT accession, count(*) AS pool,
+              count(*) FILTER (WHERE property_type IS NOT NULL) AS pool_tipado
+         FROM corpus.loans GROUP BY accession
      ),
      tipos AS (
        SELECT l.accession, l.property_type AS tipo, count(*) AS n,
@@ -181,6 +199,7 @@ export async function cargarCandidatas(): Promise<Emision[]> {
             extract(year FROM f.filed_at)::int::text AS anada,
             f.filed_at::text AS filed,
             p.pool::text,
+            p.pool_tipado::text,
             d.tipo AS tipo_dominante,
             d.share::text AS share_dominante
        FROM corpus.filings f
@@ -196,6 +215,7 @@ export async function cargarCandidatas(): Promise<Emision[]> {
     anada: r.anada,
     filed: r.filed,
     pool: Number(r.pool),
+    poolTipado: Number(r.pool_tipado),
     tipoDominante: r.tipo_dominante,
     shareDominante: Number(r.share_dominante ?? 0),
   }));
@@ -236,7 +256,7 @@ export async function calcularBenchmark(
     excluidas,
     evaluable: pares.length >= MIN_PARES,
     objetivoMonoTipo: objetivo.shareDominante > CONCENTRACION_TIPO,
-    puntoPorPrestamo: 1 / Math.max(1, objetivo.pool),
+    puntoPorPrestamo: 1 / Math.max(1, objetivo.poolTipado),
     resolucionPercentil: 100 / (pares.length + 1),
   };
 
@@ -389,14 +409,14 @@ export async function calcularBenchmark(
        * "+0%", que parece un error de cálculo y en realidad era una diferencia
        * por debajo de la resolución del pool.
        */
-      const punto = 1 / Math.max(1, objetivo.pool);
+      const punto = 1 / Math.max(1, objetivo.poolTipado);
       return {
         tipo: r.tipo,
         propio,
         cohorte,
         diferencia,
         bajoResolucion: Math.abs(diferencia) < punto,
-        prestamos: Math.round(propio * objetivo.pool),
+        prestamos: Math.round(propio * objetivo.poolTipado),
         /** Cuántos préstamos explican la diferencia, que no es lo mismo que `prestamos`. */
         prestamosDif: Math.round(Math.abs(diferencia) / punto),
       };
@@ -443,7 +463,7 @@ export async function calcularBenchmark(
   const conMezcla = composicionCompleta;
   const pVec = conMezcla.map((c) => c.propio);
   const qVec = conMezcla.map((c) => c.cohorte);
-  const porPrestamo = aparte(pVec, qVec, objetivo.pool);
+  const porPrestamo = aparte(pVec, qVec, objetivo.poolTipado);
 
   /**
    * La misma medición con la referencia ponderada por emisión.
@@ -459,7 +479,7 @@ export async function calcularBenchmark(
     );
     return suma / Math.max(1, pares.length);
   });
-  const porEmision = aparte(pVec, qEmision, objetivo.pool);
+  const porEmision = aparte(pVec, qEmision, objetivo.poolTipado);
 
   return {
     ...base,

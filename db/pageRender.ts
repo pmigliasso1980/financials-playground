@@ -134,10 +134,10 @@ export function render(b: Benchmark): string {
           <tbody>${b.composicion.map(filaComposicion).join("")}</tbody>
         </table>
         <p class="note">Cada préstamo vale <b>${pct(b.puntoPorPrestamo, 1)}</b> de este pool
-        (${o.pool} préstamos), así que una diferencia de 9 puntos son
+        (${o.poolTipado} con tipo), así que una diferencia de 9 puntos son
         ${Math.max(1, Math.round(0.09 / b.puntoPorPrestamo))} préstamos.
         Hay que mover el <b>${pct(b.distancia)}</b> del pool para llegar a la mezcla de la
-        cohorte; sacando ${o.pool} préstamos al azar del universo de los pares se esperaría
+        cohorte; sacando ${o.poolTipado} préstamos al azar del universo de los pares se esperaría
         mover ${pct(b.distanciaNulo)}.</p>
       </section>
 
@@ -242,7 +242,11 @@ export function render(b: Benchmark): string {
 </style>
 <main>
   <h1>${esc(o.nombre)}</h1>
-  <p class="sub">${esc(o.filed.slice(0, 10))} · ${o.pool} préstamos · cohorte ${esc(o.anada)}</p>
+  <p class="sub">${esc(o.filed.slice(0, 10))} · ${o.pool} préstamos${
+    o.poolTipado < o.pool
+      ? `<span class="muted"> (${o.poolTipado} con tipo de propiedad — la mezcla se mide sobre esos)</span>`
+      : ""
+  } · cohorte ${esc(o.anada)}</p>
   ${
     b.evaluable
       ? !b.robusto
@@ -259,7 +263,7 @@ export function render(b: Benchmark): string {
            */
           `<p class="verdict filo">Mezcla <b>al filo</b> — hay que mover el ${pct(b.distancia)}
            del pool para igualar la cohorte, contra ${pct(b.distanciaNulo)} esperado por azar
-           con ${o.pool} préstamos. Que eso cuente como "distinta" depende de cómo se pondere
+           con ${o.poolTipado} préstamos. Que eso cuente como "distinta" depende de cómo se pondere
            la referencia: contando todos los préstamos de los pares da p = ${b.pValor.toFixed(3)},
            y dando el mismo peso a cada emisión da p = ${b.pValorPorEmision.toFixed(3)}.
            Con las dos a distinto lado del 5%, la respuesta honesta es que está en el borde.</p>`
@@ -267,10 +271,10 @@ export function render(b: Benchmark): string {
             b.pValor < 0.05
               ? `Mezcla de propiedades <b>distinta de su cohorte</b> — hay que mover el
                  ${pct(b.distancia)} del pool para igualarla, contra ${pct(b.distanciaNulo)}
-                 que se esperaría por azar con ${o.pool} préstamos (p = ${b.pValor.toFixed(4)},
+                 que se esperaría por azar con ${o.poolTipado} préstamos (p = ${b.pValor.toFixed(4)},
                  y da lo mismo con las dos ponderaciones de la referencia).`
               : `Mezcla de propiedades <b>indistinguible de su cohorte</b> — la distancia de
-                 ${pct(b.distancia)} está dentro de lo que produce el muestreo con ${o.pool}
+                 ${pct(b.distancia)} está dentro de lo que produce el muestreo con ${o.poolTipado}
                  préstamos (${pct(b.distanciaNulo)} esperado, p = ${b.pValor.toFixed(2)}).`
           }</p>`
       : ""

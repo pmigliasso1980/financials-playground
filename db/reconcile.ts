@@ -27,6 +27,25 @@
  * Si A → D no cierra pasando por B y C, hay una diferencia que nadie identificó y
  * el script lo dice en vez de dejar el hueco.
  *
+ * QUÉ DIO, Y DÓNDE ME EQUIVOQUÉ AL PREDECIRLO
+ *
+ * La descomposición cierra exacto: A = 13 y D = 8, los mismos números que imprimen
+ * los dos scripts. Pero el reparto no es el que supuse.
+ *
+ *   13 → 11   sacar las mono-tipo de la REFERENCIA. Y no solo resta: saca tres y
+ *             agrega una. Quitar del promedio a tres emisiones cargadas de
+ *             multifamily corre la mezcla "de mercado" y BMO 2026-5C15 pasa a
+ *             apartarse cuando antes no.
+ *   11 →  8   contar solo los conduits. Son exactamente las tres mono-tipo, que
+ *             se apartaban por definición.
+ *    8 →  8   la robustez no saca ninguna.
+ *
+ * Yo había dicho que las dos causas eran la referencia y la robustez. La robustez
+ * aporta CERO: las emisiones donde las dos ponderaciones discrepan no eran
+ * significativas por préstamo, así que nunca entraban al conteo. La segunda causa
+ * real era el universo de conteo, que estaba en el texto de la tarea y no en lo que
+ * dije. Una descomposición que cierra es la única forma de descubrir eso.
+ *
  * LO QUE YA APARECIÓ HACIÉNDOLO
  *
  * Una tercera diferencia, que era un defecto y no un parámetro: `cohortBenchmark`
@@ -35,8 +54,25 @@
  * eso el vector de referencia sumaba 0,985 en vez de 1, la distancia quedaba
  * subestimada, y el 1,5% de masa sobrante se le asignaba a la última categoría del
  * orden SQL. Sobre un caso sintético son 0,75 puntos de distancia — chico, pero
- * sistemático y en una sola dirección. Ya está arreglado; esta corrida mide el
- * resto.
+ * sistemático y en una sola dirección.
+ *
+ * Y UNA CUARTA, QUE ESTABA IMPRESA Y NADIE LEYÓ
+ *
+ * Las columnas `pool` de los dos scripts no coinciden: BMO 2026-C15 sale con 14 en
+ * uno y 15 en el otro, BANK5 2026-5YR20 con 36 y 37. `cargarCandidatas` contaba
+ * TODOS los préstamos y la composición se mide solo sobre los que tienen tipo de
+ * propiedad — los 17 préstamos sin tipo de la tarea #37, repartidos en 15
+ * emisiones.
+ *
+ * El nulo se simulaba entonces sacando 15 préstamos al azar cuando la mezcla se
+ * había medido sobre 14. Más extracciones es menos dispersión en el nulo, así que
+ * el p-valor salía más chico de lo que corresponde: sesgo hacia "distinta", en el
+ * estadístico que encabeza el producto. Medido sobre un caso sintético, p pasa de
+ * 0,745 a 0,703.
+ *
+ * Las dos están arregladas. La lección no es el tamaño de ninguna de las dos: es
+ * que las dos aparecieron al exigir que dos números cerraran, y ninguna se veía
+ * mirando un resultado que ya parecía razonable.
  */
 
 import { closePool, ping, query } from "./client.js";

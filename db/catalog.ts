@@ -162,9 +162,11 @@ const fila = (f: { b: Benchmark; slug: string }) => {
   const top = [...b.composicion]
     .filter((c) => !c.bajoResolucion)
     .sort((x, y) => Math.abs(y.diferencia) - Math.abs(x.diferencia))[0];
-  return `<tr class="b-${banda}" data-exc="${exceso(b).toFixed(5)}" data-pool="${o.pool}" data-nombre="${esc(o.nombre)}">
+  return `<tr class="b-${banda}" data-exc="${exceso(b).toFixed(5)}" data-pool="${o.poolTipado}" data-nombre="${esc(o.nombre)}">
     <th><a href="${f.slug}.html">${esc(o.nombre)}</a></th>
-    <td class="n">${o.pool}</td>
+    <td class="n">${o.poolTipado}${
+      o.poolTipado < o.pool ? `<span class="muted"> / ${o.pool}</span>` : ""
+    }</td>
     <td class="viz">${barraExceso(b)}</td>
     <td class="n">${pct(b.distancia)}<span class="muted"> vs ${pct(b.distanciaNulo)}</span></td>
     <td><span class="pill ${banda}">${ETIQUETA[banda]}</span></td>
@@ -235,7 +237,7 @@ const html = `<!doctype html>
   <table>
     <thead><tr>
       <th class="s" data-k="nombre">emisión</th>
-      <th class="s n" data-k="pool">pool</th>
+      <th class="s n" data-k="pool">pool con tipo</th>
       <th class="s" data-k="exc" colspan="2">cuánto se aparta · observado vs azar</th>
       <th></th>
       <th>qué tiene de distinto</th>
