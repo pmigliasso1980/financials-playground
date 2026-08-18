@@ -318,35 +318,57 @@ console.log(
  * loans, observations, facts, performance, delinquency y unmapped_cells, ninguna de
  * propiedades.
  *
- * `stats` no guarda el conteo de filas de propiedad, así que se estima por resta:
- * filas de datos menos préstamos guardados menos filas vacías. Es una cota, no un
- * número exacto, y se dice así.
+ * CÓMO SE MIDE, Y UN PROXY QUE NO MEDÍA NADA
+ *
+ * La primera versión lo estimaba por resta sobre `stats`: filas de datos menos
+ * préstamos guardados. Dio ~0 y por un momento me lo creí.
+ *
+ * Estaba mal por construcción. `keepLoanRows` corre en `batch.ts` ANTES de
+ * `rowsToObservations`, así que `dataRows` ya cuenta solo las filas que
+ * sobrevivieron el filtro. La resta medía los subtotales que se caen después, no
+ * las propiedades. Un número con dos decimales de confianza sobre la pregunta
+ * equivocada, que casi cierra una línea de investigación correcta.
+ *
+ * Ahora el harvester lo registra de verdad en `stats.propertyRowsDropped`. Las 233
+ * emisiones ya cosechadas no lo tienen, así que hasta la próxima cosecha esto
+ * muestra la cota que sale de los tres fixtures —138 filas de propiedad sobre 84
+ * préstamos— y dice que es una extrapolación.
  */
-const { rows: desc } = await query<{ filas: string; guardados: string; vacias: string; de: string }>(
-  `SELECT sum((stats->>'dataRows')::int)::text        AS filas,
-          sum((stats->>'propertiesKept')::int)::text  AS guardados,
-          sum((stats->>'rowsSkipped')::int)::text     AS vacias,
-          count(*)::text                              AS de
-     FROM corpus.filings
-    WHERE stats->>'dataRows' IS NOT NULL
-      AND stats->>'propertiesKept' IS NOT NULL`,
+const { rows: desc } = await query<{ con: string; tiradas: string; de: string }>(
+  `SELECT count(*) FILTER (WHERE stats->>'propertyRowsDropped' IS NOT NULL)::text AS con,
+          coalesce(sum((stats->>'propertyRowsDropped')::int), 0)::text            AS tiradas,
+          count(*)::text                                                          AS de
+     FROM corpus.filings`,
 );
 const d = desc[0]!;
-if (d.filas) {
-  const tiradas = Number(d.filas) - Number(d.guardados) - Number(d.vacias ?? 0);
-  console.log(`\n  \x1b[1mFilas de propiedad descartadas al cosechar\x1b[0m`);
+console.log(`\n  \x1b[1mFilas de propiedad descartadas al cosechar\x1b[0m`);
+if (Number(d.con) === 0) {
+  /** 138 filas de propiedad sobre 84 préstamos en los tres fixtures = 1,64 por préstamo. */
+  const RATIO_FIXTURES = 138 / 84;
+  const est = Math.round(Number(tot[0]!.total) * RATIO_FIXTURES);
   console.log(
-    `    ~${tiradas.toLocaleString("en-US")} filas en ${d.de} emisiones` +
-      `  \x1b[90m(${Number(d.filas).toLocaleString("en-US")} de datos − ` +
-      `${Number(d.guardados).toLocaleString("en-US")} préstamos − ${d.vacias} vacías)\x1b[0m`,
+    `    ninguna de las ${d.de} emisiones registra el conteo — se cosecharon antes de medirlo`,
   );
   console.log(
-    `    \x1b[90mcada una trae dirección, ciudad y estado de UNA propiedad: ahí está\x1b[0m`,
+    `    \x1b[33m~${est.toLocaleString("en-US")} filas estimadas\x1b[0m` +
+      `  \x1b[90mextrapolando 1,64 por préstamo desde los tres fixtures\x1b[0m`,
   );
   console.log(
-    `    \x1b[90mla geografía de las ${b.cartera} carteras, y no hay tabla donde guardarla\x1b[0m`,
+    `    \x1b[90mes una extrapolación de 3 documentos a 233: sirve para decidir si vale\x1b[0m`,
+  );
+  console.log(`    \x1b[90mla pena medirlo en serio, no para citarla\x1b[0m`);
+} else {
+  console.log(
+    `    \x1b[1m${Number(d.tiradas).toLocaleString("en-US")} filas\x1b[0m en ${d.con} de ${d.de} emisiones` +
+      ` \x1b[90m(el resto se cosechó antes de medirlo)\x1b[0m`,
   );
 }
+console.log(
+  `    \x1b[90mcada una trae dirección, ciudad y estado de UNA propiedad: ahí está la\x1b[0m`,
+);
+console.log(
+  `    \x1b[90mgeografía de las ${b.cartera} carteras, y no hay tabla donde guardarla\x1b[0m`,
+);
 
 console.log(
   `\n  \x1b[90mUna cartera de cinco propiedades en Texas SÍ tiene un estado, y hoy no\x1b[0m`,

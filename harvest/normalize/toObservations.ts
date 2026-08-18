@@ -107,6 +107,16 @@ export interface HarvestResult {
     observations: number;
     /** Filas descartadas por no tener ningún dato útil. */
     rowsSkipped: number;
+    /**
+     * Filas de propiedad descartadas ANTES de llegar acá, por `keepLoanRows`.
+     *
+     * Lo llena quien cosecha, porque el filtro corre antes de esta función y desde
+     * acá el dato ya no existe. Va en stats igual porque es la única forma de saber
+     * cuánta geografía estamos tirando sin volver a bajar los documentos.
+     *
+     * Opcional: las 233 emisiones ya cosechadas no lo tienen.
+     */
+    propertyRowsDropped?: number;
     coverageByMetric: Record<string, number>;
   };
 }

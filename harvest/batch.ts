@@ -448,5 +448,18 @@ async function harvestOne(cik: string) {
   };
 
   const result = rowsToObservations(filtered.rows, joined.headerRowIndex, source);
+  /**
+   * Cuántas filas de propiedad tiró `keepLoanRows`.
+   *
+   * Un Annex A trae una fila por préstamo y una por cada propiedad que lo
+   * garantiza, con la dirección, la ciudad y el estado de cada una. Nos quedamos
+   * con las de préstamo, así que la geografía de las carteras multi-propiedad se
+   * descarta acá — y hasta ahora no quedaba registro de cuánta.
+   *
+   * Intenté estimarlo por resta sobre `stats` y me dio ~0, porque `dataRows` se
+   * cuenta DESPUÉS de este filtro. El proxy medía otra cosa y contestaba con
+   * confianza: casi cierra una línea de investigación que era correcta.
+   */
+  result.stats.propertyRowsDropped = filtered.propertyRows;
   return result.properties.length > 0 ? result : null;
 }
