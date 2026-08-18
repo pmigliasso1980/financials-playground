@@ -64,6 +64,22 @@
  *
  * Se agrega abajo el corte que las separa, en vez de escribir un arreglo que
  * atiende a la que ya entendí y deja la otra donde está.
+ *
+ * Y UN TEST QUE NO PODÍA FALLAR, ESCRITO ACÁ MISMO
+ *
+ * La primera versión de ese corte buscaba el encabezado sin mapear en
+ * `corpus.unmapped_cells`. Esa tabla tiene `value_num NUMERIC NOT NULL` y el
+ * harvester hace `if (value === null) continue`: solo entra lo que parsea como
+ * número. Un tipo de propiedad es texto, así que NUNCA puede estar ahí.
+ *
+ * O sea que la consulta devolvía vacío siempre, y ese vacío se leía como "el
+ * Annex A no publica la columna" cuando en realidad significaba "no lo podemos
+ * saber por esta vía". La conclusión opuesta a la verdadera, en el script cuyo
+ * único propósito era distinguir las dos poblaciones.
+ *
+ * La fuente correcta es `corpus.filings.columns_unmapped`, que guarda los nombres
+ * de los encabezados en la etapa de mapeo, antes de que importe si el valor es
+ * texto o número.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -217,9 +233,9 @@ const { rows: detalle } = await query<{
 }>(
   `SELECT f.company_name AS emision, l.loan_ref, l.property_name AS nombre,
           pc.value AS count, pd.value AS detalle,
-          (SELECT string_agg(u.header, ' · ' ORDER BY u.header)
-             FROM corpus.unmapped_cells u
-            WHERE u.loan_id = l.id AND u.header ~* 'type|property') AS sin_mapear
+          (SELECT string_agg(h, ' · ')
+             FROM jsonb_array_elements_text(f.columns_unmapped) AS h
+            WHERE h ~* 'type|property') AS sin_mapear
      FROM corpus.loans l
      JOIN corpus.filings f ON f.accession = l.accession
      LEFT JOIN corpus.facts pc ON pc.loan_id = l.id AND pc.metric_key = 'property_count'
@@ -304,9 +320,13 @@ if (sinClasificar.length === 0) {
  * misma emisión no: eso es una columna que el mapeo no reconoció, y se arregla en
  * la taxonomía recuperando todos de una vez.
  *
- * La prueba está en `unmapped_cells`: si esa emisión tiene un encabezado con
- * "type" o "property" que quedó sin mapear, el diagnóstico está cerrado. Si no lo
- * tiene, el Annex A no publica la columna y no hay nada que recuperar.
+ * La prueba está en `filings.columns_unmapped`: si esa emisión tiene un encabezado
+ * con "type" o "property" que quedó sin mapear, el diagnóstico está cerrado. Si no
+ * lo tiene, el Annex A no publica la columna y no hay nada que recuperar.
+ *
+ * NO en `unmapped_cells`, que fue el primer intento: esa tabla solo guarda celdas
+ * numéricas, así que buscar una columna de texto ahí es una consulta que devuelve
+ * vacío por construcción.
  */
 const { rows: concentradas } = await query<{
   emision: string; anada: string; n: string; sin_tipo: string;
@@ -327,10 +347,10 @@ const { rows: concentradas } = await query<{
           (SELECT count(*)::text FROM corpus.loans l2
              JOIN corpus.facts pc ON pc.loan_id = l2.id AND pc.metric_key = 'property_count'
             WHERE l2.accession = x.accession AND l2.property_type IS NULL) AS con_count,
-          (SELECT string_agg(DISTINCT u.header, ' · ')
-             FROM corpus.unmapped_cells u
-             JOIN corpus.loans l3 ON l3.id = u.loan_id
-            WHERE l3.accession = x.accession AND u.header ~* 'type') AS headers
+          (SELECT string_agg(h, ' · ')
+             FROM corpus.filings f2,
+                  LATERAL jsonb_array_elements_text(f2.columns_unmapped) AS h
+            WHERE f2.accession = x.accession AND h ~* 'type|property') AS headers
      FROM x
     WHERE x.sin_tipo >= 5
     ORDER BY x.sin_tipo DESC LIMIT 12`,
