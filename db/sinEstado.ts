@@ -94,7 +94,8 @@ const { rows: conc } = await query<{
           (SELECT sum(vacios) FROM (
              SELECT vacios FROM por_filing ORDER BY vacios DESC LIMIT 5) t)::text AS top5,
           (SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY vacios)
-             FROM por_filing WHERE vacios > 0)::text AS mediana`,
+             FROM por_filing WHERE vacios > 0)::text AS mediana
+     FROM por_filing`,
 );
 const con = Number(conc[0]!.emisiones_con);
 const totalEm = Number(conc[0]!.emisiones_total);
@@ -165,7 +166,7 @@ const { rows: peores } = await query<{ empresa: string; accession: string; n: st
           count(*) FILTER (WHERE ${VACIO})::text AS n, count(*)::text AS de
      FROM corpus.loans l JOIN corpus.filings f ON f.accession = l.accession
     GROUP BY 1, 2 HAVING count(*) FILTER (WHERE ${VACIO}) > 0
-    ORDER BY 3::int DESC LIMIT 8`,
+    ORDER BY count(*) FILTER (WHERE ${VACIO}) DESC LIMIT 8`,
 );
 console.log(`\n  \x1b[1mEmisiones con más vacíos\x1b[0m`);
 for (const p of peores) {
