@@ -80,6 +80,40 @@
  * La fuente correcta es `corpus.filings.columns_unmapped`, que guarda los nombres
  * de los encabezados en la etapa de mapeo, antes de que importe si el valor es
  * texto o número.
+ *
+ * Y CON LA FUENTE BUENA APARECIERON TRES POBLACIONES, NO DOS
+ *
+ * El filtro `~* 'type|property'` que usé era demasiado ancho y produjo tres pistas
+ * falsas seguidas. Ninguno de estos encabezados es un tipo de propiedad:
+ *
+ *   "Title Type"          — es fee contra leasehold: el derecho sobre el terreno.
+ *   "Appraised Value Type" — as-is contra as-stabilized: qué supone la tasación.
+ *   "Footnotes (for Loan and Property Information)" — notas al pie.
+ *
+ * Aparecen en casi todas las emisiones porque son columnas normales que el mapeo
+ * no usa, no porque tengan que ver con el hueco. Un filtro por substring encuentra
+ * lo que sea que contenga la palabra, y "type" está en media docena de conceptos
+ * distintos del Annex A.
+ *
+ * Lo que sí apareció, en GS 2020 y Benchmark 2020-B21 —las dos que concentran 19 y
+ * 17— es otra cosa:
+ *
+ *   "Loan / Property Flag Loan Property"
+ *   "Property Name Dearborn Flex P..."
+ *
+ * Eso no es un encabezado: es un encabezado con la primera fila de datos pegada
+ * adentro. Es la tarea #48, y explica por qué la columna de tipo tampoco mapea en
+ * esas emisiones — su encabezado también está corrompido.
+ *
+ * Y queda una tercera que no es ninguna de las dos: BBCMS 2022-C17 con 8 de 8
+ * préstamos sin tipo, sin encabezados sin mapear y sin nombres "Various". Es la
+ * emisión de la tarea #40, que ya estaba abierta por tener 39 observations.
+ *
+ *   población 1  carteras multi-propiedad     ~70%   no hay nada que recuperar
+ *   población 2  encabezados con datos pegados        tarea #48
+ *   población 3  BBCMS 2022-C17                       tarea #40
+ *
+ * Tres causas, tres arreglos, y el primer diagnóstico las tenía como una sola.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -235,7 +269,8 @@ const { rows: detalle } = await query<{
           pc.value AS count, pd.value AS detalle,
           (SELECT string_agg(h, ' · ')
              FROM jsonb_array_elements_text(f.columns_unmapped) AS h
-            WHERE h ~* 'type|property') AS sin_mapear
+            WHERE h ~* '(property|asset|collateral|general)\\s*type'
+              AND h !~* 'title|appraised|footnote') AS sin_mapear
      FROM corpus.loans l
      JOIN corpus.filings f ON f.accession = l.accession
      LEFT JOIN corpus.facts pc ON pc.loan_id = l.id AND pc.metric_key = 'property_count'
@@ -330,7 +365,7 @@ if (sinClasificar.length === 0) {
  */
 const { rows: concentradas } = await query<{
   emision: string; anada: string; n: string; sin_tipo: string;
-  various: string; con_count: string; headers: string | null;
+  various: string; con_count: string; headers: string | null; pegados: string | null;
 }>(
   `WITH x AS (
      SELECT l.accession, f.company_name AS emision,
@@ -350,7 +385,14 @@ const { rows: concentradas } = await query<{
           (SELECT string_agg(h, ' · ')
              FROM corpus.filings f2,
                   LATERAL jsonb_array_elements_text(f2.columns_unmapped) AS h
-            WHERE f2.accession = x.accession AND h ~* 'type|property') AS headers
+            WHERE f2.accession = x.accession
+              AND h ~* '(property|asset|collateral|general)\\s*type'
+              AND h !~* 'title|appraised|footnote') AS headers,
+          (SELECT string_agg(left(h, 44), ' · ')
+             FROM corpus.filings f3,
+                  LATERAL jsonb_array_elements_text(f3.columns_unmapped) AS h
+            WHERE f3.accession = x.accession
+              AND (length(h) > 45 OR h ~ '[0-9]{3}')) AS pegados
      FROM x
     WHERE x.sin_tipo >= 5
     ORDER BY x.sin_tipo DESC LIMIT 12`,
@@ -372,19 +414,35 @@ if (concentradas.length === 0) {
         (vv / Math.max(1, sin) < 0.5 ? `  \x1b[33m← no son carteras\x1b[0m` : ""),
     );
     if (r.headers) {
-      console.log(`  \x1b[33m    sin mapear: ${r.headers.slice(0, 66)}\x1b[0m`);
+      console.log(`  \x1b[32m    columna de tipo sin mapear: ${r.headers.slice(0, 60)}\x1b[0m`);
+    }
+    /**
+     * La firma de la tarea #48: un encabezado de más de 45 caracteres o con tres
+     * dígitos seguidos no es un encabezado, es uno con datos pegados adentro. Si
+     * el encabezado del bloque está corrompido, la columna de tipo tampoco mapea.
+     */
+    if (r.pegados) {
+      console.log(`  \x1b[33m    encabezados con datos pegados (#48): ${r.pegados.slice(0, 56)}\x1b[0m`);
     }
   }
   console.log(
-    `\n  \x1b[90mSi la mayoría se llama "Various" son carteras y no hay nada que recuperar.\x1b[0m`,
+    `\n  \x1b[90mTres poblaciones, tres arreglos. Carteras multi-propiedad: no hay nada que\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mSi NO se llaman así y hay un encabezado con "type" sin mapear, es la\x1b[0m`,
+    `  \x1b[90mrecuperar, hace falta una categoría "Varios". Encabezados con datos pegados:\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mtaxonomía y se recuperan todos de una. Son dos arreglos distintos y hasta\x1b[0m`,
+    `  \x1b[90mes la tarea #48 y arreglarla recupera la emisión entera. Y BBCMS 2022-C17,\x1b[0m`,
   );
-  console.log(`  \x1b[90mahora los estaba tratando como uno.\x1b[0m`);
+  console.log(
+    `  \x1b[90mque no es ninguna de las dos y ya estaba abierta como #40.\x1b[0m`,
+  );
+  console.log(
+    `\n  \x1b[90m"Title Type" y "Appraised Value Type" NO son tipo de propiedad —son fee vs\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mleasehold y as-is vs as-stabilized—. El filtro anterior los traía como pista.\x1b[0m`,
+  );
 }
 
 const estado = await estadoCorpus();
