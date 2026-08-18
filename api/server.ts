@@ -29,6 +29,7 @@
  */
 
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { closePool, ping } from "../db/client.js";
 import { estadoCorpus, estampa } from "../db/procedencia.js";
@@ -134,6 +135,20 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method !== "GET") return responder(405, { error: { codigo: "metodo_no_permitido" } });
 
+    /**
+     * La pantalla se sirve desde el mismo proceso.
+     *
+     * Un archivo suelto que hay que abrir con file:// no puede llamar a la API por
+     * CORS, y montar un segundo servidor para un HTML es infraestructura sin
+     * motivo. Se lee del disco en cada request: son 8 KB y así se puede editar sin
+     * reiniciar.
+     */
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      const html = await readFile(new URL("./ui.html", import.meta.url), "utf8");
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-request-id": requestId });
+      return res.end(html);
+    }
+
     if (url.pathname === "/health") {
       return responder(200, { ok: true });
     }
@@ -172,7 +187,7 @@ const server = createServer(async (req, res) => {
 server.listen(PUERTO, () => {
   const e = `http://localhost:${PUERTO}`;
   console.log(`\n  API escuchando en \x1b[1m${e}\x1b[0m\n`);
-  console.log(`  \x1b[90mProbá:\x1b[0m`);
+  console.log(`  \x1b[90mAbrí eso en el navegador. O por consola:\x1b[0m`);
   console.log(`    curl "${e}/corpus"`);
   console.log(`    curl "${e}/comps?state=GA&type=Multifamily&amount=28000000&target_ltv=0.70"`);
   console.log(

@@ -1,0 +1,204 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Comparables · conduit CMBS</title>
+<!--
+  La pantalla. Un archivo, sin dependencias, servido por el mismo proceso.
+
+  LAS TRES COSAS QUE ESTA PANTALLA HACE Y UNA PLANILLA NO
+
+  1. Dice sobre cuántos préstamos está cada número. Una mediana de 31 y una de 6
+     se ven igual en una planilla y no significan lo mismo.
+  2. Se niega. Con menos de cinco comparables muestra qué habría que aflojar en
+     vez de dibujar un rango con tres préstamos.
+  3. Cada comparable lleva el link al documento de la SEC. Un número que no se
+     puede abrir hay que creerlo; con el filing atrás, se verifica.
+-->
+<style>
+  :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
+          --dot:#2b5fa8; --warn:#8a6410; --warnbg:#fdf6ec; }
+  * { box-sizing:border-box }
+  body { margin:0; padding:40px 24px 64px; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif }
+  main { max-width:860px; margin:0 auto }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.01em }
+  .sub { color:var(--muted); font-size:13.5px; margin:0 0 28px }
+  form { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; align-items:end;
+         padding:18px; border:1px solid var(--line); border-radius:8px; background:#fafafa }
+  label { display:block; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em;
+          color:var(--muted); font-weight:600; margin-bottom:5px }
+  input, select { width:100%; padding:8px 10px; border:1px solid #d4d4d4; border-radius:5px;
+                  font:inherit; font-size:14px; background:#fff }
+  button { padding:9px 18px; border:0; border-radius:5px; background:var(--dot); color:#fff;
+           font:inherit; font-weight:600; cursor:pointer }
+  button:disabled { background:#9aa8bd; cursor:default }
+  section { margin-top:32px }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+       margin:0 0 12px; font-weight:600 }
+  table { width:100%; border-collapse:collapse }
+  th, td { padding:10px; text-align:right; border-top:1px solid var(--line);
+           font-variant-numeric:tabular-nums }
+  th:first-child, td:first-child { text-align:left }
+  thead th { border-top:0; border-bottom:1px solid var(--line); font-size:11.5px;
+             text-transform:uppercase; letter-spacing:.05em; color:var(--muted) }
+  .big { font-size:17px; font-weight:600 }
+  .muted { color:var(--muted) }
+  .sm { font-size:12.5px }
+  .veredicto { font-size:16px; padding:14px 16px; border-radius:6px; margin-bottom:20px;
+               background:#f4f6fa; border:1px solid #e2e8f2 }
+  .aviso { background:var(--warnbg); border:1px solid #f0e2bc; color:#5c4409;
+           padding:16px 18px; border-radius:6px }
+  .aviso h2 { color:var(--warn) }
+  .aviso li { margin:4px 0 }
+  a { color:var(--dot) }
+  footer { margin-top:40px; padding-top:18px; border-top:1px solid var(--line);
+           font-size:12.5px; color:var(--muted) }
+  .canal { background:#fafafa; border-left:3px solid var(--line); padding:10px 14px;
+           font-size:13px; color:var(--muted); margin-top:18px }
+  @media (max-width:720px) { form { grid-template-columns:1fr 1fr } }
+</style>
+<main>
+  <h1>¿Qué términos consiguieron préstamos parecidos?</h1>
+  <p class="sub">Comparables de préstamos conduit CMBS, de documentos públicos de SEC EDGAR.</p>
+
+  <form id="f">
+    <div>
+      <label for="state">Estado</label>
+      <input id="state" value="GA" maxlength="2" style="text-transform:uppercase">
+    </div>
+    <div>
+      <label for="type">Tipo</label>
+      <select id="type"></select>
+    </div>
+    <div>
+      <label for="amount">Monto (US$)</label>
+      <input id="amount" value="28000000" inputmode="numeric">
+    </div>
+    <div>
+      <label for="ltv">LTV que pide</label>
+      <input id="ltv" value="70" placeholder="opcional">
+    </div>
+    <div><button id="go">Buscar</button></div>
+  </form>
+
+  <div id="out"></div>
+
+  <footer id="pie"></footer>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const fmtPct = (v) => (v * 100).toFixed(1) + "%";
+const fmtX = (v) => v.toFixed(2) + "x";
+const fmtUSD = (v) => "US$" + Math.round(v).toLocaleString("en-US");
+
+/** Cada métrica sabe cómo se lee: un LTV en 0,61 y un DSCR en 1,44 no son lo mismo. */
+const FORMATO = { ltv: fmtPct, debt_yield: fmtPct, interest_rate: fmtPct, dscr: fmtX };
+
+async function cargarTipos() {
+  const r = await fetch("/corpus").then((x) => x.json());
+  $("#type").innerHTML = r.data.tipos
+    .map((t) => `<option${t === "Multifamily" ? " selected" : ""}>${t}</option>`)
+    .join("");
+  $("#pie").textContent = r.data.estampa;
+}
+
+function render(d) {
+  if (!d.suficiente) {
+    /**
+     * La negativa no es una pantalla vacía: dice cuántos hay, cuántos hacen falta
+     * y qué pasaría al aflojar cada criterio, para que decida quien pregunta.
+     */
+    return `<div class="aviso">
+      <h2>No alcanza para dar un rango</h2>
+      <p>Encontramos <b>${d.encontrados}</b> comparables y hacen falta al menos
+      <b>${d.minimo}</b>. Con menos, una mediana diría más de lo que estos datos saben.</p>
+      <p>Si aflojás un criterio:</p>
+      <ul>${d.siAmplias
+        .map((s) => `<li>${s.criterio} → <b>${s.encontrados}</b> comparables</li>`)
+        .join("")}</ul>
+    </div>`;
+  }
+
+  const obj = d.objetivo
+    ? `<div class="veredicto">De los <b>${d.objetivo.de}</b> comparables con LTV publicado,
+       <b>${d.objetivo.alcanzaron}</b> llegaron a ${fmtPct(d.objetivo.ltv)} o más.
+       ${
+         d.objetivo.alcanzaron / Math.max(1, d.objetivo.de) < 0.25
+           ? "<b>Es una porción chica del canal:</b> conviene revisar la expectativa antes de salir a buscar."
+           : "Está dentro de lo que este canal viene dando."
+       }</div>`
+    : "";
+
+  return `${obj}
+    <section>
+      <h2>${d.encontrados} comparables</h2>
+      <table>
+        <thead><tr><th></th><th>p25</th><th>mediana</th><th>p75</th><th>sobre</th></tr></thead>
+        <tbody>${d.distribuciones
+          .map((m) => {
+            const f = FORMATO[m.metrica] ?? ((v) => v.toFixed(2));
+            return `<tr>
+              <td>${m.etiqueta}</td>
+              <td class="muted">${f(m.p25)}</td>
+              <td class="big">${f(m.p50)}</td>
+              <td class="muted">${f(m.p75)}</td>
+              <td class="muted sm">${m.base} préstamos</td>
+            </tr>`;
+          })
+          .join("")}</tbody>
+      </table>
+      <p class="muted sm" style="margin-top:10px">La columna "sobre" no es la misma para
+      todas: no todos los préstamos publican todas las métricas, y cada fila se calculó
+      solo con los que sí.</p>
+    </section>
+
+    <section>
+      <h2>Los comparables</h2>
+      <table>
+        <thead><tr><th>propiedad</th><th>ciudad</th><th>monto</th><th>fecha</th><th>fuente</th></tr></thead>
+        <tbody>${d.muestra
+          .map(
+            (c) => `<tr>
+              <td>${c.propiedad ?? "<span class=muted>sin nombre</span>"}</td>
+              <td class="muted sm">${c.ciudad ?? "—"}</td>
+              <td>${fmtUSD(c.monto)}</td>
+              <td class="muted sm">${c.fecha}</td>
+              <td class="sm"><a target="_blank" rel="noopener"
+                 href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&filenum=&action=getcompany">${c.emision.slice(0, 26)}</a></td>
+            </tr>`,
+          )
+          .join("")}</tbody>
+      </table>
+    </section>
+
+    <div class="canal">${d.corpus.canal}</div>`;
+}
+
+$("#f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("#go").disabled = true;
+  $("#out").innerHTML = `<p class="muted" style="margin-top:32px">Buscando…</p>`;
+  const q = new URLSearchParams({
+    state: $("#state").value.trim(),
+    type: $("#type").value,
+    amount: $("#amount").value.replace(/[^0-9.]/g, ""),
+  });
+  if ($("#ltv").value.trim()) q.set("target_ltv", $("#ltv").value.trim());
+  try {
+    const r = await fetch("/comps?" + q).then((x) => x.json());
+    if (r.data.error) {
+      $("#out").innerHTML = `<div class="aviso"><h2>Parámetros</h2><ul>${r.data.error.fallos
+        .map((f) => `<li>${f.mensaje}${f.esperado ? ` — ejemplo: <code>${f.esperado}</code>` : ""}</li>`)
+        .join("")}</ul></div>`;
+    } else {
+      $("#out").innerHTML = render(r.data);
+      $("#pie").textContent = r.data.corpus.estampa;
+    }
+  } catch (err) {
+    $("#out").innerHTML = `<div class="aviso"><h2>No se pudo consultar</h2><p>${err}</p></div>`;
+  }
+  $("#go").disabled = false;
+});
+
+cargarTipos();
+</script>
