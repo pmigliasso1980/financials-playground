@@ -41,7 +41,7 @@
  * miden el mismo mercado aunque el cociente dé parecido.
  */
 
-import { closePool, ping, query } from "./client.js";
+import { closePool, ping, query } from "../db/client.js";
 
 const health = await ping();
 if (!health.ok) {

@@ -38,7 +38,7 @@
  *                              una mediana sobre 12 casos no dice nada
  */
 
-import { closePool, ping, query } from "./client.js";
+import { closePool, ping, query } from "../db/client.js";
 
 const health = await ping();
 if (!health.ok) {

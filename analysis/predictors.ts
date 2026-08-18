@@ -38,7 +38,7 @@
  * afecta los niveles pero no el ORDEN entre deciles, que es lo que se lee acá.
  */
 
-import { closePool, ping, query } from "./client.js";
+import { closePool, ping, query } from "../db/client.js";
 
 const health = await ping();
 if (!health.ok) {

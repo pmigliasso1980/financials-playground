@@ -51,8 +51,8 @@
  * cualquier cambio en el resultado viene del dato, no del azar.
  */
 
-import { closePool, ping, query } from "./client.js";
-import { estadoCorpus, estampa } from "./procedencia.js";
+import { closePool, ping, query } from "../db/client.js";
+import { estadoCorpus, estampa } from "../db/procedencia.js";
 
 const health = await ping();
 if (!health.ok) {

@@ -36,9 +36,9 @@
  * medible e irrelevante.
  */
 
-import { closePool, ping, query } from "./client.js";
-import { pct } from "./cohortBenchmark.js";
-import { aparte, SIMULACIONES, tv } from "./compositionDistance.js";
+import { closePool, ping, query } from "../db/client.js";
+import { pct } from "../db/cohortBenchmark.js";
+import { aparte, SIMULACIONES, tv } from "../db/compositionDistance.js";
 
 const health = await ping();
 if (!health.ok) {
