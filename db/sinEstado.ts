@@ -301,11 +301,58 @@ console.log(
         `  \x1b[90mhuecos no coinciden, así que son defectos distintos y hay que atacarlos aparte.\x1b[0m`,
 );
 
+/**
+ * LO QUE DESCARTAMOS AL COSECHAR, QUE ES DONDE ESTÁ LA GEOGRAFÍA QUE FALTA.
+ *
+ * Dije en voz alta que las carteras "no se arreglan cosechando" porque el Annex A
+ * no trae un estado para ellas. Es falso, y conviene dejarlo escrito.
+ *
+ * El Annex A trae DOS clases de fila: una por préstamo y una por cada propiedad que
+ * lo garantiza. Un préstamo sobre cinco propiedades tiene su fila con el saldo y
+ * cinco filas más con la dirección, la ciudad y el estado de cada una. El harvester
+ * clasifica, se queda con las de préstamo y descarta las de propiedad — en el
+ * fixture de Benchmark 2020-B16 son 50 descartadas sobre 33 préstamos.
+ *
+ * O sea que el estado de las 585 carteras no falta en el documento. Lo tenemos
+ * delante y lo tiramos. Y no hay tabla donde ponerlo: el esquema tiene filings,
+ * loans, observations, facts, performance, delinquency y unmapped_cells, ninguna de
+ * propiedades.
+ *
+ * `stats` no guarda el conteo de filas de propiedad, así que se estima por resta:
+ * filas de datos menos préstamos guardados menos filas vacías. Es una cota, no un
+ * número exacto, y se dice así.
+ */
+const { rows: desc } = await query<{ filas: string; guardados: string; vacias: string; de: string }>(
+  `SELECT sum((stats->>'dataRows')::int)::text        AS filas,
+          sum((stats->>'propertiesKept')::int)::text  AS guardados,
+          sum((stats->>'rowsSkipped')::int)::text     AS vacias,
+          count(*)::text                              AS de
+     FROM corpus.filings
+    WHERE stats->>'dataRows' IS NOT NULL
+      AND stats->>'propertiesKept' IS NOT NULL`,
+);
+const d = desc[0]!;
+if (d.filas) {
+  const tiradas = Number(d.filas) - Number(d.guardados) - Number(d.vacias ?? 0);
+  console.log(`\n  \x1b[1mFilas de propiedad descartadas al cosechar\x1b[0m`);
+  console.log(
+    `    ~${tiradas.toLocaleString("en-US")} filas en ${d.de} emisiones` +
+      `  \x1b[90m(${Number(d.filas).toLocaleString("en-US")} de datos − ` +
+      `${Number(d.guardados).toLocaleString("en-US")} préstamos − ${d.vacias} vacías)\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90mcada una trae dirección, ciudad y estado de UNA propiedad: ahí está\x1b[0m`,
+  );
+  console.log(
+    `    \x1b[90mla geografía de las ${b.cartera} carteras, y no hay tabla donde guardarla\x1b[0m`,
+  );
+}
+
 console.log(
-  `\n  \x1b[90mLas carteras no se arreglan cosechando: el arreglo es que /comps sepa que\x1b[0m`,
+  `\n  \x1b[90mUna cartera de cinco propiedades en Texas SÍ tiene un estado, y hoy no\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mexisten, porque hoy quien pregunta por NY no ve las que incluyen NY.\x1b[0m\n`,
+  `  \x1b[90maparece en una consulta por Texas. Eso no es el mercado: es el esquema.\x1b[0m\n`,
 );
 
 await closePool();
