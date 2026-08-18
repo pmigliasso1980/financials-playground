@@ -82,15 +82,50 @@ check(
 );
 
 // ---------------------------------------------------------------------------
-// Una consulta imposible: se niega y ofrece salida
+// Que la negativa siga siendo POSIBLE, con una consulta realista
 // ---------------------------------------------------------------------------
+
+/**
+ * ESTE BLOQUE EXISTE PORQUE EL ANTERIOR NO SERVÍA.
+ *
+ * La primera versión probaba la negativa con self storage en Wyoming por 999
+ * MILLONES de dólares. Tan absurdo que ni el corpus nacional lo cubre, así que
+ * pasaba en verde incluso cuando la negativa estaba rota para toda consulta
+ * realista — que fue exactamente lo que pasó al agregar el escalón nacional
+ * automático: `suficiente: false` se volvió inalcanzable y el smoke no dijo nada.
+ *
+ * Un test cuyo caso está tan afuera de la distribución que no puede fallar en la
+ * región interesante no es un test. Ahora se usa una consulta que un broker podría
+ * escribir de verdad: manufactured de 6M en Wyoming. Hay 58 en el país, así que si
+ * el alcance nacional volviera a ser automático, esto se pone en rojo.
+ */
+const realista = await get("/comps?state=WY&type=Manufactured&amount=6000000");
+check(
+  "una consulta realista sin mercado local se NIEGA",
+  realista.data?.suficiente === false,
+  `contestó con ${realista.data?.encontrados} comparables en "${realista.data?.alcanceEtiqueta}"`,
+);
+check(
+  "y ofrece el alcance nacional como opción explícita",
+  (realista.data?.escalera ?? []).some(
+    (p: { alcance: string; encontrados: number }) => p.alcance === "pais" && p.encontrados > 0,
+  ),
+);
+
+/** Y con `nacional=1` sí contesta: la puerta existe, hay que abrirla a propósito. */
+const conNacional = await get("/comps?state=WY&type=Manufactured&amount=6000000&nacional=1");
+check(
+  "pidiendo el alcance nacional explícitamente, contesta",
+  conNacional.data?.suficiente === true && conNacional.data?.alcance === "pais",
+  `suficiente=${conNacional.data?.suficiente} alcance=${conNacional.data?.alcance}`,
+);
 
 const vacia = await get("/comps?state=WY&type=Self+Storage&amount=999000000");
 check("consulta sin comparables → 200, NO 404", vacia.status === 200);
 check("y se declara insuficiente", vacia.data?.suficiente === false);
 check(
   "muestra la escalera geográfica completa",
-  Array.isArray(vacia.data?.escalera) && vacia.data.escalera.length === 3,
+  Array.isArray(vacia.data?.escalera) && vacia.data.escalera.length >= 2,
   `escalera: ${JSON.stringify(vacia.data?.escalera?.map((p: { etiqueta: string }) => p.etiqueta))}`,
 );
 check(

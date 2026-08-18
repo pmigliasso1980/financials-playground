@@ -113,12 +113,22 @@ function validarComps(q: URLSearchParams): { ok: true; v: Parametros } | { ok: f
   }
 
   if (fallos.length > 0) return { ok: false, fallos };
-  return { ok: true, v: { estado, tipo: tipo as Tipo, monto, banda, meses, ltvObjetivo } };
+  return {
+    ok: true,
+    v: {
+      estado, tipo: tipo as Tipo, monto, banda, meses, ltvObjetivo,
+      /**
+       * El alcance nacional se pide, no se cae en él. Ver el comentario de
+       * `Alcance` en comps.ts: automatizarlo mató la negativa.
+       */
+      nacional: q.get("nacional") === "1" || q.get("nacional") === "true",
+    },
+  };
 }
 
 interface Parametros {
   estado: string; tipo: Tipo; monto: number;
-  banda?: number; meses?: number; ltvObjetivo?: number;
+  banda?: number; meses?: number; ltvObjetivo?: number; nacional?: boolean;
 }
 
 const server = createServer(async (req, res) => {

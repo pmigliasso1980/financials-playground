@@ -86,7 +86,28 @@ export function divisionDe(estado: string): { nombre: string; estados: string[] 
   return null;
 }
 
-/** Hasta dónde hubo que abrir el radio para juntar comparables suficientes. */
+/**
+ * Hasta dónde hubo que abrir el radio.
+ *
+ * "País" NO es un peldaño más de la escalera, y esa distinción se pagó cara.
+ *
+ * La primera versión bajaba automáticamente hasta el país, y con eso los doce
+ * casos de prueba pasaron a contestarse. Parecía un triunfo y era una regresión:
+ * como el corpus siempre tiene diez préstamos de cualquier tipo a nivel nacional,
+ * `suficiente: false` se volvió INALCANZABLE. El producto perdió la capacidad de
+ * decir que no, que es el rasgo que lo distingue de una planilla.
+ *
+ * Es la misma prueba-que-no-puede-fallar que aparece en todo este repositorio, esta
+ * vez adentro del producto.
+ *
+ * Y los números lo confirman: retail de 4M en Ohio a nivel nacional da un LTV de
+ * 38,2% a 58,0%. Veinte puntos de intercuartil no son un conjunto de comparables,
+ * son el mercado entero — cierto y sin información.
+ *
+ * Así que el radio automático llega hasta la REGIÓN. El país existe, pero hay que
+ * pedirlo: es una afirmación distinta —"así se financia esto en el país", no "así
+ * se financia en tu mercado"— y quien pregunta tiene que elegirla.
+ */
 export type Alcance = "estado" | "region" | "pais";
 
 const CANON = `CASE
@@ -105,6 +126,11 @@ export interface Criterios {
   estado: string;
   tipo: Tipo;
   monto: number;
+  /**
+   * Pedir explícitamente el alcance nacional. Por defecto la escalera para en la
+   * región, para que la negativa siga siendo posible.
+   */
+  nacional?: boolean;
   /** Ancho de la banda de tamaño. 0,5 = ±50%. */
   banda?: number;
   /** Ventana hacia atrás desde hoy. */
@@ -266,7 +292,8 @@ export async function buscarComparables(c: Criterios): Promise<Respuesta> {
   const peldanos: Array<{ alcance: Alcance; etiqueta: string; estados: string[] | null }> = [
     { alcance: "estado", etiqueta: c.estado.toUpperCase(), estados: [c.estado.toUpperCase()] },
     ...(div ? [{ alcance: "region" as const, etiqueta: div.nombre, estados: div.estados }] : []),
-    { alcance: "pais", etiqueta: "todo el país", estados: null },
+    /** Solo si lo piden. Ver el comentario de `Alcance`. */
+    ...(c.nacional ? [{ alcance: "pais" as const, etiqueta: "todo el país", estados: null }] : []),
   ];
 
   const escalera: Peldano[] = [];
@@ -275,6 +302,17 @@ export async function buscarComparables(c: Criterios): Promise<Respuesta> {
     const n = await contar(c, p.estados);
     escalera.push({ alcance: p.alcance, etiqueta: p.etiqueta, encontrados: n });
     if (!elegido && n >= MIN_COMPARABLES) elegido = p;
+  }
+
+  /**
+   * El conteo nacional se calcula SIEMPRE aunque no se use, para poder ofrecerlo
+   * en la negativa. "No hay comparables en tu mercado, pero hay 58 en el país si
+   * querés verlos" es una respuesta mejor que un callejón, y deja la decisión del
+   * lado de quien pregunta.
+   */
+  if (!c.nacional) {
+    const nPais = await contar(c, null);
+    escalera.push({ alcance: "pais", etiqueta: "todo el país (hay que pedirlo)", encontrados: nPais });
   }
 
   if (!elegido) {

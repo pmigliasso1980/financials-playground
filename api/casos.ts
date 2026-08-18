@@ -41,8 +41,17 @@
  *
  * O sea que puse una expectativa en el test y la expectativa era falsa. Con la
  * escalera geográfica ese caso debería contestarse, así que deja de estar marcado.
- * El único vacío genuino es Wyoming, que tiene un comparable incluso aflojando
- * todo.
+ *
+ * Y DESPUÉS LA ESCALERA SE PASÓ DE LARGO
+ *
+ * Con el escalón nacional automático, los doce casos pasaron a contestarse y las
+ * negativas cayeron a CERO. Parecía un triunfo: era que el producto había perdido
+ * la capacidad de decir que no, porque el país siempre tiene diez préstamos de
+ * cualquier tipo.
+ *
+ * El radio automático ahora llega hasta la región. Wyoming vuelve a ser un vacío
+ * esperado — y con `nacional: true` se puede pedir la respuesta nacional a
+ * propósito, que es otra afirmación.
  */
 
 import { buscarComparables, type Criterios, type Tipo } from "./comps.js";
