@@ -67,6 +67,23 @@ export interface FlagFilterResult {
   rows: unknown[][];
   loanRows: number;
   propertyRows: number;
+  /**
+   * Las filas de propiedad, que hasta ahora se contaban y se tiraban.
+   *
+   * POR QUÉ AHORA SE DEVUELVEN
+   *
+   * Cada una trae el nombre, la dirección, la ciudad y el estado de UNA propiedad
+   * que garantiza el préstamo. Medido sobre los tres fixtures: 138 filas
+   * descartadas, 138 con estado no vacío. No es residuo, es el dato.
+   *
+   * Tirarlas dejaba 585 préstamos sin ningún estado —los que garantizan
+   * propiedades en más de uno— invisibles para toda consulta de /comps. Y también
+   * perdía las direcciones de los multi-propiedad que SÍ tienen estado guardado.
+   *
+   * Se devuelven crudas y con su índice de fila original. Quien las quiera las
+   * normaliza; quien no, sigue leyendo `rows` como antes.
+   */
+  droppedPropertyRows: Array<{ rowIndex: number; row: unknown[] }>;
   /** true si la tabla tenía columna de flag; si no, se devolvió todo sin tocar. */
   hadFlagColumn: boolean;
   /** Filas descartadas por no ser préstamos: sin nombre de propiedad ni saldo. */
@@ -193,11 +210,13 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
   let loanRows = 0;
   let propertyRows = 0;
   const kept: unknown[][] = [];
+  const droppedPropertyRows: FlagFilterResult["droppedPropertyRows"] = [];
 
-  for (const row of limpio.kept) {
+  for (const [i, row] of limpio.kept.entries()) {
     const kind = classifyRow(row?.[flagCol]);
     if (kind === "property") {
       propertyRows++;
+      droppedPropertyRows.push({ rowIndex: headerRowIndex + 1 + i, row });
       continue;
     }
     if (kind === "loan") loanRows++;
@@ -208,6 +227,7 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
     rows: [...header, ...kept],
     loanRows,
     propertyRows,
+    droppedPropertyRows,
     hadFlagColumn: true,
     phantomRows: limpio.dropped,
   };
@@ -254,6 +274,7 @@ function keepLoanRowsByLoanId(
       rows: [...rows.slice(0, headerRowIndex + 1), ...limpio.kept],
       loanRows: data.length - limpio.dropped,
       propertyRows: 0,
+      droppedPropertyRows: [],
       hadFlagColumn: false,
       phantomRows: limpio.dropped,
     };
@@ -264,8 +285,9 @@ function keepLoanRowsByLoanId(
   let loanRows = 0;
   let propertyRows = 0;
   const kept: unknown[][] = [];
+  const droppedPropertyRows: FlagFilterResult["droppedPropertyRows"] = [];
 
-  for (const row of limpio.kept) {
+  for (const [i, row] of limpio.kept.entries()) {
     const raw = String(row?.[loanIdCol] ?? "").trim();
     const n = Number(raw);
 
@@ -279,6 +301,7 @@ function keepLoanRowsByLoanId(
     const fractional = Math.abs(n - Math.round(n));
     if (fractional > 0.001) {
       propertyRows++;
+      droppedPropertyRows.push({ rowIndex: headerRowIndex + 1 + i, row });
       continue;
     }
 
@@ -290,6 +313,7 @@ function keepLoanRowsByLoanId(
     rows: [...header, ...kept],
     loanRows,
     propertyRows,
+    droppedPropertyRows,
     // Se filtró, aunque no por la columna de flag.
     hadFlagColumn: propertyRows > 0,
     phantomRows: limpio.dropped,

@@ -21,11 +21,14 @@ import type {
   HarvestedProperty,
   SourceRef,
 } from "../harvest/normalize/toObservations.js";
+import type { HarvestedPropertyRow } from "../harvest/normalize/toProperties.js";
 import type { MetricKey } from "../harvest/normalize/columnMap.js";
 
 export interface SaveReport {
   accession: string;
   loans: number;
+  /** Filas de propiedad guardadas. Antes se contaban y se tiraban. */
+  properties: number;
   observations: number;
   facts: number;
   replaced: boolean;
@@ -112,6 +115,25 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
     const factCount = await insertFacts(client, byLoan);
     const observationCount = stored.length;
 
+    /**
+     * Las propiedades van DESPUÉS de los préstamos porque necesitan sus ids.
+     *
+     * `loanIds` está indexado por `row_index`, que es la fila del préstamo, y las
+     * propiedades traen `loanRef` —el "3" de "3.01"—, que es el número que publica
+     * el emisor. No son lo mismo, así que se arma un índice por loan_ref.
+     */
+    const porRef = new Map<string, number>();
+    for (const prop of result.properties) {
+      const ref = prop.observations.find((o) => o.metric_key === "loan_id")?.value;
+      const id = loanIds.get(prop.row_index);
+      if (ref && id !== undefined) {
+        /** "3.00" y "3" son el mismo préstamo: se indexa por la parte entera. */
+        const n = Number(String(ref).trim());
+        if (Number.isFinite(n)) porRef.set(String(Math.trunc(n)), id);
+      }
+    }
+    const propiedades = await insertProperties(client, accession, result.propertyRows ?? [], porRef);
+
     const cellRows = result.properties.flatMap((prop) =>
       prop.unmappedCells.map((cell) => ({
         loanId: loanIds.get(prop.row_index)!,
@@ -123,11 +145,75 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
     return {
       accession,
       loans: result.properties.length,
+      properties: propiedades,
       observations: observationCount,
       facts: factCount,
       replaced,
     };
   });
+}
+
+/**
+ * Inserta las filas de propiedad de un filing.
+ *
+ * Cada una trae la dirección, la ciudad y el estado de UNA propiedad que garantiza
+ * un préstamo. El harvester las descartaba: sobre los tres fixtures son 138 filas,
+ * las 138 con estado.
+ *
+ * `loan_id` puede quedar en NULL y eso es deliberado. Si un emisor numera distinto y
+ * la propiedad no ata a ningún préstamo, entra igual y queda contada; borrarla
+ * dejaría el mismo agujero silencioso que este cambio viene a cerrar. El monitor
+ * puede preguntar cuántas quedaron huérfanas.
+ */
+async function insertProperties(
+  client: PoolClient,
+  accession: string,
+  props: HarvestedPropertyRow[],
+  porRef: Map<string, number>,
+): Promise<number> {
+  if (props.length === 0) return 0;
+
+  const COLS = 11;
+  const CHUNK = Math.floor(60_000 / COLS);
+  let total = 0;
+
+  for (let start = 0; start < props.length; start += CHUNK) {
+    const slice = props.slice(start, start + CHUNK);
+    const values: unknown[] = [];
+    const tuples: string[] = [];
+
+    slice.forEach((p, i) => {
+      const base = i * COLS;
+      tuples.push(
+        `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},` +
+          `$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11})`,
+      );
+      values.push(
+        accession,
+        p.rowIndex,
+        p.loanRef === null ? null : (porRef.get(p.loanRef) ?? null),
+        p.propertyRef,
+        p.loanRef,
+        p.propertyName,
+        p.address,
+        p.city,
+        p.state,
+        p.zip,
+        p.propertyType,
+      );
+    });
+
+    const { rowCount } = await client.query(
+      `INSERT INTO corpus.properties
+         (accession, row_index, loan_id, property_ref, loan_ref,
+          property_name, address, city, state, zip, property_type)
+       VALUES ${tuples.join(",")}
+       ON CONFLICT (accession, row_index) DO NOTHING`,
+      values,
+    );
+    total += rowCount ?? 0;
+  }
+  return total;
 }
 
 /**

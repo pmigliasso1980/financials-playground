@@ -23,6 +23,7 @@ import { fetchBuffer } from "./edgar/client.js";
 import { extractTables } from "./parse/tables.js";
 import { findHeaderRow } from "./normalize/columnMap.js";
 import { attachContinuationTables, joinAnnexTables, keepLoanRows } from "./normalize/annexStructure.js";
+import { toProperties } from "./normalize/toProperties.js";
 import { checkSanity, rowsToObservations, type SourceRef } from "./normalize/toObservations.js";
 import { saveHarvest } from "../db/corpus.js";
 import { closePool, ping } from "../db/client.js";
@@ -461,5 +462,13 @@ async function harvestOne(cik: string) {
    * confianza: casi cierra una línea de investigación que era correcta.
    */
   result.stats.propertyRowsDropped = filtered.propertyRows;
+  /**
+   * Y ahora se guardan, no solo se cuentan. Ver `toProperties`: sobre los tres
+   * fixtures son 138 filas con dirección, ciudad y estado, todas atadas a su
+   * préstamo por la numeración 3.01 del emisor.
+   */
+  result.propertyRows = toProperties(
+    joined.rows, joined.headerRowIndex, filtered.droppedPropertyRows, source,
+  );
   return result.properties.length > 0 ? result : null;
 }

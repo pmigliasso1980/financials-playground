@@ -23,6 +23,7 @@ import { extractFromHtml } from "./parse/tables.js";
 import { findHeaderRow, mapColumns } from "./normalize/columnMap.js";
 import { attachContinuationTables, joinAnnexTables, keepLoanRows } from "./normalize/annexStructure.js";
 import { checkSanity, rowsToObservations, type SourceRef } from "./normalize/toObservations.js";
+import { toProperties } from "./normalize/toProperties.js";
 
 const FIXTURES_DIR = new URL("./fixtures/", import.meta.url).pathname;
 
@@ -293,6 +294,66 @@ for (const file of files) {
 
   check("el parseo del markup real no es lento", () => {
     assert(parseMs < 10_000, `tardó ${parseMs} ms`);
+  });
+
+  /**
+   * Las filas de propiedad, que el harvester descartaba.
+   *
+   * Estos chequeos existen porque los dos defectos que tuvo `toProperties` eran
+   * invisibles a ojo: el índice desfasado en uno perdía la primera propiedad de
+   * cada documento y ataba las demás a la fila anterior, y el ID leído del mapa de
+   * columnas dejaba 49 propiedades sin préstamo en un fixture y no en los otros
+   * dos. Ninguno tira una excepción; los dos producen una tabla que parece bien.
+   *
+   * Se afirma contra `filtered.propertyRows`, que es lo que el filtro dice haber
+   * descartado, y no contra un número escrito a mano: un fixture nuevo entra sin
+   * tocar el test, y si el filtro cambia el test lo acusa.
+   */
+  const propiedades = toProperties(
+    joined.rows, joined.headerRowIndex, filtered.droppedPropertyRows, source,
+  );
+
+  check("no se pierde ninguna fila de propiedad", () => {
+    assert(
+      propiedades.length === filtered.propertyRows,
+      `el filtro descartó ${filtered.propertyRows} y se normalizaron ${propiedades.length}`,
+    );
+  });
+
+  check("cada propiedad conserva su fila original y no se repite", () => {
+    const idx = new Set(propiedades.map((p) => p.rowIndex));
+    assert(
+      idx.size === propiedades.length,
+      `${propiedades.length - idx.size} rowIndex repetidos: la clave estable no lo es`,
+    );
+    const delFiltro = new Set(filtered.droppedPropertyRows.map((d) => d.rowIndex));
+    const ajenos = [...idx].filter((i) => !delFiltro.has(i));
+    assert(ajenos.length === 0, `rowIndex que el filtro no descartó: ${ajenos.slice(0, 5).join(", ")}`);
+  });
+
+  check("las propiedades traen el estado, que es el motivo de guardarlas", () => {
+    if (propiedades.length === 0) return;
+    const con = propiedades.filter((p) => p.state).length;
+    assert(
+      con / propiedades.length >= 0.9,
+      `solo ${con} de ${propiedades.length} tienen estado`,
+    );
+  });
+
+  check("cada propiedad ata a un préstamo por la numeración del emisor", () => {
+    if (propiedades.length === 0) return;
+    const con = propiedades.filter((p) => p.loanRef).length;
+    assert(
+      con / propiedades.length >= 0.9,
+      `solo ${con} de ${propiedades.length} atan a un préstamo`,
+    );
+  });
+
+  check("el estado de las propiedades queda en código de dos letras", () => {
+    const malos = propiedades
+      .map((p) => p.state)
+      .filter((e): e is string => e !== null && !/^[A-Z]{2}$/.test(e));
+    assert(malos.length === 0, `sin normalizar: ${[...new Set(malos)].slice(0, 4).join(" | ")}`);
   });
 
   // --- informe ---------------------------------------------------------------------

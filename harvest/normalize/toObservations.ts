@@ -77,6 +77,9 @@ export interface UnmappedCell {
   value: number;
 }
 
+/** Solo el tipo: se borra al compilar, así que el ciclo con toProperties no existe en runtime. */
+import type { HarvestedPropertyRow } from "./toProperties.js";
+
 export interface HarvestedProperty {
   /** Clave estable: accession + índice de fila. */
   key: string;
@@ -101,6 +104,13 @@ export interface HarvestResult {
   columnsMapped: Array<{ header: string; metric: MetricKey; score: number }>;
   columnsUnmapped: string[];
   properties: HarvestedProperty[];
+  /**
+   * Las filas de propiedad normalizadas, que antes se descartaban.
+   *
+   * Lo llena quien cosecha —`toProperties` necesita las filas crudas y acá ya no
+   * están— así que es opcional: un llamador que no lo complete sigue andando.
+   */
+  propertyRows?: HarvestedPropertyRow[];
   stats: {
     dataRows: number;
     propertiesKept: number;
