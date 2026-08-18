@@ -17,6 +17,7 @@ import {
   type ColumnMatch,
   type MetricKey,
 } from "./columnMap.js";
+import { normalizarEstado } from "./estados.js";
 
 export interface SourceRef {
   /** CIK del emisor. */
@@ -301,7 +302,16 @@ export function rowsToObservations(
         property_name: textOf("property_name"),
         address: textOf("address"),
         city: textOf("city"),
-        state: textOf("state"),
+        /**
+         * El estado se normaliza a código de dos letras acá y no en la consulta.
+         *
+         * Algunos emisores publican "New York" y otros "NY". Guardar el texto
+         * crudo dejó 795 préstamos invisibles para /comps, que filtra por código
+         * —el 8% del corpus, sin dejar rastro, porque un filtro que no matchea no
+         * se queja—. Normalizar al escribir es la única forma de que una consulta
+         * escrita después no tenga que saber de esto.
+         */
+        state: normalizarEstado(textOf("state")),
         property_type: textOf("property_type"),
         loan_seller: textOf("loan_seller"),
       },
