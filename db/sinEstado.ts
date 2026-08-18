@@ -160,21 +160,91 @@ console.log(
 );
 console.log(`    \x1b[90m   estos son el parser perdiendo la columna, no el mercado\x1b[0m`);
 
-/** Las emisiones peores, para poder abrir el documento si están amontonadas. */
-const { rows: peores } = await query<{ empresa: string; accession: string; n: string; de: string }>(
-  `SELECT f.company_name AS empresa, l.accession,
-          count(*) FILTER (WHERE ${VACIO})::text AS n, count(*)::text AS de
+/**
+ * EL PUNTO CIEGO DEL DISCRIMINADOR DE ARRIBA.
+ *
+ * "Repartido entre 214 de 233 emisiones" descarta que UNA emisión rota explique
+ * todo. No descarta que un AÑO esté roto: si el formato de 2020 pierde la columna,
+ * las cuarenta emisiones de 2020 lo tienen y el reparto se ve igual de sano.
+ *
+ * La primera corrida mostró siete de las ocho peores emisiones en 2020, y ese dato
+ * mi test no lo miraba. Así que la tasa se mide por año.
+ */
+const { rows: anios } = await query<{ anio: string; vacios: string; de: string; emisiones: string }>(
+  `SELECT to_char(f.filed_at, 'YYYY') AS anio,
+          count(*) FILTER (WHERE ${VACIO})::text AS vacios,
+          count(*)::text                          AS de,
+          count(DISTINCT l.accession)::text       AS emisiones
      FROM corpus.loans l JOIN corpus.filings f ON f.accession = l.accession
-    GROUP BY 1, 2 HAVING count(*) FILTER (WHERE ${VACIO}) > 0
-    ORDER BY count(*) FILTER (WHERE ${VACIO}) DESC LIMIT 8`,
+    GROUP BY 1 ORDER BY 1`,
 );
-console.log(`\n  \x1b[1mEmisiones con más vacíos\x1b[0m`);
-for (const p of peores) {
+console.log(`\n  \x1b[1mTasa por año de emisión\x1b[0m`);
+const tasas = anios.map((a) => Number(a.vacios) / Math.max(1, Number(a.de)));
+const mediaTasa = tasas.reduce((t, v) => t + v, 0) / Math.max(1, tasas.length);
+for (const [i, a] of anios.entries()) {
+  const t = tasas[i]!;
+  /** El doble de la media es arbitrario, pero se dice en vez de esconderse. */
+  const alto = t >= mediaTasa * 2;
+  const barra = "█".repeat(Math.round(t * 60));
   console.log(
-    `    ${p.empresa.slice(0, 44).padEnd(46)} ${String(p.n).padStart(4)} de ${String(p.de).padEnd(4)}` +
+    `    ${a.anio}  ${String(a.vacios).padStart(4)} de ${String(a.de).padStart(5)}` +
+      `  ${(t * 100).toFixed(1).padStart(5)}%  ${alto ? "\x1b[33m" : "\x1b[90m"}${barra}\x1b[0m` +
+      (alto ? `  \x1b[33m← más del doble de la media (${(mediaTasa * 100).toFixed(1)}%)\x1b[0m` : ""),
+  );
+}
+
+/**
+ * LA CONSULTA QUE DECIDE.
+ *
+ * Para cada emisión con muchos vacíos: ¿esos préstamos tienen `property_count > 1`?
+ *
+ * Si lo tienen, son carteras de verdad y la tasa alta es de la emisión, no del
+ * parser. Si NO lo tienen, el Annex A trae el dato y nosotros lo perdimos.
+ *
+ * Es la misma pregunta que el agregado ya contestó al 74%, pero hecha donde el
+ * agregado no puede: en la cola. Un promedio sano convive con una emisión rota.
+ */
+const { rows: peores } = await query<{
+  empresa: string; accession: string; n: string; de: string; multi: string;
+}>(
+  `SELECT f.company_name AS empresa, l.accession,
+          count(*) FILTER (WHERE ${VACIO})::text AS n,
+          count(*)::text                          AS de,
+          count(*) FILTER (WHERE ${VACIO} AND pc.value IS NOT NULL
+                             AND pc.value::numeric > 1)::text AS multi
+     FROM corpus.loans l
+     JOIN corpus.filings f ON f.accession = l.accession
+     LEFT JOIN corpus.facts pc
+            ON pc.loan_id = l.id AND pc.metric_key = 'property_count'
+           AND pc.value ~ '^[0-9.]+$'
+    GROUP BY 1, 2 HAVING count(*) FILTER (WHERE ${VACIO}) > 0
+    ORDER BY count(*) FILTER (WHERE ${VACIO}) DESC LIMIT 10`,
+);
+console.log(`\n  \x1b[1mEmisiones con más vacíos — y si esos préstamos son carteras\x1b[0m`);
+let sospechosas = 0;
+for (const p of peores) {
+  const n = Number(p.n);
+  const multi = Number(p.multi);
+  const share = multi / Math.max(1, n);
+  /**
+   * Si menos de la mitad de los vacíos de una emisión tiene property_count > 1, la
+   * explicación de cartera no alcanza para esa emisión.
+   */
+  const sospechosa = share < 0.5;
+  if (sospechosa) sospechosas++;
+  console.log(
+    `    ${p.empresa.slice(0, 40).padEnd(42)} ${String(n).padStart(3)}/${String(p.de).padEnd(3)}` +
+      `  \x1b[${sospechosa ? "33" : "32"}m${multi} son cartera (${(share * 100).toFixed(0)}%)\x1b[0m` +
       ` \x1b[90m${p.accession}\x1b[0m`,
   );
 }
+
+console.log(
+  sospechosas === 0
+    ? `\n  \x1b[32mNinguna emisión de la cola se explica por el parser: todas son carteras.\x1b[0m`
+    : `\n  \x1b[33m${sospechosas} emisión(es) donde la mayoría de los vacíos NO son carteras.\x1b[0m\n` +
+        `  \x1b[33mAhí el Annex A trae el estado y lo estamos perdiendo.\x1b[0m`,
+);
 
 console.log(
   `\n  \x1b[90mSi son carteras, el arreglo no es completar el estado sino que /comps sepa\x1b[0m`,
