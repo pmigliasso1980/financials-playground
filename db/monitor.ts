@@ -67,6 +67,32 @@ interface Foto {
  */
 const CLAVE = ["loan_amount", "dscr", "ltv", "debt_yield", "interest_rate"];
 
+/**
+ * EL CAMPO QUE NUNCA AUDITAMOS.
+ *
+ * `/comps` filtra por cuatro campos: estado, tipo, monto y fecha. De los cuatro,
+ * tres pasaron por una revisión —el tipo tiene su propio diagnóstico, el monto y
+ * las métricas tienen cobertura vigilada— y el estado nunca.
+ *
+ * La sospecha llegó por el costado: industrial en California da 9 comparables y el
+ * Pacífico entero también 9. Oregón, Washington, Alaska y Hawái no aportan ninguno
+ * en dieciocho meses. Seattle y Portland son mercados industriales de verdad, así
+ * que o es real, o el estado está mal escrito en algunos documentos y esos
+ * préstamos no entran a ninguna consulta.
+ *
+ * Un estado inválido no es como una cobertura que cae: es un defecto lo tenga o no
+ * la corrida anterior, así que se reporta SIEMPRE y no solo cuando cambia.
+ */
+async function estadosInvalidos() {
+  const { rows } = await query<{ valor: string; n: string }>(
+    `SELECT coalesce(nullif(btrim(state), ''), '(vacío)') AS valor, count(*)::text AS n
+       FROM corpus.loans
+      WHERE state IS NULL OR btrim(state) !~ '^[A-Za-z]{2}$'
+      GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`,
+  );
+  return rows.map((r) => ({ valor: r.valor, n: Number(r.n) }));
+}
+
 async function tomarFoto(): Promise<Foto> {
   const e = await estadoCorpus();
 
@@ -104,6 +130,19 @@ async function tomarFoto(): Promise<Foto> {
 }
 
 const hoy = await tomarFoto();
+const invalidos = await estadosInvalidos();
+
+/**
+ * Los estados con menos préstamos de los que su mercado haría esperar. No es una
+ * alerta —puede ser real— pero es el dato que hace falta para decidir si una
+ * región vacía es del mercado o del parser.
+ */
+const { rows: porEstado } = await query<{ estado: string; n: string }>(
+  `SELECT btrim(state) AS estado, count(*)::text AS n
+     FROM corpus.loans
+    WHERE btrim(state) ~ '^[A-Za-z]{2}$'
+    GROUP BY 1 ORDER BY count(*) DESC`,
+);
 const estado = await estadoCorpus();
 await closePool();
 
@@ -175,12 +214,37 @@ if (!anterior) {
   }
 }
 
+if (invalidos.length > 0) {
+  const total = invalidos.reduce((t, i) => t + i.n, 0);
+  alertas.push(
+    `${total} préstamos con estado inválido o vacío — no entran a ninguna consulta de /comps:\n` +
+      invalidos.map((i) => `      "${i.valor}" × ${i.n}`).join("\n"),
+  );
+}
+
 await mkdir(new URL("../out/", import.meta.url).pathname, { recursive: true });
 await writeFile(ARCHIVO, JSON.stringify(hoy, null, 2), "utf8");
 
 // ---------------------------------------------------------------------------
 
 console.log(`\n  ${estampa(estado)}`);
+console.log(
+  `  \x1b[90m${porEstado.length} estados con código válido · ` +
+    `los cinco con más préstamos: ${porEstado.slice(0, 5).map((e) => `${e.estado} ${e.n}`).join(" · ")}\x1b[0m`,
+);
+/**
+ * Los estados con mercado real y pocos préstamos son la pista de un hueco de
+ * cosecha. Se listan sin alarma: puede ser el mercado y puede ser el parser.
+ */
+const GRANDES = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "GA", "NC", "MI", "NJ", "VA", "WA", "AZ", "MA"];
+const cuantos = (g: string) => Number(porEstado.find((e) => e.estado === g)?.n ?? 0);
+const flacos = GRANDES.filter((g) => cuantos(g) < 30);
+if (flacos.length > 0) {
+  console.log(
+    `  \x1b[90mestados grandes con menos de 30 préstamos: ` +
+      `${flacos.map((f) => `${f} (${cuantos(f)})`).join(" · ")}\x1b[0m`,
+  );
+}
 
 if (alertas.length === 0 && notas.length === 0) {
   console.log(`\n  \x1b[32mSin cambios.\x1b[0m\n`);
