@@ -97,16 +97,35 @@ const CLAVE = ["loan_amount", "dscr", "ltv", "debt_yield", "interest_rate"];
  * harvester, para que no haya dos definiciones de "estado válido".
  */
 async function estadosInvalidos() {
+  const filtro = `state IS NULL OR NOT (btrim(state) = ANY($1))`;
+
+  /**
+   * EL TOTAL SE CUENTA APARTE, Y ESTA LÍNEA ES UNA CORRECCIÓN.
+   *
+   * La versión anterior sumaba las doce filas que imprime, así que reportaba el
+   * tamaño del problema a partir del pedazo que había decidido mostrar. Dijo
+   * "1.585 préstamos" cuando eran 1.900: un 20% de subconteo, en el número que
+   * justifica arreglarlo.
+   *
+   * Es el mismo error que los tests que no podían fallar —medir contra lo que ya
+   * se eligió mirar— y acá salió porque el arreglo recuperó 1.107 donde yo había
+   * predicho 795.
+   */
+  const { rows: tot } = await query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM corpus.loans WHERE ${filtro}`,
+    [[...CODIGOS]],
+  );
   const { rows } = await query<{ valor: string; n: string }>(
     `SELECT coalesce(nullif(btrim(state), ''), '(vacío)') AS valor, count(*)::text AS n
        FROM corpus.loans
-      WHERE state IS NULL
-         OR btrim(state) !~ '^[A-Z]{2}$'
-         OR NOT (btrim(state) = ANY($1))
+      WHERE ${filtro}
       GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`,
     [[...CODIGOS]],
   );
-  return rows.map((r) => ({ valor: r.valor, n: Number(r.n) }));
+  return {
+    total: Number(tot[0]!.n),
+    distintos: rows.map((r) => ({ valor: r.valor, n: Number(r.n) })),
+  };
 }
 
 async function tomarFoto(): Promise<Foto> {
@@ -231,11 +250,13 @@ if (!anterior) {
   }
 }
 
-if (invalidos.length > 0) {
-  const total = invalidos.reduce((t, i) => t + i.n, 0);
+if (invalidos.total > 0) {
+  const mostrados = invalidos.distintos.reduce((t, i) => t + i.n, 0);
+  const resto = invalidos.total - mostrados;
   alertas.push(
-    `${total} préstamos con estado inválido o vacío — no entran a ninguna consulta de /comps:\n` +
-      invalidos.map((i) => `      "${i.valor}" × ${i.n}`).join("\n"),
+    `${invalidos.total} préstamos con estado inválido o vacío — no entran a ninguna consulta de /comps:\n` +
+      invalidos.distintos.map((i) => `      "${i.valor}" × ${i.n}`).join("\n") +
+      (resto > 0 ? `\n      \x1b[90m… y ${resto} más en otros valores\x1b[0m` : ""),
   );
 }
 

@@ -66,7 +66,8 @@
     "db:monitor": "tsx db/monitor.ts",
     "mcp": "tsx mcp/server.ts",
     "api:casos": "tsx api/casos.ts",
-    "db:fix-estados": "tsx db/fixEstados.ts"
+    "db:fix-estados": "tsx db/fixEstados.ts",
+    "db:sin-estado": "tsx db/sinEstado.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",
