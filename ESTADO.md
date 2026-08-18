@@ -1,6 +1,13 @@
 # Verificación
 
-> Reemplaza el checkpoint anterior. El mock está terminado y verificado.
+> **DESACTUALIZADO.** Este checkpoint describe la emulación de la API de Lev
+> —`src/`, `mock/`, `examples/`— que se borró del repositorio. El motivo está en
+> `docs/arquitectura-propia.md` §7: quedó huérfana cuando el proyecto pasó de
+> integrarse con Lev a construir corpus propio, y seguía cobrando intereses.
+>
+> Se conserva porque documenta qué se verificó de aquel contrato y qué no, que es
+> insumo de `docs/api-contrato.md`. Nada de lo que sigue describe código que exista
+> hoy en este árbol.
 
 **Typecheck:** 0 errores en `src/`, `mock/`, `examples/`, `scripts/`.
 **Smoke:** 43 checks, 0 fallidos, 0 salteados.
