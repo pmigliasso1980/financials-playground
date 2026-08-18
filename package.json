@@ -64,7 +64,8 @@
     "api": "tsx api/server.ts",
     "api:smoke": "tsx api/smoke.ts",
     "db:monitor": "tsx db/monitor.ts",
-    "mcp": "tsx mcp/server.ts"
+    "mcp": "tsx mcp/server.ts",
+    "api:casos": "tsx api/casos.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",
