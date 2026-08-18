@@ -246,11 +246,66 @@ console.log(
         `  \x1b[33mAhí el Annex A trae el estado y lo estamos perdiendo.\x1b[0m`,
 );
 
+/**
+ * LAS DOS POBLACIONES, QUE ES LA RESPUESTA DE VERDAD.
+ *
+ * La corrida anterior dio 585 de 790 con `property_count > 1` y las diez emisiones
+ * de la cola en 0%. Eso no es contradictorio: son dos grupos distintos sumados.
+ *
+ *   con property_count  → cartera multi-propiedad. El Annex A dice cuántas
+ *                         propiedades hay y no dice un estado porque no hay UNO.
+ *                         El dato no falta: no existe.
+ *
+ *   sin property_count  → no sabemos ni cuántas propiedades tiene. Si además le
+ *                         falta el tipo, no perdimos una columna: perdimos el
+ *                         bloque de características de la propiedad entero.
+ *
+ * La confirmación es que los dos huecos coincidan en las mismas filas. Si los 205
+ * sin conteo son casi los mismos que los que no tienen tipo, el agujero de
+ * `property_type` —el ítem #37— y éste son EL MISMO DEFECTO mirado por dos lados, y
+ * arreglarlo cuenta dos veces.
+ */
+const { rows: pob } = await query<Record<string, string>>(
+  `WITH v AS (
+     SELECT l.id, l.accession, l.property_type,
+            (SELECT value FROM corpus.facts
+              WHERE loan_id = l.id AND metric_key = 'property_count'
+                AND value ~ '^[0-9.]+$' LIMIT 1) AS pc
+       FROM corpus.loans l WHERE ${VACIO}
+   )
+   SELECT count(*) FILTER (WHERE pc IS NOT NULL)::text                          AS cartera,
+          count(*) FILTER (WHERE pc IS NULL)::text                              AS ciega,
+          count(*) FILTER (WHERE pc IS NULL AND property_type IS NULL)::text     AS ciega_sin_tipo,
+          count(*) FILTER (WHERE pc IS NOT NULL AND property_type IS NULL)::text AS cartera_sin_tipo,
+          count(DISTINCT accession) FILTER (WHERE pc IS NULL)::text              AS emisiones_ciegas
+     FROM v`,
+);
+const b = pob[0]!;
+const ciega = Number(b.ciega);
+console.log(`\n  \x1b[1mLas dos poblaciones\x1b[0m`);
 console.log(
-  `\n  \x1b[90mSi son carteras, el arreglo no es completar el estado sino que /comps sepa\x1b[0m`,
+  `    \x1b[32m${b.cartera} carteras multi-propiedad\x1b[0m` +
+    `  \x1b[90m— el Annex A dice cuántas propiedades hay; no hay UN estado que poner\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mque existen. Si es el parser, el arreglo es el parser.\x1b[0m\n`,
+  `    \x1b[33m${ciega} sin conteo de propiedades\x1b[0m` +
+    `  \x1b[90m— en ${b.emisiones_ciegas} emisiones; de ésos, ${b.ciega_sin_tipo} tampoco tienen tipo\x1b[0m`,
+);
+const solapa = Number(b.ciega_sin_tipo) / Math.max(1, ciega);
+console.log(
+  solapa >= 0.8
+    ? `\n  \x1b[33mEl ${(solapa * 100).toFixed(0)}% de los ciegos tampoco tiene tipo: no perdimos una\x1b[0m\n` +
+        `  \x1b[33mcolumna, perdimos el bloque de características entero. Este agujero y el\x1b[0m\n` +
+        `  \x1b[33mde property_type (#37) son el mismo defecto por dos lados.\x1b[0m`
+    : `\n  \x1b[90mSolo el ${(solapa * 100).toFixed(0)}% de los ciegos carece también de tipo: los dos\x1b[0m\n` +
+        `  \x1b[90mhuecos no coinciden, así que son defectos distintos y hay que atacarlos aparte.\x1b[0m`,
+);
+
+console.log(
+  `\n  \x1b[90mLas carteras no se arreglan cosechando: el arreglo es que /comps sepa que\x1b[0m`,
+);
+console.log(
+  `  \x1b[90mexisten, porque hoy quien pregunta por NY no ve las que incluyen NY.\x1b[0m\n`,
 );
 
 await closePool();
