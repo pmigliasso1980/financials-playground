@@ -37,6 +37,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { closePool, ping, query } from "./client.js";
 import { estadoCorpus, estampa } from "./procedencia.js";
+import { CODIGOS } from "../harvest/normalize/estados.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -82,13 +83,28 @@ const CLAVE = ["loan_amount", "dscr", "ltv", "debt_yield", "interest_rate"];
  *
  * Un estado inválido no es como una cobertura que cae: es un defecto lo tenga o no
  * la corrida anterior, así que se reporta SIEMPRE y no solo cuando cambia.
+ *
+ * EL CRITERIO ES EL DE /COMPS, NO UNO PROPIO
+ *
+ * La primera versión preguntaba `~ '^[A-Za-z]{2}$'`, que es MÁS PERMISIVO que el
+ * producto: `/comps` compara `btrim(state) = ANY($1)` contra códigos en mayúscula.
+ * Un "ny" en minúscula pasaba el monitor y no matcheaba ninguna consulta —
+ * exactamente el defecto que este chequeo existe para encontrar, invisible para el
+ * chequeo mismo.
+ *
+ * Y un par de letras cualquiera tampoco alcanza: "XX" es sintácticamente un código
+ * y no es ningún estado. La lista sale de `estados.ts`, la misma que usa el
+ * harvester, para que no haya dos definiciones de "estado válido".
  */
 async function estadosInvalidos() {
   const { rows } = await query<{ valor: string; n: string }>(
     `SELECT coalesce(nullif(btrim(state), ''), '(vacío)') AS valor, count(*)::text AS n
        FROM corpus.loans
-      WHERE state IS NULL OR btrim(state) !~ '^[A-Za-z]{2}$'
+      WHERE state IS NULL
+         OR btrim(state) !~ '^[A-Z]{2}$'
+         OR NOT (btrim(state) = ANY($1))
       GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`,
+    [[...CODIGOS]],
   );
   return rows.map((r) => ({ valor: r.valor, n: Number(r.n) }));
 }
@@ -140,8 +156,9 @@ const invalidos = await estadosInvalidos();
 const { rows: porEstado } = await query<{ estado: string; n: string }>(
   `SELECT btrim(state) AS estado, count(*)::text AS n
      FROM corpus.loans
-    WHERE btrim(state) ~ '^[A-Za-z]{2}$'
+    WHERE btrim(state) = ANY($1)
     GROUP BY 1 ORDER BY count(*) DESC`,
+  [[...CODIGOS]],
 );
 const estado = await estadoCorpus();
 await closePool();

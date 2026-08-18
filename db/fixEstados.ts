@@ -24,10 +24,16 @@
  *
  * `--dry` muestra el antes y el después sin escribir. Un UPDATE sobre el 16% del
  * corpus se mira antes de correrlo.
+ *
+ * QUÉ CUENTA COMO "YA ESTÁ BIEN"
+ *
+ * No `~ '^[A-Z]{2}$'` sino "está en la lista de códigos", que es lo que `/comps`
+ * pregunta de verdad. Con la regex, un "ny" en minúscula quedaba fuera del arreglo
+ * por parecer válido, y un "XX" también.
  */
 
 import { closePool, ping, query } from "./client.js";
-import { casoSql } from "../harvest/normalize/estados.js";
+import { casoSql, CODIGOS } from "../harvest/normalize/estados.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -51,9 +57,10 @@ console.log(`${"═".repeat(78)}\n`);
 const { rows: previa } = await query<{ crudo: string; queda: string | null; n: string }>(
   `SELECT btrim(state) AS crudo, ${casoSql()} AS queda, count(*)::text AS n
      FROM corpus.loans
-    WHERE state IS NOT NULL AND btrim(state) !~ '^[A-Z]{2}$'
+    WHERE state IS NOT NULL AND NOT (btrim(state) = ANY($1))
     GROUP BY 1, 2
     ORDER BY count(*) DESC`,
+  [[...CODIGOS]],
 );
 
 if (previa.length === 0) {
@@ -104,8 +111,9 @@ const { rowCount } = await query(
   `UPDATE corpus.loans
       SET state = ${casoSql()}
     WHERE state IS NOT NULL
-      AND btrim(state) !~ '^[A-Z]{2}$'
+      AND NOT (btrim(state) = ANY($1))
       AND ${casoSql()} IS NOT NULL`,
+  [[...CODIGOS]],
 );
 
 console.log(`\n  \x1b[1m${rowCount} filas actualizadas.\x1b[0m`);
