@@ -25,7 +25,15 @@ import type { MetricKey } from "./columnMap.js";
  * empeoró la cobertura del corpus. Subir cuando se agregan o redefinen
  * métricas, no cuando se ajusta un patrón.
  */
-export const TAXONOMY_VERSION = "2026.08.13";
+/**
+ * 2026.08.17: el corpus pasa a guardar las filas de propiedad.
+ *
+ * Se sube la versión porque el contenido de una cosecha cambió, no porque cambió
+ * una métrica. `harvest:batch` recosecha lo que no coincida con esta versión, así
+ * que las 233 emisiones quedan marcadas para volver a bajar — es la única forma de
+ * llenar corpus.properties sin escribir un camino de migración aparte.
+ */
+export const TAXONOMY_VERSION = "2026.08.17";
 
 export interface MetricDefinition {
   /** Qué mide, en una oración que entienda alguien del rubro. */
