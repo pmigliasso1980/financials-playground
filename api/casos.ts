@@ -49,9 +49,29 @@
  * la capacidad de decir que no, porque el país siempre tiene diez préstamos de
  * cualquier tipo.
  *
- * El radio automático ahora llega hasta la región. Wyoming vuelve a ser un vacío
- * esperado — y con `nacional: true` se puede pedir la respuesta nacional a
- * propósito, que es otra afirmación.
+ * El radio automático ahora llega hasta la región. Y con `nacional: true` se puede
+ * pedir la respuesta nacional a propósito, que es otra afirmación.
+ *
+ * Y LA ETIQUETA A MANO SE VA, PORQUE ME EQUIVOQUÉ DOS VECES
+ *
+ * Había un campo `esperaVacio` que yo completaba a ojo. Marqué Ohio de más, después
+ * lo saqué de menos, y en la última corrida el script llamó "problema" a tres casos
+ * de los cuales dos eran comportamiento correcto: negarse con 3 comparables en toda
+ * la región es exactamente lo que el producto tiene que hacer.
+ *
+ * El error de fondo es de diseño: **si una negativa es correcta no se puede saber a
+ * priori**, porque depende de cuántos comparables hay — que es justo lo que este
+ * script viene a medir. Etiquetarlo antes es meter mi conjetura adentro del
+ * instrumento.
+ *
+ * Ahora se clasifica por lo que muestra la escalera, que es un dato y no una
+ * opinión:
+ *
+ *   región < 5      mercado delgado de verdad, la negativa es la respuesta
+ *   región 5 a 9    al filo del umbral, vale mirarlo
+ *   región >= 10    había suficientes y se negó igual: eso sí es un defecto
+ *
+ * La última fila es la única que puede acusar un bug, y puede dispararse.
  */
 
 import { buscarComparables, type Criterios, type Tipo } from "./comps.js";
@@ -68,8 +88,6 @@ interface Caso {
   quien: string;
   decide: string;
   criterios: Criterios;
-  /** true si esperamos que NO haya comparables y eso esté bien. */
-  esperaVacio?: boolean;
 }
 
 const CASOS: Caso[] = [
@@ -124,7 +142,6 @@ const CASOS: Caso[] = [
     criterios: { estado: "IL", tipo: "Mixed Use", monto: 20_000_000 },
   },
   {
-    /** El caso donde la negativa ES la respuesta. */
     quien: "Broker · deal chico",
     decide: "si un préstamo de 4M en un mercado secundario es conduit",
     criterios: { estado: "OH", tipo: "Retail", monto: 4_000_000 },
@@ -133,7 +150,6 @@ const CASOS: Caso[] = [
     quien: "Broker · tipo raro en mercado chico",
     decide: "si vale la pena siquiera llamar a un originador conduit",
     criterios: { estado: "WY", tipo: "Manufactured", monto: 6_000_000 },
-    esperaVacio: true,
   },
 ];
 
@@ -147,8 +163,9 @@ console.log("Casos de uso, contra el corpus real");
 console.log(`${"═".repeat(78)}`);
 
 let respondidos = 0;
-let vaciosEsperados = 0;
-let vaciosProblema = 0;
+let delgados = 0;
+let alFilo = 0;
+let defectos = 0;
 
 for (const caso of CASOS) {
   const c = caso.criterios;
@@ -162,16 +179,29 @@ for (const caso of CASOS) {
   console.log(`  \x1b[90mDecide: ${caso.decide}\x1b[0m\n`);
 
   if (!r.suficiente) {
-    if (caso.esperaVacio) {
-      vaciosEsperados++;
+    /**
+     * El mejor peldaño que se intentó automáticamente: región si existe, si no el
+     * estado. El nacional no cuenta porque no es automático.
+     */
+    const mejor = Math.max(
+      ...r.escalera.filter((p) => p.alcance !== "pais").map((p) => p.encontrados),
+      0,
+    );
+    if (mejor >= 10) {
+      defectos++;
       console.log(
-        `  \x1b[32m${r.encontrados} comparables — "esto no es un deal conduit"\x1b[0m` +
-          `  \x1b[90m← respuesta esperada y útil\x1b[0m`,
+        `  \x1b[31mDEFECTO: había ${mejor} en el radio automático y se negó igual\x1b[0m`,
+      );
+    } else if (mejor >= 5) {
+      alFilo++;
+      console.log(
+        `  \x1b[33m${mejor} comparables en el mejor radio — al filo del umbral de 10\x1b[0m`,
       );
     } else {
-      vaciosProblema++;
+      delgados++;
       console.log(
-        `  \x1b[31m${r.encontrados} comparables — el producto no puede contestar\x1b[0m`,
+        `  \x1b[32m${mejor} comparables en toda la región — "acá no hay mercado conduit"\x1b[0m` +
+          `  \x1b[90m← la negativa es la respuesta\x1b[0m`,
       );
     }
     for (const p of r.escalera) {
@@ -216,13 +246,18 @@ console.log(
   `  \x1b[1m${respondidos} de ${CASOS.length}\x1b[0m casos respondidos con un rango.`,
 );
 console.log(
-  `  \x1b[90m${vaciosEsperados} negativas esperadas (la negativa era la respuesta).\x1b[0m`,
+  `  \x1b[90m${delgados} negativas correctas: menos de 5 comparables en toda la región.\x1b[0m`,
 );
-if (vaciosProblema > 0) {
+if (alFilo > 0) {
   console.log(
-    `  \x1b[31m${vaciosProblema} casos que el producto debería contestar y no puede.\x1b[0m`,
+    `  \x1b[33m${alFilo} al filo: entre 5 y 9, les falta poco para el umbral de 10.\x1b[0m`,
   );
 }
+console.log(
+  defectos > 0
+    ? `  \x1b[31m${defectos} DEFECTOS: había 10 o más y el producto se negó igual.\x1b[0m`
+    : `  \x1b[32mNingún defecto: nunca se negó teniendo comparables suficientes.\x1b[0m`,
+);
 console.log(
   `\n  \x1b[90mEsto no verifica que los números sean correctos: muestra qué contesta el\x1b[0m`,
 );
