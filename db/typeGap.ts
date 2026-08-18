@@ -40,6 +40,30 @@
  * Si es eso, el arreglo NO es completar el dato: es dejar de contarlos como
  * ausencia. Y entonces la pregunta de producto pasa a ser si "Varios" es una
  * categoría de composición o una fila aparte.
+ *
+ * QUÉ DIO, Y DÓNDE LA HIPÓTESIS SE QUEDA CORTA
+ *
+ * Para 2026 acertó entera: los 17 son carteras, todas con dos o más propiedades y
+ * con nombres que lo dicen —"ExchangeRight 75", "Patoma Partners 4-Pack",
+ * "Mountain Industrial Portfolio" con noventa—. Ninguna tiene una columna de tipo
+ * sin mapear.
+ *
+ * Pero el corpus entero son 362 préstamos, no 17. Yo estaba mirando una cohorte y
+ * hablando del corpus, que es el error de unidad de análisis otra vez.
+ *
+ * Y sobre esos 362 la hipótesis explica la mayoría pero no todo:
+ *
+ *   212 de 362 (59%) tienen property_count > 1 — multi-propiedad confirmado
+ *   253 de 362 (70%) se llaman Various o Portfolio
+ *   pero 2020 tiene 121 de 1.430 (8,5%), cuatro veces la tasa del resto, y una
+ *   sola emisión concentra 19
+ *
+ * Una emisión con 19 préstamos sin tipo NO es multi-propiedad: es un encabezado
+ * que el mapeo no reconoce. Así que hay dos poblaciones y una sola de ellas es la
+ * que yo describí.
+ *
+ * Se agrega abajo el corte que las separa, en vez de escribir un arreglo que
+ * atiende a la que ya entendí y deja la otra donde está.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -267,6 +291,80 @@ if (sinClasificar.length === 0) {
     `  \x1b[90mdistancia como cualquier otra, así que dos emisiones con muchos de estos se\x1b[0m`,
   );
   console.log(`  \x1b[90mparecen entre sí por una razón que no es de negocio.\x1b[0m`);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Las emisiones que CONCENTRAN: ahí no es multi-propiedad
+// ---------------------------------------------------------------------------
+
+/**
+ * La segunda población, que la hipótesis no explica.
+ *
+ * Un préstamo suelto sin tipo en una emisión es una cartera. Diecinueve en la
+ * misma emisión no: eso es una columna que el mapeo no reconoció, y se arregla en
+ * la taxonomía recuperando todos de una vez.
+ *
+ * La prueba está en `unmapped_cells`: si esa emisión tiene un encabezado con
+ * "type" o "property" que quedó sin mapear, el diagnóstico está cerrado. Si no lo
+ * tiene, el Annex A no publica la columna y no hay nada que recuperar.
+ */
+const { rows: concentradas } = await query<{
+  emision: string; anada: string; n: string; sin_tipo: string;
+  various: string; con_count: string; headers: string | null;
+}>(
+  `WITH x AS (
+     SELECT l.accession, f.company_name AS emision,
+            extract(year FROM f.filed_at)::int AS anada,
+            count(*) AS n,
+            count(*) FILTER (WHERE l.property_type IS NULL) AS sin_tipo,
+            count(*) FILTER (WHERE l.property_type IS NULL
+                               AND l.property_name ~* 'various|portfolio') AS various
+       FROM corpus.loans l
+       JOIN corpus.filings f ON f.accession = l.accession
+      GROUP BY 1, 2, 3
+   )
+   SELECT x.emision, x.anada::text, x.n::text, x.sin_tipo::text, x.various::text,
+          (SELECT count(*)::text FROM corpus.loans l2
+             JOIN corpus.facts pc ON pc.loan_id = l2.id AND pc.metric_key = 'property_count'
+            WHERE l2.accession = x.accession AND l2.property_type IS NULL) AS con_count,
+          (SELECT string_agg(DISTINCT u.header, ' · ')
+             FROM corpus.unmapped_cells u
+             JOIN corpus.loans l3 ON l3.id = u.loan_id
+            WHERE l3.accession = x.accession AND u.header ~* 'type') AS headers
+     FROM x
+    WHERE x.sin_tipo >= 5
+    ORDER BY x.sin_tipo DESC LIMIT 12`,
+);
+
+console.log(`\n${"─".repeat(78)}`);
+console.log("Las emisiones que concentran — ahí el diagnóstico es otro");
+console.log(`${"─".repeat(78)}\n`);
+if (concentradas.length === 0) {
+  console.log(`  \x1b[32mNinguna emisión llega a 5 préstamos sin tipo.\x1b[0m`);
+} else {
+  console.log(`  emisión                          añada   sin tipo / pool   "Various"   con count`);
+  console.log(`  ${"─".repeat(76)}`);
+  for (const r of concentradas) {
+    const sin = Number(r.sin_tipo), n = Number(r.n), vv = Number(r.various);
+    console.log(
+      `  ${r.emision.slice(0, 30).padEnd(32)} ${r.anada}   ${String(sin).padStart(6)} / ${String(n).padEnd(5)}` +
+        `  ${String(vv).padStart(7)}   ${String(r.con_count).padStart(7)}` +
+        (vv / Math.max(1, sin) < 0.5 ? `  \x1b[33m← no son carteras\x1b[0m` : ""),
+    );
+    if (r.headers) {
+      console.log(`  \x1b[33m    sin mapear: ${r.headers.slice(0, 66)}\x1b[0m`);
+    }
+  }
+  console.log(
+    `\n  \x1b[90mSi la mayoría se llama "Various" son carteras y no hay nada que recuperar.\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mSi NO se llaman así y hay un encabezado con "type" sin mapear, es la\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mtaxonomía y se recuperan todos de una. Son dos arreglos distintos y hasta\x1b[0m`,
+  );
+  console.log(`  \x1b[90mahora los estaba tratando como uno.\x1b[0m`);
 }
 
 const estado = await estadoCorpus();
