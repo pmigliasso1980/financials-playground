@@ -89,8 +89,13 @@ const vacia = await get("/comps?state=WY&type=Self+Storage&amount=999000000");
 check("consulta sin comparables → 200, NO 404", vacia.status === 200);
 check("y se declara insuficiente", vacia.data?.suficiente === false);
 check(
-  "ofrece qué aflojar en vez de un callejón",
-  Array.isArray(vacia.data?.siAmplias) && vacia.data.siAmplias.length === 3,
+  "muestra la escalera geográfica completa",
+  Array.isArray(vacia.data?.escalera) && vacia.data.escalera.length === 3,
+  `escalera: ${JSON.stringify(vacia.data?.escalera?.map((p: { etiqueta: string }) => p.etiqueta))}`,
+);
+check(
+  "y además ofrece aflojar tamaño y ventana",
+  Array.isArray(vacia.data?.siAmplias) && vacia.data.siAmplias.length === 2,
 );
 
 // ---------------------------------------------------------------------------
@@ -110,6 +115,22 @@ check(
 if (r.data?.suficiente) {
   const m = r.data.muestra as Array<{ documento: string; indice: string; emision: string }>;
   check("devuelve comparables", m.length > 0);
+
+  /**
+   * El alcance tiene que estar y ser coherente con la escalera: si dice "estado",
+   * el primer peldaño tiene que llegar al mínimo por sí solo.
+   */
+  check(
+    "declara hasta dónde abrió el radio",
+    ["estado", "region", "pais"].includes(r.data.alcance),
+    `alcance: ${r.data.alcance}`,
+  );
+  const primerPeldano = r.data.escalera?.[0];
+  check(
+    "el alcance es coherente con la escalera",
+    r.data.alcance !== "estado" || primerPeldano.encontrados >= 10,
+    `dice "${r.data.alcance}" pero ${primerPeldano?.etiqueta} tiene ${primerPeldano?.encontrados}`,
+  );
 
   /** EL CHEQUEO. Una URL inventada muere acá y en ningún otro lado. */
   const malDocumento = m.filter((c) => !/^https:\/\/www\.sec\.gov\/Archives\/edgar\//.test(c.documento));

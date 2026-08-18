@@ -31,6 +31,18 @@
  * chico NO es una falla del producto: es la respuesta. Significa "esto no es un
  * deal conduit, buscá un banco o una agencia". Los casos marcados con ← esperado
  * son ésos: si devolvieran un rango, ahí sí habría un problema.
+ *
+ * UNA EXPECTATIVA MÍA QUE ESTABA MAL
+ *
+ * La primera versión marcaba "Retail OH 4M" como negativa esperada, con el
+ * argumento de que un préstamo chico en un mercado secundario no es conduit. Pero
+ * la corrida mostró 24 comparables a nivel nacional: no era un problema de canal,
+ * era el mismo problema de geografía que Nueva Jersey.
+ *
+ * O sea que puse una expectativa en el test y la expectativa era falsa. Con la
+ * escalera geográfica ese caso debería contestarse, así que deja de estar marcado.
+ * El único vacío genuino es Wyoming, que tiene un comparable incluso aflojando
+ * todo.
  */
 
 import { buscarComparables, type Criterios, type Tipo } from "./comps.js";
@@ -107,7 +119,6 @@ const CASOS: Caso[] = [
     quien: "Broker · deal chico",
     decide: "si un préstamo de 4M en un mercado secundario es conduit",
     criterios: { estado: "OH", tipo: "Retail", monto: 4_000_000 },
-    esperaVacio: true,
   },
   {
     quien: "Broker · tipo raro en mercado chico",
@@ -154,6 +165,9 @@ for (const caso of CASOS) {
         `  \x1b[31m${r.encontrados} comparables — el producto no puede contestar\x1b[0m`,
       );
     }
+    for (const p of r.escalera) {
+      console.log(`    \x1b[90m${p.etiqueta} → ${p.encontrados}\x1b[0m`);
+    }
     for (const s of r.siAmplias) {
       console.log(`    \x1b[90m${s.criterio} → ${s.encontrados}\x1b[0m`);
     }
@@ -161,7 +175,13 @@ for (const caso of CASOS) {
   }
 
   respondidos++;
-  console.log(`  \x1b[1m${r.encontrados} comparables\x1b[0m`);
+  console.log(
+    `  \x1b[1m${r.encontrados} comparables\x1b[0m en ` +
+      `${r.alcance === "estado" ? "" : "\x1b[33m"}${r.alcanceEtiqueta}\x1b[0m` +
+      (r.alcance === "estado"
+        ? ""
+        : `  \x1b[90m(${r.escalera[0]!.etiqueta} solo: ${r.escalera[0]!.encontrados})\x1b[0m`),
+  );
   for (const m of r.distribuciones) {
     const f = fmt[m.metrica] ?? ((v: number) => v.toFixed(2));
     console.log(

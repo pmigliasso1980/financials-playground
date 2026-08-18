@@ -12,6 +12,17 @@
      vez de dibujar un rango con tres préstamos.
   3. Cada comparable lleva el link al documento de la SEC. Un número que no se
      puede abrir hay que creerlo; con el filing atrás, se verifica.
+  4. Dice DE DÓNDE salieron los comparables. Si hubo que abrir el radio del estado
+     a la región, eso cambia lo que el número significa y va arriba, no al pie.
+
+  LOS CASOS DE USO ESTÁN EN LA PANTALLA, NO EN UN INSTRUCTIVO
+
+  Un formulario en blanco le pide al usuario que ya sepa qué preguntar. Los botones
+  de arriba son las situaciones reales que probamos contra el corpus: se hace clic,
+  se ve la respuesta, y recién ahí se entiende para qué sirve la herramienta.
+
+  Son los mismos doce de `npm run api:casos`. Si uno deja de funcionar, se ve acá
+  y en la consola el mismo día.
 -->
 <style>
   :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
@@ -54,11 +65,30 @@
            font-size:12.5px; color:var(--muted) }
   .canal { background:#fafafa; border-left:3px solid var(--line); padding:10px 14px;
            font-size:13px; color:var(--muted); margin-top:18px }
+  .casos { margin:0 0 14px }
+  .casos b { display:block; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em;
+             color:var(--muted); margin-bottom:8px; font-weight:600 }
+  .chip { display:inline-block; margin:0 6px 6px 0; padding:6px 11px; border-radius:20px;
+          border:1px solid #d8d8d8; background:#fff; font:inherit; font-size:13px;
+          cursor:pointer; color:var(--fg) }
+  .chip:hover { border-color:var(--dot); color:var(--dot) }
+  .chip.vacio { border-style:dashed; color:var(--muted) }
+  .alcance { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11.5px;
+             font-weight:600; text-transform:uppercase; letter-spacing:.04em;
+             background:#eef2f8; color:var(--dot); margin-left:8px; vertical-align:middle }
+  .alcance.abierto { background:var(--warnbg); color:var(--warn) }
+  .escalera { font-size:12.5px; color:var(--muted); margin:8px 0 0 }
+  .escalera i { font-style:normal; color:var(--fg) }
   @media (max-width:720px) { form { grid-template-columns:1fr 1fr } }
 </style>
 <main>
   <h1>¿Qué términos consiguieron préstamos parecidos?</h1>
   <p class="sub">Comparables de préstamos conduit CMBS, de documentos públicos de SEC EDGAR.</p>
+
+  <div class="casos">
+    <b>Situaciones para probar</b>
+    <div id="chips"></div>
+  </div>
 
   <form id="f">
     <div>
@@ -94,6 +124,45 @@ const fmtUSD = (v) => "US$" + Math.round(v).toLocaleString("en-US");
 /** Cada métrica sabe cómo se lee: un LTV en 0,61 y un DSCR en 1,44 no son lo mismo. */
 const FORMATO = { ltv: fmtPct, debt_yield: fmtPct, interest_rate: fmtPct, dscr: fmtX };
 
+/**
+ * Los mismos doce casos que corre `npm run api:casos`.
+ *
+ * Los dos marcados `vacio` esperan NO encontrar comparables, y eso es una
+ * respuesta útil: "esto no es un deal conduit". Se muestran con borde punteado
+ * para que se entienda que están ahí a propósito.
+ */
+const CASOS = [
+  { t: "Refi multifamily GA 28M", state: "GA", type: "Multifamily", amount: 28e6, ltv: 70 },
+  { t: "Multifamily TX 15M", state: "TX", type: "Multifamily", amount: 15e6 },
+  { t: "Oficinas NY 45M", state: "NY", type: "Office", amount: 45e6, ltv: 60 },
+  { t: "Industrial CA 30M", state: "CA", type: "Industrial", amount: 30e6 },
+  { t: "Hotelería FL 22M", state: "FL", type: "Hospitality", amount: 22e6 },
+  { t: "Retail FL 12M", state: "FL", type: "Retail", amount: 12e6 },
+  { t: "Industrial NJ 25M", state: "NJ", type: "Industrial", amount: 25e6, ltv: 65 },
+  { t: "Multifamily NY 60M", state: "NY", type: "Multifamily", amount: 60e6, ltv: 75 },
+  { t: "Self storage AZ 8M", state: "AZ", type: "Self Storage", amount: 8e6 },
+  { t: "Mixed use IL 20M", state: "IL", type: "Mixed Use", amount: 20e6 },
+  { t: "Retail OH 4M", state: "OH", type: "Retail", amount: 4e6, vacio: true },
+  { t: "Manufactured WY 6M", state: "WY", type: "Manufactured", amount: 6e6, vacio: true },
+];
+
+function pintarCasos() {
+  $("#chips").innerHTML = CASOS.map(
+    (c, i) => `<button type="button" class="chip${c.vacio ? " vacio" : ""}" data-i="${i}"
+                 title="${c.vacio ? "Esperamos que NO haya comparables: esa es la respuesta" : ""}">${c.t}</button>`,
+  ).join("");
+  $("#chips").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-i]");
+    if (!b) return;
+    const c = CASOS[+b.dataset.i];
+    $("#state").value = c.state;
+    $("#type").value = c.type;
+    $("#amount").value = String(c.amount);
+    $("#ltv").value = c.ltv ?? "";
+    $("#f").requestSubmit();
+  });
+}
+
 async function cargarTipos() {
   const r = await fetch("/corpus").then((x) => x.json());
   $("#type").innerHTML = r.data.tipos
@@ -110,12 +179,18 @@ function render(d) {
      */
     return `<div class="aviso">
       <h2>No alcanza para dar un rango</h2>
-      <p>Encontramos <b>${d.encontrados}</b> comparables y hacen falta al menos
-      <b>${d.minimo}</b>. Con menos, una mediana diría más de lo que estos datos saben.</p>
-      <p>Si aflojás un criterio:</p>
-      <ul>${d.siAmplias
-        .map((s) => `<li>${s.criterio} → <b>${s.encontrados}</b> comparables</li>`)
+      <p>Hacen falta al menos <b>${d.minimo}</b> comparables y no los hay ni abriendo
+      el radio a todo el país. Con menos, una mediana diría más de lo que estos datos saben.</p>
+      <p>Lo que se intentó:</p>
+      <ul>${d.escalera
+        .map((p) => `<li>${p.etiqueta} → <b>${p.encontrados}</b></li>`)
         .join("")}</ul>
+      <p>Y si además aflojás el tamaño o la ventana:</p>
+      <ul>${d.siAmplias
+        .map((s) => `<li>${s.criterio} → <b>${s.encontrados}</b></li>`)
+        .join("")}</ul>
+      <p class="sm">Para un préstamo así, este canal probablemente no sea el camino:
+      un banco regional o una agencia son la alternativa.</p>
     </div>`;
   }
 
@@ -131,7 +206,18 @@ function render(d) {
 
   return `${obj}
     <section>
-      <h2>${d.encontrados} comparables</h2>
+      <h2>${d.encontrados} comparables<span class="alcance${
+        d.alcance === "estado" ? "" : " abierto"
+      }">${d.alcance === "estado" ? d.alcanceEtiqueta : `${d.alcanceEtiqueta} — radio ampliado`}</span></h2>
+      ${
+        d.alcance === "estado"
+          ? ""
+          : `<p class="escalera">No alcanzaba con ${d.escalera[0].etiqueta} solo (<i>${
+              d.escalera[0].encontrados
+            }</i> comparables), así que se abrió el radio. ${d.escalera
+              .map((p) => `${p.etiqueta}: <i>${p.encontrados}</i>`)
+              .join(" · ")}</p>`
+      }
       <table>
         <thead><tr><th></th><th>p25</th><th>mediana</th><th>p75</th><th>sobre</th></tr></thead>
         <tbody>${d.distribuciones
@@ -203,4 +289,5 @@ $("#f").addEventListener("submit", async (e) => {
 });
 
 cargarTipos();
+pintarCasos();
 </script>
