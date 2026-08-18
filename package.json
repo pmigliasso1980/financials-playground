@@ -63,7 +63,8 @@
     "db:type-gap": "tsx db/typeGap.ts",
     "api": "tsx api/server.ts",
     "api:smoke": "tsx api/smoke.ts",
-    "db:monitor": "tsx db/monitor.ts"
+    "db:monitor": "tsx db/monitor.ts",
+    "mcp": "tsx mcp/server.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",
