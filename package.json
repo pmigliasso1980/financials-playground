@@ -63,7 +63,8 @@
     "db:attrition": "tsx db/attrition.ts",
     "db:growth": "tsx db/growth.ts",
     "db:catalog": "tsx db/catalog.ts",
-    "db:type-gap": "tsx db/typeGap.ts"
+    "db:type-gap": "tsx db/typeGap.ts",
+    "db:comps": "tsx db/comps.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",
