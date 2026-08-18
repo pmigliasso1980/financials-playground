@@ -117,6 +117,7 @@
  */
 
 import { closePool, ping, query } from "./client.js";
+import { METRIC_SPECS, scoreHeader } from "../harvest/normalize/columnMap.js";
 import { estadoCorpus, estampa } from "./procedencia.js";
 
 const health = await ping();
@@ -344,6 +345,40 @@ if (sinClasificar.length === 0) {
   console.log(`  \x1b[90mparecen entre sí por una razón que no es de negocio.\x1b[0m`);
 }
 
+/**
+ * POR QUÉ UN ENCABEZADO NO MAPEA, USANDO EL MAPEADOR DE VERDAD.
+ *
+ * No sirve razonar sobre el patrón leyéndolo: `scoreHeader` devuelve 0 tanto si
+ * ningún patrón coincide como si un `exclude` lo bloqueó, y las dos cosas piden
+ * arreglos opuestos. Se corre la función real contra el encabezado real y se
+ * reporta cuál de las dos pasó.
+ *
+ * La sospecha, escrita antes de correrlo: los `exclude` son substrings sin anclar.
+ * `property_type` excluye /sub/i para no llevarse "Subordinate", y eso también
+ * mata cualquier encabezado que contenga "Suburban" — que es un subtipo de oficina
+ * y aparece como VALOR cuando la fila de datos quedó pegada al encabezado. Ya pasó
+ * una vez en este archivo con /per\s*\/ matcheando "per" adentro de "Property".
+ */
+function porQueNoMapea(header: string): string {
+  const limpio = header.replace(/\s+/g, " ").trim();
+  const spec = METRIC_SPECS.find((m) => m.key === "property_type");
+  if (!spec) return "\x1b[90m      (no existe la métrica property_type)\x1b[0m";
+
+  const bloqueo = spec.exclude?.find((re) => re.test(limpio));
+  if (bloqueo) {
+    const m = limpio.match(bloqueo);
+    return (
+      `\x1b[31m      bloqueado por el exclude ${String(bloqueo)} — matchea "${m?.[0]}"\x1b[0m` +
+      `\n  \x1b[90m      el patrón no está anclado, así que pega adentro de una palabra\x1b[0m`
+    );
+  }
+  const s = scoreHeader(limpio, spec);
+  if (s > 0) {
+    return `\x1b[33m      mapea con puntaje ${s.toFixed(2)} — se lo llevó otra métrica o otra columna\x1b[0m`;
+  }
+  return `\x1b[90m      ningún patrón coincide: falta agregarlo a la taxonomía\x1b[0m`;
+}
+
 // ---------------------------------------------------------------------------
 // 5. Las emisiones que CONCENTRAN: ahí no es multi-propiedad
 // ---------------------------------------------------------------------------
@@ -388,7 +423,7 @@ const { rows: concentradas } = await query<{
             WHERE f2.accession = x.accession
               AND h ~* '(property|asset|collateral|general)\\s*type'
               AND h !~* 'title|appraised|footnote') AS headers,
-          (SELECT string_agg(left(h, 44), ' · ')
+          (SELECT string_agg(h, ' § ')
              FROM corpus.filings f3,
                   LATERAL jsonb_array_elements_text(f3.columns_unmapped) AS h
             WHERE f3.accession = x.accession
@@ -414,7 +449,10 @@ if (concentradas.length === 0) {
         (vv / Math.max(1, sin) < 0.5 ? `  \x1b[33m← no son carteras\x1b[0m` : ""),
     );
     if (r.headers) {
-      console.log(`  \x1b[32m    columna de tipo sin mapear: ${r.headers.slice(0, 60)}\x1b[0m`);
+      for (const h of r.headers.split(" § ")) {
+        console.log(`  \x1b[32m    encabezado: ${h.slice(0, 100)}\x1b[0m`);
+        console.log(`  ${porQueNoMapea(h)}`);
+      }
     }
     /**
      * La firma de la tarea #48: un encabezado de más de 45 caracteres o con tres
