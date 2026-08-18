@@ -15,14 +15,19 @@
   4. Dice DE DÓNDE salieron los comparables. Si hubo que abrir el radio del estado
      a la región, eso cambia lo que el número significa y va arriba, no al pie.
 
-  LOS CASOS DE USO ESTÁN EN LA PANTALLA, NO EN UN INSTRUCTIVO
+  LOS CASOS APARECEN CUANDO HACEN FALTA Y SE VAN CUANDO NO
 
-  Un formulario en blanco le pide al usuario que ya sepa qué preguntar. Los botones
-  de arriba son las situaciones reales que probamos contra el corpus: se hace clic,
-  se ve la respuesta, y recién ahí se entiende para qué sirve la herramienta.
+  Un formulario en blanco le pide al usuario que ya sepa qué preguntar, así que en
+  la pantalla vacía los ejemplos son lo más útil que puede haber. Pero una vez que
+  hay un resultado, esos mismos botones son ruido compitiendo con la respuesta.
 
-  Son los mismos doce de `npm run api:casos`. Si uno deja de funcionar, se ve acá
-  y en la consola el mismo día.
+  Se muestran solo en el estado vacío y se esconden con la primera búsqueda, con un
+  enlace discreto para traerlos de vuelta. Es la diferencia entre una ayuda y un
+  cartel.
+
+  Y la corrida de los doce juntos vive en /casos, que es otra pantalla y otro
+  público: eso es para nosotros, para ver de un vistazo qué puede y qué no puede
+  contestar el corpus. Un broker no necesita ver los doce.
 -->
 <style>
   :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
@@ -73,6 +78,12 @@
           cursor:pointer; color:var(--fg) }
   .chip:hover { border-color:var(--dot); color:var(--dot) }
   .chip.vacio { border-style:dashed; color:var(--muted) }
+  .casos.oculto { display:none }
+  .reabrir { background:none; border:0; padding:0; font:inherit; font-size:13px;
+             color:var(--muted); cursor:pointer; text-decoration:underline;
+             margin:14px 0 0; display:none }
+  .reabrir.visible { display:inline }
+  .nav { float:right; font-size:13px }
   .alcance { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11.5px;
              font-weight:600; text-transform:uppercase; letter-spacing:.04em;
              background:#eef2f8; color:var(--dot); margin-left:8px; vertical-align:middle }
@@ -82,10 +93,11 @@
   @media (max-width:720px) { form { grid-template-columns:1fr 1fr } }
 </style>
 <main>
+  <a class="nav" href="/casos">ver los doce casos de una →</a>
   <h1>¿Qué términos consiguieron préstamos parecidos?</h1>
   <p class="sub">Comparables de préstamos conduit CMBS, de documentos públicos de SEC EDGAR.</p>
 
-  <div class="casos">
+  <div class="casos" id="casos">
     <b>Situaciones para probar</b>
     <div id="chips"></div>
   </div>
@@ -110,6 +122,7 @@
     <div><button id="go">Buscar</button></div>
   </form>
 
+  <button type="button" class="reabrir" id="reabrir">ver otras situaciones</button>
   <div id="out"></div>
 
   <footer id="pie"></footer>
@@ -281,11 +294,23 @@ $("#f").addEventListener("submit", async (e) => {
     } else {
       $("#out").innerHTML = render(r.data);
       $("#pie").textContent = r.data.corpus.estampa;
+      /**
+       * Con un resultado en pantalla los ejemplos dejan de ayudar y empiezan a
+       * competir con la respuesta. Se esconden, y queda el enlace por si alguien
+       * quiere volver a mirarlos.
+       */
+      $("#casos").classList.add("oculto");
+      $("#reabrir").classList.add("visible");
     }
   } catch (err) {
     $("#out").innerHTML = `<div class="aviso"><h2>No se pudo consultar</h2><p>${err}</p></div>`;
   }
   $("#go").disabled = false;
+});
+
+$("#reabrir").addEventListener("click", () => {
+  $("#casos").classList.remove("oculto");
+  $("#reabrir").classList.remove("visible");
 });
 
 cargarTipos();

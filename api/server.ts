@@ -143,8 +143,22 @@ const server = createServer(async (req, res) => {
      * motivo. Se lee del disco en cada request: son 8 KB y así se puede editar sin
      * reiniciar.
      */
-    if (url.pathname === "/" || url.pathname === "/index.html") {
-      const html = await readFile(new URL("./ui.html", import.meta.url), "utf8");
+    /**
+     * Dos pantallas, dos públicos.
+     *
+     * `/` es para alguien con un deal concreto. `/casos` corre los doce escenarios
+     * de una y es para nosotros: sirve para ver de un vistazo qué puede y qué no
+     * puede contestar el corpus. Mezclarlas obligaría a un broker a mirar once
+     * filas que no le importan.
+     */
+    const PANTALLAS: Record<string, string> = {
+      "/": "ui.html",
+      "/index.html": "ui.html",
+      "/casos": "casos.html",
+    };
+    const pantalla = PANTALLAS[url.pathname];
+    if (pantalla) {
+      const html = await readFile(new URL(`./${pantalla}`, import.meta.url), "utf8");
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-request-id": requestId });
       return res.end(html);
     }
@@ -175,7 +189,7 @@ const server = createServer(async (req, res) => {
     return responder(404, {
       error: {
         codigo: "no_encontrado",
-        rutas: ["/health", "/corpus", "/comps?state=GA&type=Multifamily&amount=28000000"],
+        rutas: ["/", "/casos", "/health", "/corpus", "/comps?state=GA&type=Multifamily&amount=28000000"],
       },
     });
   } catch (err) {
@@ -187,7 +201,8 @@ const server = createServer(async (req, res) => {
 server.listen(PUERTO, () => {
   const e = `http://localhost:${PUERTO}`;
   console.log(`\n  API escuchando en \x1b[1m${e}\x1b[0m\n`);
-  console.log(`  \x1b[90mAbrí eso en el navegador. O por consola:\x1b[0m`);
+  console.log(`  \x1b[90m${e}/casos  → los doce escenarios de una\x1b[0m\n`);
+  console.log(`  \x1b[90mO por consola:\x1b[0m`);
   console.log(`    curl "${e}/corpus"`);
   console.log(`    curl "${e}/comps?state=GA&type=Multifamily&amount=28000000&target_ltv=0.70"`);
   console.log(
