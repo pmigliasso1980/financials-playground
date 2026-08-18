@@ -163,8 +163,10 @@ function render(d) {
               <td class="muted sm">${c.ciudad ?? "—"}</td>
               <td>${fmtUSD(c.monto)}</td>
               <td class="muted sm">${c.fecha}</td>
-              <td class="sm"><a target="_blank" rel="noopener"
-                 href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&filenum=&action=getcompany">${c.emision.slice(0, 26)}</a></td>
+              <td class="sm"><a target="_blank" rel="noopener" href="${c.documento}"
+                 title="Annex A de ${c.emision}">${c.emision.slice(0, 26)}</a>
+                 <a class="muted" target="_blank" rel="noopener" href="${c.indice}"
+                    title="Todos los documentos de esta emisión en EDGAR">↗</a></td>
             </tr>`,
           )
           .join("")}</tbody>

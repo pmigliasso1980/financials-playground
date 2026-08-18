@@ -78,8 +78,23 @@ export interface Comparable {
   propiedad: string | null;
   ciudad: string | null;
   monto: number;
-  /** El accession de EDGAR: el broker puede abrir el documento. */
   accession: string;
+  /**
+   * DOS URLS, LAS DOS LEÍDAS DE LA BASE Y NINGUNA CONSTRUIDA DE MEMORIA.
+   *
+   * `documento` es exactamente el archivo que el harvester descargó y parseó —la
+   * columna `file_url` de `corpus.filings`—, así que abre el Annex A del que
+   * salieron estos números y no una búsqueda parecida.
+   *
+   * `indice` es la página del filing en EDGAR, armada con cik + accession, para
+   * cuando alguien quiere ver el resto de los documentos de esa emisión.
+   *
+   * La primera versión de esto era una URL de búsqueda de EDGAR que escribí de
+   * memoria, con los parámetros vacíos y `action` repetido dos veces: no llevaba a
+   * ninguna parte. El dato correcto estaba en la base desde el principio.
+   */
+  documento: string;
+  indice: string;
 }
 
 export type Respuesta =
@@ -101,6 +116,16 @@ export type Respuesta =
       criterios: Criterios;
       corpus: { estampa: string; canal: string };
     };
+
+/**
+ * La página del filing en EDGAR: cik + accession sin guiones + accession con
+ * guiones. Es la única parte que se arma con una regla en vez de leerse, y por eso
+ * el smoke la verifica contra un accession real.
+ */
+export function indiceEdgar(cik: string, accession: string): string {
+  const limpio = accession.replace(/-/g, "");
+  return `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${limpio}/${accession}-index.htm`;
+}
 
 const CANAL =
   "Solo conduit CMBS de SEC EDGAR. No incluye bancos, agencias, deuda puente ni " +
@@ -245,10 +270,11 @@ export async function buscarComparables(c: Criterios): Promise<Respuesta> {
   const { rows: muestra } = await query<{
     id: string; emision: string; fecha: string; propiedad: string | null;
     ciudad: string | null; monto: string; accession: string;
+    cik: string; file_url: string;
   }>(
     `SELECT l.id::text, f.company_name AS emision, f.filed_at::text AS fecha,
             l.property_name AS propiedad, l.city AS ciudad,
-            am.value AS monto, l.accession
+            am.value AS monto, l.accession, f.cik, f.file_url
        ${DESDE}
       WHERE ${sql}
       ORDER BY f.filed_at DESC, am.value::numeric DESC
@@ -269,6 +295,8 @@ export async function buscarComparables(c: Criterios): Promise<Respuesta> {
       ciudad: r.ciudad,
       monto: Number(r.monto),
       accession: r.accession,
+      documento: r.file_url,
+      indice: indiceEdgar(r.cik, r.accession),
     })),
     criterios: c,
     corpus,
