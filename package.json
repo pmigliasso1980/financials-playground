@@ -62,7 +62,8 @@
     "typecheck": "tsc --noEmit",
     "db:attrition": "tsx db/attrition.ts",
     "db:growth": "tsx db/growth.ts",
-    "db:catalog": "tsx db/catalog.ts"
+    "db:catalog": "tsx db/catalog.ts",
+    "db:type-gap": "tsx db/typeGap.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",
