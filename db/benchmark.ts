@@ -1,45 +1,44 @@
 /**
- * ¿En qué se aparta esta emisión de su cohort?
+ * How does this issuance depart from its cohort?
  *
- *   npm run db:benchmark                    # la más reciente
+ *   npm run db:benchmark                    # the most recent one
  *   npm run db:benchmark -- BNK52
- *   npm run db:benchmark -- --listar
+ *   npm run db:benchmark -- --list
  *
- * QUÉ ES ESTO Y QUÉ NO
+ * WHAT THIS IS AND WHAT IT IS NOT
  *
- * Es la primera pieza con forma de servicio en vez de diagnóstico: entra una
- * emisión, sale dónde cae respecto de las otras de su año. Tiene entrada,
- * salida, y un usuario imaginable — alguien mirando un deal que quiere saber si
- * los términos son de mercado.
+ * It is the first piece shaped like a service rather than a diagnostic: an
+ * issuance goes in, where it falls relative to the others of its year comes out.
+ * It has an input, an output, and an imaginable user — someone looking at a deal
+ * who wants to know whether the terms are market.
  *
- * Los once scripts anteriores eran instrumentos para quien construye. Este
- * responde una pregunta que alguien más podría hacer.
+ * The eleven previous scripts were instruments for whoever is building. This one
+ * answers a question somebody else might ask.
  *
- * POR QUÉ CONTRA LA COHORTE Y NO CONTRA LA HISTORIA
+ * WHY AGAINST THE COHORT AND NOT AGAINST HISTORY
  *
- * `db:stability` mostró que 6 de 7 métricas se desplazan más del 20% entre
- * añadas, y que condicionar por plazo no lo arregla: es macro. Una referencia
- * pooled mediría el ciclo, no la emisión.
+ * `db:stability` showed that 6 of 7 metrics shift more than 20% between vintages,
+ * and that conditioning on term does not fix it: it is macro. A pooled reference
+ * would measure the cycle, not the issuance.
  *
- * Además es la comparación que alguien quiere: nadie pregunta si su deal de
- * 2026 se aparta de 2013.
+ * It is also the comparison someone actually wants: nobody asks whether their 2026
+ * deal departs from 2013.
  *
- * LA UNIDAD DE COMPARACIÓN ES LA EMISIÓN, NO EL PRÉSTAMO
+ * THE UNIT OF COMPARISON IS THE ISSUANCE, NOT THE LOAN
  *
- * Se compara la MEDIANA del pool contra la distribución de las medianas de las
- * otras emisiones del año. Comparar préstamo contra préstamo mezclaría la
- * variación de adentro de un pool con la de entre pools, y la pregunta es sobre
- * el pool.
+ * It compares the pool's MEDIAN against the distribution of the other issuances'
+ * medians for that year. Comparing loan against loan would mix within-pool
+ * variation with between-pool variation, and the question is about the pool.
  *
- * Con 27 pares, un percentil tiene una resolución de ~4 puntos. Se reporta la
- * posición ordinal —"3ª de 28"— porque es lo que el número realmente soporta.
+ * With 27 pairs, a percentile has a resolution of ~4 points. The ordinal position
+ * —"3rd of 28"— is reported because that is what the number actually supports.
  *
- * QUÉ EXCLUYE Y POR QUÉ
+ * WHAT IT EXCLUDES AND WHY
  *
- * Las emisiones de un solo tipo de propiedad no son conduits diversificados:
- * son otro producto. Compararlas contra la cohort conduit produce diferencias
- * garantizadas que no significan nada. Se excluyen del grupo de referencia y se
- * dice cuáles.
+ * Issuances of a single property type are not diversified conduits: they are a
+ * different product. Comparing them against the conduit cohort produces guaranteed
+ * differences that mean nothing. They are excluded from the reference group and it
+ * says which.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -56,45 +55,44 @@ if (!health.ok) {
 }
 
 /**
- * LAS CONSTANTES, LAS MÉTRICAS Y EL CÁLCULO VIVEN EN cohortBenchmark.ts
+ * THE CONSTANTS, THE METRICS AND THE COMPUTATION LIVE IN cohortBenchmark.ts
  *
- * Antes estaban acá, y cuando apareció `db:page` había dos caminos posibles:
- * duplicarlas o compartirlas. Duplicarlas es cómo la ocupación terminó con dos
- * definiciones contradiciéndose en la misma pantalla —una exigía diez préstamos,
- * la otra uno—, así que el cálculo se movió a un módulo y este script quedó como
- * lo que es: una vista.
+ * They used to be here, and when `db:page` appeared there were two possible paths:
+ * duplicate them or share them. Duplicating is how occupancy ended up with two
+ * definitions contradicting each other on the same screen —one required ten loans,
+ * the other one— so the computation moved to a module and this script became
+ * what it is: a view.
  */
 const args = process.argv.slice(2);
-const LISTAR = args.includes("--listar");
+const LIST_ONLY = args.includes("--list");
 
 /**
- * `--auditoria`: ¿en cuántas emisiones de la cohort resuelve cada métrica?
+ * `--audit`: in how many issuances of the cohort does each metric resolve?
  *
- * POR QUÉ EXISTE
+ * WHY IT EXISTS
  *
- * La primera corrida devolvió "Ocupación — sin dato en esta emisión". En un
- * diagnóstico eso es una nota al pie; en un producto es lo que destruye la
- * confianza, porque el usuario no sabe si el dato no existe o si nosotros no lo
- * encontramos.
+ * The first run returned "Occupancy — no data in this issuance". In a diagnostic
+ * that is a footnote; in a product it is what destroys trust, because the user
+ * does not know whether the datum does not exist or whether we failed to find it.
  *
- * Y antes de decidir cuál de las dos cosas es, hace falta el denominador: si la
- * ocupación resuelve en 5 de 28 emisiones no debería estar en la herramienta;
- * si resuelve en 26, son dos emisiones con un problema de mapeo.
+ * And before deciding which of the two it is, the denominator is needed: if
+ * occupancy resolves in 5 of 28 issuances it should not be in the tool;
+ * if it resolves in 26, it is two issuances with a mapping problem.
  *
- * Es la misma regla que venimos usando —medir la cobertura antes de construir
- * encima— aplicada al benchmark en vez de al corpus.
+ * It is the same rule we have been using —measure coverage before building on top
+ * of it— applied to the benchmark instead of to the corpus.
  */
-const AUDITORIA = args.includes("--auditoria");
-const BUSQUEDA = args.find((a) => !a.startsWith("--")) ?? null;
+const AUDIT = args.includes("--audit");
+const SEARCH = args.find((a) => !a.startsWith("--")) ?? null;
 
 
-const candidatas = await loadCandidates();
+const candidates = await loadCandidates();
 
-if (LISTAR) {
+if (LIST_ONLY) {
   console.log(`\n${"═".repeat(78)}`);
-  console.log("Emisiones disponibles (más recientes primero)");
+  console.log("Available issuances (most recent first)");
   console.log(`${"═".repeat(78)}\n`);
-  for (const c of candidatas.slice(0, 30)) {
+  for (const c of candidates.slice(0, 30)) {
     const share = c.dominantShare;
     console.log(
       `  ${c.filed.slice(0, 10)}  ${c.name.slice(0, 42).padEnd(44)} ${String(c.pool).padStart(4)}` +
@@ -108,16 +106,16 @@ if (LISTAR) {
   process.exit(0);
 }
 
-if (AUDITORIA) {
-  const anadaAudit = String(new Date().getFullYear());
-  const cohort = candidatas.filter((c) => c.vintage === anadaAudit);
+if (AUDIT) {
+  const auditVintage = String(new Date().getFullYear());
+  const cohort = candidates.filter((c) => c.vintage === auditVintage);
   const accs = cohort.map((c) => c.accession);
 
   console.log(`\n${"═".repeat(78)}`);
-  console.log(`Auditoría del benchmark — cohort ${anadaAudit}`);
+  console.log(`Benchmark audit — ${auditVintage} cohort`);
   console.log(`${"═".repeat(78)}\n`);
-  console.log(`  ${cohort.length} emisiones. ¿En cuántas resuelve cada métrica?\n`);
-  console.log(`  métrica          resuelve   emisiones sin dato`);
+  console.log(`  ${cohort.length} issuances. In how many does each metric resolve?\n`);
+  console.log(`  metric           resolves   issuances with no data`);
   console.log(`  ${"─".repeat(70)}`);
 
   for (const m of COHORT_METRICS) {
@@ -134,38 +132,38 @@ if (AUDITORIA) {
       [m.key, accs],
     );
     const con = new Set(rows.map((r) => r.accession));
-    const sin = cohort.filter((c) => !con.has(c.accession));
-    const cuenta = new Map(rows.map((r) => [r.accession, Number(r.n)]));
+    const missing = cohort.filter((c) => !con.has(c.accession));
+    const counts = new Map(rows.map((r) => [r.accession, Number(r.n)]));
     const share = cohort.length ? con.size / cohort.length : 0;
     console.log(
       `  ${m.label.padEnd(14)} ${`${con.size}/${cohort.length}`.padStart(8)}   ` +
         `${share >= 0.9 ? "\x1b[32m" : share >= 0.5 ? "\x1b[33m" : "\x1b[31m"}${pct(share).padStart(5)}\x1b[0m` +
-        (sin.length > 0 ? `   \x1b[90m${sin.length} sin dato\x1b[0m` : ""),
+        (missing.length > 0 ? `   \x1b[90m${missing.length} with no data\x1b[0m` : ""),
     );
 
     /**
-     * Las faltantes se nombran SIEMPRE, no solo cuando son pocas.
+     * The missing ones are named ALWAYS, not only when there are few.
      *
-     * La primera versión las listaba con `sin.length <= 5` y arriba de eso
-     * imprimía "7 emisiones". Es el mismo error que venimos persiguiendo en los
-     * datos, cometido en el reporte: un resumen que oculta justo lo que hace
-     * falta para decidir. Siete nombres no llenan una pantalla, y sin ellos no
-     * se puede saber si la falta es aleatoria o estructural.
+     * The first version listed them with `sin.length <= 5` and above that printed
+     * "7 issuances". It is the same error we keep chasing in the
+     * data, committed in the report: a summary that hides exactly what is needed
+     * to decide. Seven names do not fill a screen, and without them there is no
+     * way to know whether the absence is random or structural.
      */
-    if (sin.length > 0 && con.size < cohort.length) {
+    if (missing.length > 0 && con.size < cohort.length) {
       /**
-       * Cuántos préstamos tiene REALMENTE, sin el umbral.
+       * How many loans it REALLY has, without the threshold.
        *
-       * La primera versión decía "sin dato" y era mentira: el umbral de 10 es
-       * lo que decidía, no la ausencia del dato. BANK5 salía sin ocupación en
-       * una tabla y 5/5 en la de shelves, porque una exigía diez préstamos y la
-       * otra uno. Dos definiciones de "tiene el dato" conviviendo en la misma
-       * pantalla, contradiciéndose.
+       * The first version said "no data" and that was a lie: the threshold of 10
+       * is what decided, not the absence of the datum. BANK5 came out with no
+       * occupancy in one table and 5/5 in the shelf one, because one required ten
+       * loans and the other one. Two definitions of "has the datum" coexisting on
+       * the same screen, contradicting each other.
        *
-       * Ahora se imprime el conteo crudo contra el pool. "3 de 35" es una
-       * afirmación sobre el mundo; "sin dato" era una sobre mi umbral.
+       * Now the raw count is printed against the pool. "3 of 35" is a claim about
+       * the world; "no data" was one about my threshold.
        */
-      const { rows: crudos } = await query<{ accession: string; n: string }>(
+      const { rows: rawCounts } = await query<{ accession: string; n: string }>(
         `SELECT l.accession, count(*)::text AS n
            FROM corpus.facts fa
            JOIN corpus.loans l ON l.id = fa.loan_id
@@ -174,29 +172,29 @@ if (AUDITORIA) {
             AND fa.value::numeric BETWEEN ${m.min} AND ${m.max}
             AND l.accession = ANY($2)
           GROUP BY l.accession`,
-        [m.key, sin.map((x) => x.accession)],
+        [m.key, missing.map((x) => x.accession)],
       );
-      const crudo = new Map(crudos.map((r) => [r.accession, Number(r.n)]));
-      for (const x of sin) {
-        const n = crudo.get(x.accession) ?? 0;
+      const rawCount = new Map(rawCounts.map((r) => [r.accession, Number(r.n)]));
+      for (const x of missing) {
+        const n = rawCount.get(x.accession) ?? 0;
         console.log(
           `    \x1b[90m· ${x.name.slice(0, 42).padEnd(44)} ${String(n).padStart(3)} de ${x.pool}` +
-            (n > 0 ? ` \x1b[33m← hay dato, lo corta el umbral de ${MIN_PER_METRIC}\x1b[0m` : ` \x1b[90mcero\x1b[0m`),
+            (n > 0 ? ` \x1b[33m← the datum exists, the threshold of ${MIN_PER_METRIC} cuts it\x1b[0m` : ` \x1b[90mzero\x1b[0m`),
         );
       }
     }
   }
 
   /**
-   * ¿La falta es aleatoria o se agrupa por emisor?
+   * Is the absence random or does it cluster by issuer?
    *
-   * Una cobertura del 75% no dice lo mismo según cómo se reparta. Si las 7 sin
-   * ocupación están esparcidas, la distribución de la cohort se arma sobre una
-   * submuestra parecida al todo. Si son todas del mismo shelf, la referencia
-   * excluye sistemáticamente a un originador y comparar contra ella está
-   * sesgado — sin que nada en la salida lo indique.
+   * 75% coverage does not mean the same thing depending on how it is distributed.
+   * If the 7 without occupancy are scattered, the cohort's distribution is built
+   * on a subsample resembling the whole. If they are all from the same shelf, the
+   * reference systematically excludes one originator and comparing against it is
+   * biased — with nothing in the output indicating it.
    *
-   * Es la misma pregunta que ya nos costó caro con `property_type`: ahí la
+   * It is the same question that already cost us dearly with `property_type`: there the
    * cobertura global era 93,7% y tres shelves enteros estaban abajo del umbral.
    */
   const { rows: porShelf } = await query<{ shelf: string; total: string; with_occ: string }>(
@@ -219,48 +217,48 @@ if (AUDITORIA) {
     [accs],
   );
 
-  console.log(`\n  Ocupación por shelf — ¿la falta se agrupa?\n`);
+  console.log(`\n  Occupancy by shelf — does the absence cluster?\n`);
   for (const r of porShelf) {
     const tot = Number(r.total);
     const con = Number(r.with_occ);
     console.log(
       `    ${r.shelf.slice(0, 18).padEnd(20)} ${`${con}/${tot}`.padStart(6)}` +
-        (con === 0 ? `  \x1b[31m← el shelf entero\x1b[0m` : con < tot ? `  \x1b[33mparcial\x1b[0m` : ""),
+        (con === 0 ? `  \x1b[31m← the whole shelf\x1b[0m` : con < tot ? `  \x1b[33mpartial\x1b[0m` : ""),
     );
   }
   console.log(
-    `\n  \x1b[90mEsta tabla pregunta si existe ALGÚN préstamo con el dato, así que casi\x1b[0m`,
+    `\n  \x1b[90mThis table asks whether ANY loan has the datum, so it almost always\x1b[0m`,
   );
   console.log(
-    `  \x1b[90msiempre dice que sí: BANK5 sale 5/5 teniendo 6 de 35. La unidad correcta\x1b[0m`,
+    `  \x1b[90msays yes: BANK5 comes out 5/5 while having 6 of 35. The correct unit\x1b[0m`,
   );
-  console.log(`  \x1b[90mes el préstamo, y es la de abajo.\x1b[0m`);
+  console.log(`  \x1b[90mis the loan, and that is the table below.\x1b[0m`);
 
   /**
-   * LA MEDICIÓN QUE HABÍA QUE HACER DESDE EL PRINCIPIO: préstamos, no emisiones.
+   * THE MEASUREMENT THAT SHOULD HAVE BEEN MADE FROM THE START: loans, not issuances.
    *
-   * Las dos tablas de arriba cuentan emisiones que pasan un umbral. Pero la
-   * mediana de una emisión se calcula sobre PRÉSTAMOS, y una cohort donde cada
-   * deal tiene el dato en 11 de 35 daría 28/28 en la primera tabla y sería una
-   * referencia construida sobre un tercio de la población.
+   * The two tables above count issuances passing a threshold. But an issuance's
+   * median is computed over LOANS, and a cohort where each deal has the datum in
+   * 11 of 35 would give 28/28 in the first table and would be a reference built on
+   * a third of the population.
    *
-   * `CLAUDE.md` dice "la unidad de análisis se elige antes que el método" y acá
-   * la elegí después, mirando lo que era fácil de contar.
+   * `CLAUDE.md` says "the unit of analysis is chosen before the method" and here I
+   * chose it afterwards, looking at what was easy to count.
    *
-   * EL CORTE POR TIPO ES EL TEST DECISIVO
+   * THE CUT BY TYPE IS THE DECIDING TEST
    *
-   * Quedan dos explicaciones para la ralitud, y predicen cosas distintas:
+   * Two explanations remain for the sparseness, and they predict different things:
    *
-   *   (a) el dato se informa donde significa algo — la ocupación de un hotel se
-   *       mide con RevPAR, la de un self storage rota mensual. Entonces
-   *       multifamily/office/retail deberían estar altos y hospitality en cero.
+   *   (a) the datum is reported where it means something — a hotel's occupancy is
+   *       measured with RevPAR, a self storage's rotates monthly. Then
+   *       multifamily/office/retail should be high and hospitality at zero.
    *
-   *   (b) el parser lo pierde — entonces la cobertura es pareja y baja en TODOS
-   *       los tipos, porque a la columna no le importa qué hay adentro.
+   *   (b) the parser loses it — then coverage is even and low across ALL types,
+   *       because the column does not care what is inside.
    *
-   * Benchmark 2026-B42 con 1 de 62 ya empuja fuerte hacia (b): esa emisión es
-   * 42% multifamily, o sea ~26 préstamos donde la ocupación es la métrica
-   * central del activo. Pero un caso no decide, y este corte sí.
+   * Benchmark 2026-B42 with 1 of 62 already pushes hard towards (b): that issuance
+   * is 42% multifamily, i.e. ~26 loans where occupancy is the asset's central
+   * metric. But one case does not decide, and this cut does.
    */
   const { rows: porTipo } = await query<{
     type: string; total: string; with_occ: string;
@@ -283,8 +281,8 @@ if (AUDITORIA) {
   const totOcc = porTipo.reduce((a, r) => a + Number(r.with_occ), 0);
 
   console.log(`\n${"─".repeat(78)}`);
-  console.log(`\n  Ocupación a nivel PRÉSTAMO, por tipo de propiedad\n`);
-  console.log(`    tipo                  préstamos   con ocupación`);
+  console.log(`\n  Occupancy at LOAN level, by property type\n`);
+  console.log(`    type                      loans   with occupancy`);
   console.log(`    ${"─".repeat(52)}`);
   for (const r of porTipo) {
     const tot = Number(r.total);
@@ -300,46 +298,46 @@ if (AUDITORIA) {
   );
 
   /**
-   * El veredicto se calcula, no se lee a ojo.
+   * The verdict is computed, not eyeballed.
    *
-   * Si la dispersión entre tipos es chica, la cobertura no depende de qué hay
-   * adentro del activo y la explicación "se informa donde significa algo" no se
+   * If the dispersion between types is small, coverage does not depend on what is
+   * inside the asset and the "reported where it means something" explanation does
    * sostiene.
    */
   const shares = porTipo.map((r) => Number(r.with_occ) / Number(r.total));
   const spread = Math.max(...shares) - Math.min(...shares);
   console.log(
-    `\n    \x1b[90mDispersión entre tipos: ${pct(spread)} (del ${pct(Math.min(...shares))} al ${pct(Math.max(...shares))}).\x1b[0m`,
+    `\n    \x1b[90mDispersion between types: ${pct(spread)} (from ${pct(Math.min(...shares))} to ${pct(Math.max(...shares))}).\x1b[0m`,
   );
   console.log(
-    `\n    \x1b[90mEste corte NO decide nada por sí solo: el tipo de propiedad y la emisión\x1b[0m`,
+    `\n    \x1b[90mThis cut does NOT decide anything on its own: property type and issuance\x1b[0m`,
   );
   console.log(
-    `    \x1b[90mestán correlacionados. Una emisión rota que sea 42% multifamily hunde la\x1b[0m`,
+    `    \x1b[90mare correlated. A broken issuance that is 42% multifamily sinks the\x1b[0m`,
   );
   console.log(
-    `    \x1b[90mfila de multifamily sin que multifamily tenga nada que ver. Ver abajo.\x1b[0m`,
+    `    \x1b[90mmultifamily row without multifamily having anything to do with it. See below.\x1b[0m`,
   );
 
   /**
-   * EL TEST DE VERDAD: dentro de cada emisión, no a través de ellas.
+   * THE REAL TEST: within each issuance, not across them.
    *
-   * La versión anterior de este bloque emitía un veredicto ("varía por tipo,
-   * luego el dato se informa donde significa algo") a partir de la dispersión
-   * entre tipos AGREGADA sobre las 28 emisiones. Estaba confundido.
+   * The previous version of this block issued a verdict ("it varies by type,
+   * therefore the datum is reported where it means something") from the dispersion
+   * between types AGGREGATED over the 28 issuances. It was confounded.
    *
-   * La aritmética de la propia salida lo mostraba: las 7 emisiones sin dato
-   * suman 234 préstamos y aportan 15, así que las otras 21 tienen 673 de 675 —
-   * el 99,7%. La cobertura no es un gradiente por tipo: es binaria por EMISIÓN.
-   * La variación "por tipo" que medí era la composición de las 7 rotas.
+   * The arithmetic of its own output showed it: the 7 issuances with no data sum
+   * 234 loans and contribute 15, so the other 21 have 673 of 675 — 99.7%. Coverage
+   * is not a gradient by type: it is binary by ISSUANCE. The "by type" variation I
+   * measured was the composition of the 7 broken ones.
    *
-   * Es el mismo error que mató la hipótesis de BANK contra BBCMS: agregar a
-   * través de la unidad que carga la variación real y leer el resultado como
-   * efecto de la variable que uno quería mirar.
+   * It is the same error that killed the BANK versus BBCMS hypothesis: aggregating
+   * across the unit that carries the real variation and reading the result as an
+   * effect of the variable one wanted to look at.
    *
-   * El test correcto separa las dos poblaciones primero. Dentro de las emisiones
-   * que SÍ traen el dato, si la cobertura es pareja entre tipos entonces el
-   * formato es lo único que decide y el tipo no juega.
+   * The correct test separates the two populations first. Within the issuances that
+   * DO carry the datum, if coverage is even across types then format is the only
+   * thing deciding and type plays no part.
    */
   const { rows: dentro } = await query<{ type: string; total: string; with_occ: string }>(
     `WITH sanas AS (
@@ -367,8 +365,8 @@ if (AUDITORIA) {
     [accs],
   );
 
-  console.log(`\n  Solo dentro de las emisiones que SÍ traen ocupación\n`);
-  console.log(`    tipo                  préstamos   con ocupación`);
+  console.log(`\n  Only within the issuances that DO carry occupancy\n`);
+  console.log(`    type                      loans   with occupancy`);
   console.log(`    ${"─".repeat(52)}`);
   for (const r of dentro) {
     const tot = Number(r.total);
@@ -381,54 +379,54 @@ if (AUDITORIA) {
   }
 
   /**
-   * El bucket de nulos NO entra en el veredicto.
+   * The null bucket does NOT enter the verdict.
    *
-   * Tercera versión de esta conclusión, y las tres primeras estuvieron mal por
-   * la misma razón: el número de abajo se calculaba sobre un conjunto que
-   * incluía algo que no pertenecía. Acá era `(sin tipo)`, que no es un tipo de
-   * propiedad sino la ausencia de uno — preguntarle si se comporta como un tipo
-   * no tiene sentido, y su 65% inflaba la dispersión a 35 puntos cuando entre
-   * los ocho tipos reales es exactamente cero.
+   * Third version of this conclusion, and the first three were wrong for the same
+   * reason: the number below was computed over a set that included something that
+   * did not belong. Here it was `(no type)`, which is not a property type but the
+   * absence of one — asking whether it behaves like a type makes no sense, and its
+   * 65% inflated the dispersion to 35 points when across the eight real types it is
+   * exactly zero.
    *
-   * Los préstamos sin tipo son el agujero de `property_type` que ya está
-   * anotado aparte. Se muestran, no se computan.
+   * The loans with no type are the `property_type` gap that is already
+   * noted separately. They are shown, not computed.
    */
   const sd = dentro
     .filter((r) => !r.type.startsWith("("))
     .map((r) => Number(r.with_occ) / Number(r.total));
-  const spreadDentro = sd.length ? Math.max(...sd) - Math.min(...sd) : 0;
+  const spreadWithin = sd.length ? Math.max(...sd) - Math.min(...sd) : 0;
   console.log(
-    `\n    \x1b[90mDispersión entre los ${sd.length} tipos reales: ${pct(spreadDentro)}` +
-      ` (contra ${pct(spread)} agregando entre emisiones).\x1b[0m\n` +
-      `    \x1b[90m'(sin tipo)' queda fuera del cálculo: es la ausencia de un tipo, no un tipo.\x1b[0m`,
+    `\n    \x1b[90mDispersion across the ${sd.length} real types: ${pct(spreadWithin)}` +
+      ` (against ${pct(spread)} aggregating across issuances).\x1b[0m\n` +
+      `    \x1b[90m'(no type)' is left out of the calculation: it is the absence of a type, not a type.\x1b[0m`,
   );
   console.log(
-    spreadDentro < 0.2
-      ? `    \x1b[31mEl tipo no juega: donde la emisión trae el dato, lo trae para todos.\x1b[0m\n` +
-          `    \x1b[90mNo es formato: los encabezados del Annex A conduit son byte por byte\x1b[0m\n` +
-          `    \x1b[90miguales entre emisores. Es el orden de los bloques tras el join, que\x1b[0m\n` +
-          `    \x1b[90mdesempata columnas con puntaje igual — arreglado en la taxonomía\x1b[0m\n` +
-          `    \x1b[90m2026.08.10 dándole a /leased occ/ el primer patrón. Si vuelve a faltar\x1b[0m\n` +
-          `    \x1b[90men alguna emisión, es una recosecha pendiente o un empate nuevo.\x1b[0m`
-      : `    \x1b[33mEl tipo sigue jugando aun dentro de emisiones sanas: hay dos causas\x1b[0m\n` +
-          `    \x1b[33msuperpuestas y hace falta separarlas antes de usar la métrica.\x1b[0m`,
+    spreadWithin < 0.2
+      ? `    \x1b[31mType plays no part: where the issuance carries the datum, it carries it for all.\x1b[0m\n` +
+          `    \x1b[90mIt is not format: the headers of a conduit Annex A are byte for byte\x1b[0m\n` +
+          `    \x1b[90midentical across issuers. It is the order of the blocks after the join,\x1b[0m\n` +
+          `    \x1b[90mwhich breaks ties between equally scored columns — fixed in taxonomy\x1b[0m\n` +
+          `    \x1b[90m2026.08.10 by giving /leased occ/ the first pattern. If it goes missing\x1b[0m\n` +
+          `    \x1b[90magain in some issuance, it is a pending re-harvest or a new tie.\x1b[0m`
+      : `    \x1b[33mType still plays a part even within healthy issuances: there are two\x1b[0m\n` +
+          `    \x1b[33moverlapping causes and they need separating before using the metric.\x1b[0m`,
   );
 
   /**
-   * Los shares de concentración, que decidieron exclusiones sin que nadie
-   * mirara el valor. Un 82% y un 98% se excluyen igual con umbral 0,8, pero
-   * el primero es una decisión mía y el segundo una propiedad del deal.
+   * The concentration shares, which decided exclusions without anyone looking at
+   * the value. An 82% and a 98% are both excluded at threshold 0.8, but the first
+   * is a decision of mine and the second a property of the deal.
    */
   /**
-   * ¿Hay emisiones cargadas dos veces?
+   * Are there issuances loaded twice?
    *
-   * En la lista de faltantes aparecieron dos "Wells Fargo Commercial Mortgage
-   * Trust 2026-5" — que puede ser el truncado a 42 caracteres de dos deals
-   * distintos, o la misma cosechada dos veces.
+   * Two "Wells Fargo Commercial Mortgage Trust 2026-5" appeared in the missing
+   * list — which may be the 42-character truncation of two different deals, or the
+   * same one harvested twice.
    *
-   * No es cosmético: la cohort es el denominador de toda posición ordinal. Una
-   * emisión duplicada se cuenta como dos pares, corre la mediana hacia sí misma
-   * y desplaza cada "13ª de 25" sin que nada lo indique.
+   * It is not cosmetic: the cohort is the denominator of every ordinal position. A
+   * duplicated issuance counts as two pairs, pulls the median towards itself
+   * and shifts every "13th of 25" with nothing indicating it.
    */
   const { rows: dups } = await query<{ name: string; n: string; accs: string; pools: string }>(
     `SELECT f.company_name AS name, count(*)::text AS n,
@@ -442,16 +440,16 @@ if (AUDITORIA) {
     [accs],
   );
   /**
-   * Las categorías de property_type que hay guardadas.
+   * The property_type categories that are stored.
    *
-   * Hasta la taxonomía 2026.08.11, "General Property Type" y "Detailed Property
-   * Type" empataban y ganaba la que quedara primero tras el join. Si en alguna
-   * emisión ganó la detallada, acá tienen que aparecer categorías finas
-   * ("Anchored Retail", "Limited Service") mezcladas con las gruesas.
+   * Until taxonomy 2026.08.11, "General Property Type" and "Detailed Property
+   * Type" tied and whichever came first after the join won. If the detailed one
+   * won in some issuance, fine categories ("Anchored Retail", "Limited Service")
+   * have to show up here mixed with the coarse ones.
    *
-   * Es el control de que el arreglo sirvió para algo: una lista corta de
-   * categorías gruesas significa que ahora todas las emisiones usan la misma
-   * taxonomía. Una lista larga con variantes significa que sigue mezclado.
+   * It is the check that the fix achieved something: a short list of coarse
+   * categories means every issuance now uses the same taxonomy. A long list with
+   * variants means it is still mixed.
    */
   const { rows: cats } = await query<{ type: string; n: string; issuances: string }>(
     `SELECT coalesce(property_type, '(sin tipo)') AS type,
@@ -461,48 +459,48 @@ if (AUDITORIA) {
       GROUP BY 1 ORDER BY count(*) DESC`,
     [accs],
   );
-  console.log(`\n  Categorías de property_type en la cohort — ${cats.length} distintas\n`);
+  console.log(`\n  property_type categories in the cohort — ${cats.length} distinct\n`);
   for (const c of cats) {
     console.log(
-      `    ${c.type.slice(0, 34).padEnd(36)} ${String(c.n).padStart(4)} préstamos` +
+      `    ${c.type.slice(0, 34).padEnd(36)} ${String(c.n).padStart(4)} loans` +
         ` \x1b[90men ${c.issuances} emisiones\x1b[0m` +
         /**
-         * Dos marcas, por dos modos de falla distintos.
+         * Two flags, for two different failure modes.
          *
-         * La primera versión solo tenía la de "confinada a una emisión", escrita
-         * suponiendo que el riesgo era que distintos emisores usaran taxonomías
-         * distintas. El problema real resultó ser otro: una categoría llamada
-         * "2", en tres emisiones, que pasó sin marca porque no está confinada.
+         * The first version only had the "confined to one issuance" case, written
+         * assuming the risk was different issuers using different taxonomies. The
+         * real problem turned out to be another: a category called "2", in three
+         * issuances, which passed unflagged because it is not confined.
          *
-         * Un tipo de propiedad puramente numérico no es una categoría: es una
-         * celda de datos que se coló en la columna. Eso se puede afirmar sin
-         * saber de qué documento vino.
+         * A purely numeric property type is not a category: it is a data cell that
+         * leaked into the column. That can be asserted without knowing which
+         * document it came from.
          */
         (/^[\d.,\s]+$/.test(c.type)
-          ? `  \x1b[31m← no es una categoría: valor numérico\x1b[0m`
+          ? `  \x1b[31m← not a category: numeric value\x1b[0m`
           : Number(c.issuances) === 1 && Number(c.n) >= 3
-            ? `  \x1b[33m← solo en una: ¿taxonomía distinta?\x1b[0m`
+            ? `  \x1b[33m← only in one: a different taxonomy?\x1b[0m`
             : ""),
     );
   }
 
   /**
-   * Los préstamos con tipo numérico, con sus campos vecinos.
+   * The loans with a numeric type, with their neighbouring fields.
    *
-   * HIPÓTESIS QUE ESTO PONE A PRUEBA
+   * THE HYPOTHESIS THIS TESTS
    *
-   * `harvest:ties` encontró encabezados con filas de datos pegadas adentro
-   * ("# of Properties 3 1", "Loan ID Number 37 37.01 37.02 38"). Si el
-   * encabezado quedó mal delimitado, las columnas de esa emisión están
-   * corridas, y un property_type de "2" sería el valor de la columna vecina
-   * —justamente `# of Properties`— leído en el lugar equivocado.
+   * `harvest:ties` found headers with data rows glued inside them ("# of
+   * Properties 3 1", "Loan ID Number 37 37.01 37.02 38"). If the header ended up
+   * badly delimited, that issuance's columns are shifted, and a property_type of
+   * "2" would be the neighbouring column's value —precisely `# of Properties`—
+   * read in the wrong place.
    *
-   * Si es corrimiento, los campos de al lado también van a estar fuera de
-   * lugar: un nombre de propiedad donde va el tipo, un tipo donde va el conteo.
-   * Si en cambio el resto se ve sano, "2" es una celda sucia aislada y no hay
+   * If it is a shift, the neighbouring fields will also be out of
+   * place: a property name where the type goes, a type where the count goes. If
+   * instead the rest looks healthy, "2" is an isolated dirty cell and there is no
    * corrimiento — dos causas con arreglos completamente distintos.
    */
-  const { rows: sospechosos } = await query<{
+  const { rows: suspects } = await query<{
     name: string; loan_id: string; type: string;
     prop_name: string | null; prop_count: string | null; unit: string | null;
   }>(
@@ -521,10 +519,10 @@ if (AUDITORIA) {
     [accs],
   );
 
-  if (sospechosos.length > 0) {
-    console.log(`\n  Préstamos con tipo numérico — ¿están corridas las columnas?\n`);
-    for (const x of sospechosos) {
-      console.log(`    \x1b[1m${x.name.slice(0, 40)}\x1b[0m  préstamo ${x.loan_id}`);
+  if (suspects.length > 0) {
+    console.log(`\n  Loans with a numeric type — are the columns shifted?\n`);
+    for (const x of suspects) {
+      console.log(`    \x1b[1m${x.name.slice(0, 40)}\x1b[0m  loan ${x.loan_id}`);
       console.log(
         `      tipo=\x1b[31m${JSON.stringify(x.type)}\x1b[0m` +
           `  # props=${JSON.stringify(x.prop_count)}` +
@@ -533,53 +531,51 @@ if (AUDITORIA) {
       console.log(`      nombre=${JSON.stringify((x.prop_name ?? "").slice(0, 44))}`);
     }
     /**
-     * La versión anterior de estas líneas ofrecía dos causas —celda sucia o
-     * corrimiento de columnas— como si fueran exhaustivas. La evidencia que
-     * imprime justo arriba las descarta a las dos: nombre vacío, conteo nulo y
-     * unidad nula no es una celda sucia ni un corrimiento, es una fila que no
-     * es un préstamo.
+     * The previous version of these lines offered two causes —a dirty cell or a
+     * column shift— as if they were exhaustive. The evidence it prints just above
+     * rules out both: no name, null count and null unit is neither a dirty cell
+     * nor a shift, it is a row that is not a loan.
      *
-     * La dejé impresa varias corridas después de saber que era falsa. Ahora
-     * dice lo que la evidencia sostiene y nombra la tarea donde se arregla.
+     * I left it printed several runs after knowing it was false. Now it says what
+     * the evidence supports and names the task where it gets fixed.
      */
     console.log(
-      `\n    \x1b[90mSin nombre, sin conteo y sin unidad: no son préstamos con el tipo mal,\x1b[0m`,
+      `\n    \x1b[90mNo name, no count and no unit: these are not loans with the wrong type,\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mson filas que no son préstamos. row_index 0 es la primera fila después\x1b[0m`,
+      `    \x1b[90mthey are rows that are not loans. row_index 0 is the first row after\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mdel encabezado, que en el Annex A conduit suele numerar las columnas —\x1b[0m`,
+      `    \x1b[90mthe header, which in a conduit Annex A usually numbers the columns —\x1b[0m`,
     );
     console.log(
-      `    \x1b[90my ahí un "2" en la posición del tipo es el número de columna. Tarea #49.\x1b[0m`,
+      `    \x1b[90mand there a "2" in the type position is the column number. Task #49.\x1b[0m`,
     );
   }
 
   /**
-   * PRÉSTAMOS FANTASMA: filas cargadas como préstamo que no son préstamos.
+   * PHANTOM LOANS: rows loaded as loans that are not loans.
    *
-   * Los 5 con property_type numérico resultaron no tener nombre, ni conteo de
-   * propiedades, ni unidad de medida, y 3 de los 5 están en row_index 0 — la
-   * primera fila después del encabezado, que en el Annex A suele numerar las
-   * columnas. Un "2" en la posición del tipo de propiedad es justo lo que deja
-   * esa fila.
+   * The 5 with a numeric property_type turned out to have no name, no property
+   * count and no unit of measure, and 3 of the 5 are at row_index 0 — the first
+   * row after the header, which in an Annex A usually numbers the columns. A "2"
+   * in the property type position is exactly what that row leaves behind.
    *
-   * No era corrimiento de columnas ni celda sucia, que eran las dos causas que
-   * yo había planteado como si fueran exhaustivas. Era una tercera.
+   * It was not a column shift nor a dirty cell, which were the two causes I had
+   * put forward as if they were exhaustive. It was a third.
    *
-   * POR QUÉ IMPORTA MÁS QUE LOS 5 CASOS
+   * WHY IT MATTERS MORE THAN THE 5 CASES
    *
-   * El pool es el denominador de todo lo que hace esta herramienta: la posición
-   * ordinal, los porcentajes de composición, y la nota que dice cuánto vale
-   * cada préstamo. Una fila fantasma no rompe nada visiblemente — corre los
-   * porcentajes un punto y nadie se enteraría.
+   * The pool is the denominator of everything this tool does: the ordinal
+   * position, the composition percentages, and the note saying how much each loan
+   * is worth. A phantom row breaks nothing visibly — it shifts the percentages by
+   * a point and nobody would notice.
    *
-   * Se cuentan por cantidad de facts porque es la definición operativa: un
-   * préstamo real del Annex A conduit tiene decenas de observaciones. Una fila
-   * con dos o tres no es un préstamo con pocos datos, es otra cosa.
+   * They are counted by number of facts because that is the operational
+   * definition: a real loan in a conduit Annex A has dozens of observations. A row
+   * with two or three is not a loan with little data, it is something else.
    */
-  const { rows: fantasmas } = await query<{
+  const { rows: phantoms } = await query<{
     name: string; pool: string; thin: string; empty: string; min_facts: string;
   }>(
     `WITH conteo AS (
@@ -601,56 +597,56 @@ if (AUDITORIA) {
     [accs],
   );
 
-  const totalFlacos = fantasmas.reduce((a, r) => a + Number(r.thin), 0);
+  const totalThin = phantoms.reduce((a, r) => a + Number(r.thin), 0);
   console.log(
-    `\n  Filas con 5 facts o menos — ¿son préstamos?  \x1b[1m${totalFlacos} en ${fantasmas.length} emisiones\x1b[0m\n`,
+    `\n  Rows with 5 facts or fewer — are they loans?  \x1b[1m${totalThin} across ${phantoms.length} issuances\x1b[0m\n`,
   );
-  for (const r of fantasmas) {
+  for (const r of phantoms) {
     console.log(
       `    ${r.name.slice(0, 40).padEnd(42)} ${String(r.thin).padStart(3)} de ${String(r.pool).padStart(3)}` +
-        `  \x1b[90mmínimo ${r.min_facts} facts\x1b[0m` +
-        (Number(r.empty) > 0 ? `  \x1b[31m${r.empty} sin ningún fact\x1b[0m` : ""),
+        `  \x1b[90mminimum ${r.min_facts} facts\x1b[0m` +
+        (Number(r.empty) > 0 ? `  \x1b[31m${r.empty} with no fact at all\x1b[0m` : ""),
     );
   }
-  if (totalFlacos > 0) {
+  if (totalThin > 0) {
     console.log(
-      `\n    \x1b[90mUn préstamo real del Annex A conduit tiene decenas de observaciones.\x1b[0m`,
+      `\n    \x1b[90mA real loan in a conduit Annex A has dozens of observations.\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mSi estas filas no son préstamos, el pool está inflado y con él el\x1b[0m`,
+      `    \x1b[90mIf these rows are not loans, the pool is inflated and with it the\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mdenominador de cada posición ordinal y de cada porcentaje de\x1b[0m`,
+      `    \x1b[90mdenominator of every ordinal position and every composition\x1b[0m`,
     );
-    console.log(`    \x1b[90mcomposición que imprime esta herramienta.\x1b[0m`);
+    console.log(`    \x1b[90mpercentage this tool prints.\x1b[0m`);
   }
 
   /**
-   * ¿HAY UN HUECO ENTRE LAS DOS POBLACIONES?
+   * IS THERE A GAP BETWEEN THE TWO POPULATIONS?
    *
-   * El pipeline ya descarta filas con menos de 3 observations
-   * (`minObservationsPerRow ?? 3` en rowsToObservations). Las 7 filas fantasma
-   * tienen exactamente 3: pasan por un fact de margen.
+   * The pipeline already discards rows with fewer than 3 observations
+   * (`minObservationsPerRow ?? 3` in rowsToObservations). The 7 phantom rows have
+   * exactly 3: they pass by one fact of margin.
    *
-   * Ese 3 no salió de medir nada. Si los préstamos reales del Annex A conduit
-   * tienen decenas de observations y las filas fantasma tienen unas pocas, entre
-   * las dos poblaciones hay una zona vacía, y el umbral tiene que estar ahí —
-   * elegido por dónde está el hueco, no por parecer razonable.
+   * That 3 did not come from measuring anything. If real loans in a conduit Annex
+   * A have dozens of observations and phantom rows have a handful, between the two
+   * populations there is an empty zone, and the threshold has to sit there —
+   * chosen by where the gap is, not by looking reasonable.
    *
-   * Si en cambio la distribución es continua desde 3 hasta 80, no hay dos
-   * poblaciones: hay un gradiente de completitud, cualquier umbral corta
-   * préstamos reales, y el descarte por conteo es el criterio equivocado.
+   * If instead the distribution is continuous from 3 to 80, there are not two
+   * populations: there is a gradient of completeness, any threshold cuts real
+   * loans, and discarding by count is the wrong criterion.
    *
-   * Este histograma decide entre esas dos cosas, y es lo que había que mirar
-   * antes de fijar cualquier número.
+   * This histogram decides between those two things, and it is what should have
+   * been looked at before fixing any number.
    */
   /**
-   * SOBRE TODO EL CORPUS, NO SOBRE LA COHORTE.
+   * OVER THE WHOLE CORPUS, NOT OVER THE COHORT.
    *
-   * La primera versión lo calculaba sobre las 28 emisiones de 2026, pero el
-   * umbral que este histograma justifica se aplica en la cosecha de las 233.
-   * Elegir un corte corpus-wide mirando el 12% es el mismo error de unidad que
-   * ya apareció dos veces hoy: medir donde es cómodo y aplicar donde importa.
+   * The first version computed it over the 28 issuances of 2026, but the threshold
+   * this histogram justifies is applied when harvesting all 233. Choosing a
+   * corpus-wide cut by looking at 12% is the same unit error that has already come
+   * up twice today: measuring where it is convenient and applying where it matters.
    */
   const { rows: histo } = await query<{ tramo: string; n: string }>(
     `WITH conteo AS (
@@ -672,7 +668,7 @@ if (AUDITORIA) {
 
   const totalCorpus = histo.reduce((a, h) => a + Number(h.n), 0);
   console.log(
-    `\n  Observations por fila en TODO el corpus (${totalCorpus} préstamos) — ¿dos poblaciones?\n`,
+    `\n  Observations per row across the WHOLE corpus (${totalCorpus} loans) — two populations?\n`,
   );
   const maxN = Math.max(...histo.map((h) => Number(h.n)));
   for (const h of histo) {
@@ -685,30 +681,32 @@ if (AUDITORIA) {
   }
 
   /**
-   * EL HUECO TIENE QUE SER CONTIGUO Y ESTAR ENTRE LAS DOS POBLACIONES.
+   * THE GAP HAS TO BE CONTIGUOUS AND SIT BETWEEN THE TWO POPULATIONS.
    *
-   * La versión anterior juntaba todos los tramos vacíos y reportaba mínimo y
-   * máximo como si fueran un rango. Sobre el corpus completo los vacíos son
-   * {1, 2, 8} y eso imprimió "hay hueco entre 1 y 8, corré el umbral a 8" —
-   * falso: entre 3 y 7 hay 51 filas que ese corte habría eliminado.
+   * The previous version lumped all the empty buckets together and reported the
+   * minimum and maximum as if they were a range. Over the full corpus the empties
+   * are {1, 2, 8} and that printed "there is a gap between 1 and 8, move the
+   * threshold to 8" — false: between 3 and 7 there are 51 rows that cut would have
+   * removed.
    *
-   * Dos defectos distintos en la misma línea. Los tramos por debajo del mínimo
-   * poblado no son un hueco, son el piso de la distribución. Y un solo tramo
-   * vacío entre vecinos poblados no separa poblaciones: es ruido de conteo.
+   * Two different defects on the same line. The buckets below the lowest populated
+   * one are not a gap, they are the floor of the distribution. And a single empty
+   * bucket between populated neighbours does not separate populations: it is
+   * counting noise.
    *
-   * Es el quinto veredicto de esta sesión calculado sobre un conjunto que no es
-   * el que la frase describe. La tabla estuvo bien las cinco veces.
+   * It is the fifth verdict this session computed over a set that is not
+   * the one the sentence describes. The table was right all five times.
    */
   const presentes = new Set(
     histo.map((h) => h.tramo.trim()).filter((t) => /^\d+$/.test(t)).map(Number),
   );
-  const piso = Math.min(...presentes);
+  const floor = Math.min(...presentes);
   const techo = Math.max(...presentes);
 
-  /** La corrida contigua de tramos vacíos más larga, solo entre piso y techo. */
+  /** The longest contiguous run of empty buckets, only between floor and ceiling. */
   let mejor: number[] = [];
   let actual: number[] = [];
-  for (let k = piso; k <= techo; k++) {
+  for (let k = floor; k <= techo; k++) {
     if (presentes.has(k)) {
       if (actual.length > mejor.length) mejor = actual;
       actual = [];
@@ -716,48 +714,48 @@ if (AUDITORIA) {
   }
   if (actual.length > mejor.length) mejor = actual;
 
-  const vacios = [...Array(10).keys()].map((k) => k + 1).filter((k) => !presentes.has(k));
+  const emptyBuckets = [...Array(10).keys()].map((k) => k + 1).filter((k) => !presentes.has(k));
   console.log(
-    `\n    \x1b[90mSin filas en: ${vacios.length ? vacios.join(", ") : "ningún conteo de 1 a 10"}.` +
-      ` Población más flaca: ${piso} observations.\x1b[0m`,
+    `\n    \x1b[90mNo rows at: ${emptyBuckets.length ? emptyBuckets.join(", ") : "any count from 1 to 10"}.` +
+      ` Thinnest population: ${floor} observations.\x1b[0m`,
   );
   /**
-   * ESTE HISTOGRAMA YA NO DECIDE UN UMBRAL, Y NO DEBERÍA PARECER QUE LO HACE.
+   * THIS HISTOGRAM NO LONGER DECIDES A THRESHOLD, AND SHOULD NOT LOOK LIKE IT DOES.
    *
-   * Se escribió para elegir un corte por cantidad de observations. La medición
-   * sobre las 233 emisiones cerró esa puerta: la distribución es continua desde
-   * 3, cualquier corte elimina préstamos reales, y el filtro terminó siendo
-   * estructural —una fila sin letras en ninguna celda no es un préstamo—.
+   * It was written to choose a cut by number of observations. The measurement over
+   * the 233 issuances closed that door: the distribution is continuous from 3, any
+   * cut removes real loans, and the filter ended up being structural —a row with no
+   * letters in any cell is not a loan.
    *
-   * Después de aplicarlo aparece un hueco contiguo en la cola baja, y la versión
-   * anterior de esta línea decía "el umbral puede ir adentro". Es circular: el
-   * hueco existe PORQUE el filtro sacó esas filas. Recomendaba como hallazgo lo
-   * que era consecuencia del arreglo, y en la dirección que ya habíamos
+   * After applying it a contiguous gap appears in the low tail, and the previous
+   * version of this line said "the threshold can go inside it". That is circular:
+   * the gap exists BECAUSE the filter removed those rows. It recommended as a
+   * finding what was a consequence of the fix, and in the direction we had already
    * descartado.
    *
-   * Ahora solo describe la forma. La cola baja que queda es cobertura parcial
-   * —tarea #40— y no filas fantasma.
+   * Now it only describes the shape. The low tail that remains is partial
+   * coverage —task #40— and not phantom rows.
    */
-  const colaBaja = histo
+  const lowTail = histo
     .filter((h) => /^\s*\d+$/.test(h.tramo) && Number(h.tramo) <= 10)
     .reduce((a, h) => a + Number(h.n), 0);
   console.log(
-    `    \x1b[90m${colaBaja} filas con 10 observations o menos sobre ${totalCorpus}.\x1b[0m`,
+    `    \x1b[90m${lowTail} rows with 10 observations or fewer out of ${totalCorpus}.\x1b[0m`,
   );
   console.log(
-    `    \x1b[90mNo se descarta por conteo: la distribución es continua desde ${piso} y\x1b[0m`,
+    `    \x1b[90mNothing is discarded by count: the distribution is continuous from ${floor} and\x1b[0m`,
   );
   console.log(
-    `    \x1b[90mcualquier corte eliminaría préstamos reales. El filtro es estructural\x1b[0m`,
+    `    \x1b[90many cut would remove real loans. The filter is structural\x1b[0m`,
   );
   console.log(
-    `    \x1b[90m—una fila sin letras en ninguna celda no es un préstamo— así que lo que\x1b[0m`,
+    `    \x1b[90m—a row with no letters in any cell is not a loan— so what remains\x1b[0m`,
   );
   console.log(
-    `    \x1b[90mqueda acá es cobertura parcial, no filas fantasma. Tarea #40.\x1b[0m`,
+    `    \x1b[90mhere is partial coverage, not phantom rows. Task #40.\x1b[0m`,
   );
 
-  console.log(`\n  ¿Emisiones duplicadas? — la cohort es el denominador de todo\n`);
+  console.log(`\n  Duplicated issuances? — the cohort is the denominator of everything\n`);
   if (dups.length === 0) {
     console.log(`    \x1b[32mNinguna: ${cohort.length} nombres distintos en ${cohort.length} emisiones.\x1b[0m`);
   } else {
@@ -768,10 +766,10 @@ if (AUDITORIA) {
     console.log(
       `\n    \x1b[90mPools distintos = deals distintos con nombre igual. Pools iguales =\x1b[0m`,
     );
-    console.log(`    \x1b[90mrevisar si es la misma emisión cosechada dos veces.\x1b[0m`);
+    console.log(`    \x1b[90mcheck whether it is the same issuance harvested twice.\x1b[0m`);
   }
 
-  console.log(`\n  Concentración por tipo — el umbral de exclusión es ${pct(TYPE_CONCENTRATION)}:\n`);
+  console.log(`\n  Concentration by type — the exclusion threshold is ${pct(TYPE_CONCENTRATION)}:\n`);
   for (const c of [...cohort].sort(
     (a, b) => b.dominantShare - a.dominantShare,
   ).slice(0, 8)) {
@@ -780,7 +778,7 @@ if (AUDITORIA) {
       `    ${c.name.slice(0, 40).padEnd(42)} ${pct(sh).padStart(5)} ${(c.dominantType ?? "").slice(0, 16)}` +
         (sh > TYPE_CONCENTRATION
           ? sh < TYPE_CONCENTRATION + 0.08
-            ? `  \x1b[33m← al filo del umbral\x1b[0m`
+            ? `  \x1b[33m← at the threshold's edge\x1b[0m`
             : `  \x1b[90mexcluida\x1b[0m`
           : ""),
     );
@@ -791,14 +789,14 @@ if (AUDITORIA) {
 }
 
 /**
- * La vista de terminal. Los números salen del módulo; acá solo se eligen
- * colores, anchos y qué se dice al lado de cada cifra.
+ * The terminal view. The numbers come from the module; here we only choose
+ * colours, widths and what is said beside each figure.
  */
-const b = await computeBenchmark(BUSQUEDA, candidatas);
+const b = await computeBenchmark(SEARCH, candidates);
 
 if (!b) {
-  console.error(`\n✗ No se encontró una emisión que coincida con "${BUSQUEDA}".`);
-  console.error(`  Listado:  npm run db:benchmark -- --listar\n`);
+  console.error(`\n✗ No issuance found matching "${SEARCH}".`);
+  console.error(`  Listado:  npm run db:benchmark -- --list\n`);
   await closePool();
   process.exit(1);
 }
@@ -809,51 +807,51 @@ console.log(`\n${"═".repeat(78)}`);
 console.log(`${o.name}`);
 console.log(`${"═".repeat(78)}`);
 console.log(
-  `\n\x1b[90m  ${o.filed.slice(0, 10)} · ${o.pool} préstamos · cohort ${o.vintage}\x1b[0m`,
+  `\n\x1b[90m  ${o.filed.slice(0, 10)} · ${o.pool} loans · ${o.vintage} cohort\x1b[0m`,
 );
 console.log(
   `  \x1b[90m${b.pairs.length} pares comparables` +
     (b.excluded.length > 0
-      ? ` · ${b.excluded.length} excluida(s) por ser mono-tipo: ` +
+      ? ` · ${b.excluded.length} excluded for being single-type: ` +
         b.excluded.map((e) => e.name.slice(0, 24)).join(", ")
       : "") +
     `\x1b[0m`,
 );
 
-/** El rechazo, que es parte de la respuesta y no una pantalla vacía. */
+/** The refusal, which is part of the answer and not an empty screen. */
 if (!b.evaluable) {
   console.log(
-    `\n  \x1b[31mNo se puede evaluar: hacen falta ${MIN_PAIRS} pares y hay ${b.pairs.length}.\x1b[0m`,
+    `\n  \x1b[31mCannot be evaluated: ${MIN_PAIRS} pairs are needed and there are ${b.pairs.length}.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mCon menos, "se aparta del mercado" sería una afirmación sobre ${b.pairs.length}\x1b[0m`,
+    `  \x1b[90mWith fewer, "departs from the market" would be a claim about ${b.pairs.length}\x1b[0m`,
   );
-  console.log(`  \x1b[90mdocumentos. La respuesta correcta es que no se sabe.\x1b[0m\n`);
+  console.log(`  \x1b[90mdocuments. The correct answer is that it is unknown.\x1b[0m\n`);
   await closePool();
   process.exit(0);
 }
 
 if (b.targetSingleType) {
   console.log(
-    `\n  \x1b[33mEsta emisión es ${pct(o.dominantShare)} ${o.dominantType}:\x1b[0m`,
+    `\n  \x1b[33mThis issuance is ${pct(o.dominantShare)} ${o.dominantType}:\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mno es un conduit diversificado y la comparación contra la cohort va a\x1b[0m`,
+    `  \x1b[90mit is not a diversified conduit and the comparison against the cohort will\x1b[0m`,
   );
-  console.log(`  \x1b[90mmostrar diferencias garantizadas que no significan nada.\x1b[0m`);
+  console.log(`  \x1b[90mshow guaranteed differences that mean nothing.\x1b[0m`);
 }
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Posición dentro de la cohort ${o.vintage}`);
+console.log(`Position within the ${o.vintage} cohort`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  métrica        esta emisión   cohort (p25–mediana–p75)      posición`);
+console.log(`  metric         this issuance  cohort (p25–median–p75)       position`);
 console.log(`  ${"─".repeat(72)}`);
 
 for (const m of b.metrics) {
   if (m.value === null) {
     console.log(
       `  ${m.spec.label.padEnd(14)} ` +
-        `\x1b[90m${m.noData === "issuance" ? "sin dato en esta emisión" : `solo ${m.pairsWithData} pares con dato`}\x1b[0m`,
+        `\x1b[90m${m.noData === "issuance" ? "no data in this issuance" : `only ${m.pairsWithData} pairs with data`}\x1b[0m`,
     );
     continue;
   }
@@ -862,14 +860,14 @@ for (const m of b.metrics) {
     `  ${m.spec.label.padEnd(14)} ${f(m.value).padStart(12)}   ` +
       `${f(m.p25!).padStart(8)} ${f(m.p50!).padStart(8)} ${f(m.p75!).padStart(8)}      ` +
       `${m.extreme ? (m.aggressive ? "\x1b[33m" : "\x1b[36m") : "\x1b[90m"}${m.rank}ª de ${m.total}\x1b[0m` +
-      (m.aggressive ? "  \x1b[33m← más agresivo\x1b[0m" : ""),
+      (m.aggressive ? "  \x1b[33m← more aggressive\x1b[0m" : ""),
   );
 }
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Composición contra la cohort");
+console.log("Composition against the cohort");
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  tipo               esta emisión   cohort    diferencia`);
+console.log(`  type               this issuance   cohort    difference`);
 console.log(`  ${"─".repeat(58)}`);
 
 for (const c of b.composition) {
@@ -877,27 +875,27 @@ for (const c of b.composition) {
   console.log(
     `  ${c.type.padEnd(18)} ${pct(c.own).padStart(12)}   ${pct(c.cohort).padStart(7)}    ` +
       `${notable ? "\x1b[33m" : "\x1b[90m"}${(c.difference > 0 ? "+" : "") + pct(c.difference)}\x1b[0m` +
-      `  \x1b[90m${c.loans} préstamo(s)\x1b[0m`,
+      `  \x1b[90m${c.loans} loan(s)\x1b[0m`,
   );
 }
 
 /**
- * La resolución, que el porcentaje esconde. Con 25 préstamos cada uno vale 4
- * puntos, así que un "+9%" son dos préstamos.
+ * The resolution the percentage hides. With 25 loans each is worth 4 points, so
+ * a "+9%" is two loans.
  */
 console.log(
-  `\n  \x1b[90mCada préstamo vale ${pct(b.pointPerLoan, 1)} de este pool (${o.pool} préstamos):\x1b[0m`,
+  `\n  \x1b[90mEach loan is worth ${pct(b.pointPerLoan, 1)} of this pool (${o.pool} loans):\x1b[0m`,
 );
 console.log(
-  `  \x1b[90muna diferencia de 9 puntos son ${Math.max(1, Math.round(0.09 / b.pointPerLoan))} préstamos, no una tendencia.\x1b[0m`,
+  `  \x1b[90ma 9-point difference is ${Math.max(1, Math.round(0.09 / b.pointPerLoan))} loans, not a trend.\x1b[0m`,
 );
 console.log(
-  `\n  \x1b[90mLa posición es ordinal, no percentil: con ${b.pairs.length} pares un percentil\x1b[0m`,
+  `\n  \x1b[90mThe position is ordinal, not a percentile: with ${b.pairs.length} pairs a percentile\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mtiene resolución de ~${b.percentileResolution.toFixed(0)} puntos y presentarlo con decimales\x1b[0m`,
+  `  \x1b[90mhas a resolution of ~${b.percentileResolution.toFixed(0)} points and presenting it with decimals\x1b[0m`,
 );
-console.log(`  \x1b[90msugeriría una precisión que no existe.\x1b[0m`);
-console.log(`\n  \x1b[90mLa misma comparación como página:  npm run db:page -- "${BUSQUEDA ?? o.name.slice(0, 14)}"\x1b[0m\n`);
+console.log(`  \x1b[90mwould suggest a precision that does not exist.\x1b[0m`);
+console.log(`\n  \x1b[90mThe same comparison as a page:  npm run db:page -- "${SEARCH ?? o.name.slice(0, 14)}"\x1b[0m\n`);
 
 await closePool();
