@@ -1,95 +1,94 @@
 # Roadmap
 
-> Esto no es la tabla de factibilidad. Aquella ordenaba por lo que cuesta menos;
-> ésta ordena por lo que hay que **averiguar**. Hacer lo fácil primero porque es
-> fácil es como se construyen productos que nadie pidió.
+> This is not the feasibility table. That one ordered by what costs least; this one
+> orders by what has to be **found out**. Doing the easy thing first because it is
+> easy is how products nobody asked for get built.
 >
-> Cada fase termina en una **pregunta contestada**, no en una lista de tareas
-> tachadas. Si una fase no cambia lo que hacemos después, no debería estar acá.
+> Each phase ends in an **answered question**, not a list of crossed-off tasks. If a
+> phase does not change what we do next, it should not be here.
 
-## Hecho
-
-| | |
-|---|---|
-| Corpus | 9.694 préstamos de 233 emisiones, con procedencia celda por celda |
-| `/comps` | escalera geográfica estado → región → país, mínimo de 10, se niega antes que inventar |
-| Pantalla | `localhost:8787`, casos de uso en el estado vacío, `/casos` para los doce juntos |
-| MCP | el corpus como herramienta de un asistente |
-| Monitor | vigilancia semanal automática, avisa solo si algo cambió |
-
-Doce escenarios corridos contra el corpus real. Ocho respondidos, dos negativas
-correctas, dos que la escalera geográfica debería arreglar.
-
----
-
-## Fase 1 · ¿Le sirve a alguien? · días
-
-**Casi nada de esto es código.**
-
-- Correr `api:casos` después de la escalera y confirmar que los dos fracasos se
-  resolvieron.
-- **Mostrárselo a tres brokers.** No una demo: pedirles un deal real que tengan
-  hoy sobre la mesa y buscarlo delante de ellos.
-- Anotar qué preguntan que la herramienta no contesta. Eso —y no nuestra
-  intuición— es lo que define la fase 2.
-
-**La pregunta:** ¿alguien cambia una decisión por lo que ve acá?
-
-**Si la respuesta es no**, el resto de este documento no importa y hay que volver
-a la pregunta de qué construir. Es el resultado más valioso posible en esta fase
-porque es el único que evita meses de trabajo equivocado.
-
----
-
-## Fase 2 · Depende de lo que digan · semanas
-
-Dos ramas excluyentes. **La elige el usuario, no nosotros.**
-
-### Rama A — "esto me sirve pero mis deals no son conduit"
-
-Ingesta de rent roll y T-12 reusando el harvester. Es el activo más defendible que
-tenemos: un normalizador de documentos financieros tabulares con 214 tests, que
-resultó ser lo valioso y no el corpus de CMBS. El corpus fue el campo de
-entrenamiento.
-
-También es el primer paso del flujo de Lev, y ahí ya tenemos construida la parte
-difícil.
-
-### Rama B — "esto me sirve pero necesito mandarlo a alguien"
-
-Objeto deal, pipeline, compartir. Es CRUD y es donde vive el producto de Lev.
-Técnicamente fácil, inútil sin usuarios — por eso está detrás de la fase 1 y no
-antes.
-
----
-
-## Fase 3 · Dejar de ser una feature · meses
-
-El riesgo real de todo esto es que "comparables de conduit CMBS" sea una pestaña
-adentro de Lev o de CompStak antes que una empresa.
-
-Lo que lo evita no es agregar pantallas: es que el dato sea **la infraestructura
-que otros consumen**. API, MCP, y eventualmente el corpus publicado. Por eso el
-MCP se construyó en la fase cero y no acá — es barato y define qué somos.
-
----
-
-## Lo que no está en el roadmap, y por qué
+## Done
 
 | | |
 |---|---|
-| **Matching con prestamistas** | 3.500 relaciones comerciales. No se programa. |
-| **Score de riesgo** | Quince ataques, ninguno sobrevivió. Está documentado en `hallazgo-suscripcion.md`. Si aparece en un pitch, es mentira. |
-| **Machine learning** | 206 eventos en todo el corpus y un efecto mínimo detectable de 1,74x. No hay con qué entrenar. |
-| **Cosechar más CMBS** | El 96% de lo que falta son añadas sin eventos: cosecharlas empeora la potencia. Medido en `db:growth`. |
-| **CRM** | Fase 2 rama B, y solo si un usuario lo pide. |
+| Corpus | 9,694 loans across 233 issuances, with cell-by-cell provenance |
+| `/comps` | geographic ladder state → region → country, minimum of 10, refuses rather than inventing |
+| Screen | `localhost:8787`, use cases in the empty state, `/scenarios` for all twelve at once |
+| MCP | the corpus as an assistant's tool |
+| Monitor | automatic weekly watch, speaks up only if something changed |
+
+Twelve scenarios run against the real corpus. Eight answered, one correct refusal,
+three at the edge of the threshold.
 
 ---
 
-## La señal de alarma
+## Phase 1 · Is this useful to anyone? · days
 
-**Si en algún momento todos los ítems del roadmap son código, algo está mal.**
+**Almost none of this is code.**
 
-El cuello de botella hoy no es técnico. Es que no hay usuarios, y ninguna cantidad
-de endpoints lo resuelve. La fase 1 es casi enteramente conversaciones, y es la
-única que puede invalidar todo lo demás.
+- Run `api:scenarios` after the ladder and confirm the failures resolved.
+- **Show it to three brokers.** Not a demo: ask them for a real deal they have on
+  their desk today and search for it in front of them.
+- Note what they ask that the tool does not answer. That — and not our intuition —
+  is what defines phase 2.
+
+**The question:** does anyone change a decision because of what they see here?
+
+**If the answer is no**, the rest of this document does not matter and we have to
+go back to the question of what to build. It is the most valuable possible outcome
+of this phase, because it is the only one that avoids months of wrong work.
+
+---
+
+## Phase 2 · Depends on what they say · weeks
+
+Two mutually exclusive branches. **The user chooses, not us.**
+
+### Branch A — "this is useful but my deals are not conduit"
+
+Rent roll and T-12 ingestion, reusing the harvester. It is the most defensible
+asset we have: a normaliser for tabular financial documents with 137 tests, which
+turned out to be the valuable thing rather than the CMBS corpus. The corpus was the
+training ground.
+
+It is also the first step of Lev's workflow, and there we already have the hard
+part built.
+
+### Branch B — "this is useful but I need to send it to someone"
+
+Deal object, pipeline, sharing. It is CRUD and it is where Lev's product lives.
+Technically easy, useless without users — which is why it sits behind phase 1 and
+not in front of it.
+
+---
+
+## Phase 3 · Stop being a feature · months
+
+The real risk in all of this is that "conduit CMBS comparables" becomes a tab
+inside Lev or CompStak before it becomes a company.
+
+What prevents that is not adding screens: it is the data being **the infrastructure
+others consume**. API, MCP, and eventually the published corpus. That is why the
+MCP was built in phase zero and not here — it is cheap and it defines what we are.
+
+---
+
+## What is not on the roadmap, and why
+
+| | |
+|---|---|
+| **Lender matching** | 3,500 commercial relationships. You do not program that. |
+| **Risk score** | Fifteen attacks, none survived. Documented in `underwriting-finding.md`. If it shows up in a pitch, it is a lie. |
+| **Machine learning** | 206 events across the whole corpus and a minimum detectable effect of 1.74x. There is nothing to train on. |
+| **Harvesting more CMBS** | 96% of what is missing is vintages with no events: harvesting them makes the power worse. Measured in `db:growth`. |
+| **CRM** | Phase 2 branch B, and only if a user asks for it. |
+
+---
+
+## The alarm signal
+
+**If at any point every item on the roadmap is code, something is wrong.**
+
+The bottleneck today is not technical. It is that there are no users, and no
+quantity of endpoints solves that. Phase 1 is almost entirely conversations, and it
+is the only one that can invalidate everything else.

@@ -1,10 +1,10 @@
-# Conectar el corpus a un asistente
+# Connecting the corpus to an assistant
 
-`npm run mcp` no se corre a mano: lo lanza el cliente MCP.
+`npm run mcp` is not run by hand: the MCP client launches it.
 
 ## Claude Desktop
 
-En `claude_desktop_config.json`:
+In `claude_desktop_config.json`:
 
 ```json
 {
@@ -18,23 +18,29 @@ En `claude_desktop_config.json`:
 }
 ```
 
-Requiere que Postgres esté levantado (`npm run db:up`). Si no lo está, el servidor
-sale con código 1 y un mensaje por stderr en vez de quedarse colgado.
+It requires Postgres to be running (`npm run db:up`). If it is not, the server
+exits with code 1 and a message on stderr rather than hanging.
 
-## Qué expone
+## What it exposes
 
-Una sola herramienta, `buscar_comparables`. Estado, tipo de propiedad, monto y
-opcionalmente el LTV que pide el cliente.
+A single tool, `find_comparables`. State, property type, amount and optionally the
+LTV the client is asking for.
 
-## Por qué devuelve texto y no JSON
+> The tool and its parameters were renamed when the project moved to English.
+> It used to be `buscar_comparables`, with `estado` / `tipo` / `monto` /
+> `ltv_objetivo` / `meses`. Any assistant configured against the old names has to
+> be repointed — the MCP tool name is a public contract, and nothing warns you when
+> it changes.
 
-Del otro lado hay un modelo que va a parafrasear. Al parafrasear se caen los
-matices, y los primeros en caerse son la base de cada número y el límite del canal.
+## Why it returns text and not JSON
 
-Por eso cada salvedad va pegada al número que califica: *"LTV mediana 61% —
-calculado sobre 24 de los 31 comparables"* sobrevive a una paráfrasis. Un campo
-`base: 24` en otra parte del objeto, no.
+On the other side is a model that will paraphrase. Paraphrasing drops the nuances,
+and the first to go are each number's base and the channel's limit.
 
-La negativa se devuelve como texto afirmativo y **no** como error de protocolo: un
-error invita al modelo a reintentar o a completar el dato faltante por su cuenta,
-que es exactamente lo que no queremos.
+So every caveat is glued to the number it qualifies: *"median LTV 61% — computed
+over 24 of the 31 comparables"* survives a paraphrase. A `base: 24` field elsewhere
+in the object does not.
+
+The refusal is returned as affirmative text and **not** as a protocol error: an
+error invites the model to retry or to fill in the missing datum on its own, which
+is exactly what we do not want.

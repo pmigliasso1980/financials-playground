@@ -1,168 +1,182 @@
 # financials-playground
 
-Corpus de préstamos comerciales inmobiliarios construido desde documentos
-públicos de la SEC, con las herramientas para interrogarlo y para intentar
-demostrar que está mal.
+A corpus of commercial real estate loans built from public SEC filings, with the
+tools to interrogate it and to try to prove it wrong.
 
-219 emisiones de CMBS · 10.400 préstamos · 94 métricas · 1.829 préstamos con
-desempeño posterior al cierre.
+233 CMBS issuances · 9,694 loans · 94 metrics · 2,231 loans with post-closing
+performance.
 
 ---
 
-## Qué hay acá
+## What is here
 
 ```
 financials-playground/
 ├── docs/
-│   ├── hallazgo-suscripcion.md     El resultado: crecimiento proyectado contra
-│   │                               entregado por añada, con sus controles y sus
-│   │                               agujeros. Empezá por acá.
-│   ├── taxonomia-cre.md            94 métricas con definición, ambigüedades y el
-│   │                               incidente que motivó cada distinción.
-│   │                               Generado: npm run taxonomy -- --write
-│   ├── arquitectura-propia.md      Decisiones de diseño y qué se descartó
-│   └── lev-referencia-tecnica.md   Referencia de la API de Lev, del período en
-│                                   que el proyecto iba a integrarse con ellos
+│   ├── underwriting-finding.md     The result: projected against delivered growth
+│   │                               by vintage, with its controls and its holes.
+│   │                               Start here.
+│   ├── cre-taxonomy.md             94 metrics with definition, ambiguities and the
+│   │                               incident that motivated each distinction.
+│   │                               Generated: npm run taxonomy -- --write
+│   ├── own-architecture.md         Design decisions and what was discarded
+│   ├── api-contract.md             The /comps contract
+│   ├── mcp.md                      The corpus as an assistant's tool
+│   └── roadmap.md                  What comes next and what was ruled out
 │
-├── harvest/                        Cosecha desde SEC EDGAR
-│   ├── edgar/                      Cliente con las reglas de SEC, descubrimiento
-│   │                               de Annex A (FWP) y de informes del servicer (10-D)
-│   ├── parse/                      Tablas HTML y xlsx · informe del servicer
-│   ├── normalize/                  Mapeo de columnas → observations con provenance
-│   ├── batch.ts                    Cosecha en lote, reanudable
-│   └── *.test.ts                   177 checks offline
+├── harvest/                        Harvesting from SEC EDGAR
+│   ├── edgar/                      Client with SEC's rules, discovery of Annex A
+│   │                               (FWP) and of servicer reports (10-D)
+│   ├── parse/                      HTML and xlsx tables · servicer report
+│   ├── normalize/                  Column mapping → observations with provenance
+│   ├── batch.ts                    Resumable batch harvest
+│   └── *.test.ts                   137 offline checks
 │
-└── db/                             Corpus en Postgres
-    ├── migrations/                 001 corpus · 002 desempeño · 003-004 vistas
-    ├── corpus.ts                   Escritura, lectura, promoción a facts
-    ├── identities.ts               Verificación aritmética del mapeo
-    ├── outcomes.ts                 Suscripción contra resultado
-    ├── challenge.ts                Falsificación de hallazgos de originación
-    └── explain.ts                  De qué columna salió cada número
+├── db/                             The corpus in Postgres
+│   ├── migrations/                 001 corpus · 002 performance · 003-015 views
+│   ├── corpus.ts                   Writing, reading, promotion to facts
+│   ├── identities.ts               Arithmetic verification of the mapping
+│   ├── monitor.ts                  Daily watch: prints only what changed
+│   ├── benchmark.ts / page.ts      One issuance against its cohort
+│   └── explain.ts                  Which column each number came from
+│
+├── analysis/                       Archived analyses, one question each
+│   ├── outcomes.ts                 Underwriting against outcome
+│   ├── challenge.ts                Falsification of the origination findings
+│   └── power.ts, bias.ts, …        Controls that killed several hypotheses
+│
+├── api/                            The product: /comps, the UI, the scenarios
+├── mcp/                            The same corpus as an MCP tool
+└── tools/                          Verification helpers (SQL, contracts, migration)
 ```
 
 ---
 
-## Arranque
+## Getting started
 
 ```bash
 npm install
 npm run db:up
 npm run db:migrate
 
-export SEC_USER_AGENT="Tu Nombre tu@email.com"   # o ponelo en .env
+export SEC_USER_AGENT="Your Name you@email.com"   # or put it in .env
 npm run harvest:batch -- --limit 100
 ```
 
-`SEC_USER_AGENT` no es una credencial: EDGAR es público y gratis, no hay cuenta
-ni API key. La SEC exige que todo cliente automatizado se identifique con nombre
-y email para poder avisarte si tu script se descontrola, en vez de bloquear el
-rango de IPs. Sin eso devuelve 403.
+`SEC_USER_AGENT` is not a credential: EDGAR is public and free, there is no
+account and no API key. SEC requires every automated client to identify itself
+with a name and email so they can warn you if your script misbehaves, rather than
+blocking the IP range. Without it you get a 403.
 
-Después:
+Then:
 
 ```bash
-npm run db:analyze         # distribuciones por tipo de activo
-npm run db:identities      # ¿el mapeo es correcto?
-npm run db:performance     # NOI real posterior al cierre, desde los 10-D
-npm run db:outcomes        # proyectado contra entregado, por añada
-npm run db:challenge       # intentos de falsear los hallazgos
+npm run db:analyze         # distributions by asset type
+npm run db:identities      # is the mapping correct?
+npm run db:performance     # actual post-closing NOI, from the 10-D filings
+npm run db:monitor         # what changed since the last run
+npm run api                # the product, at http://localhost:8787
 ```
 
 ---
 
-## De dónde sale el dato
+## Where the data comes from
 
-Todo de EDGAR, sin fuentes pagas.
+All from EDGAR, no paid sources.
 
-| Qué | Dónde | Formulario |
+| What | Where | Form |
 |---|---|---|
-| Suscripción e histórico al cierre | Annex A | FWP |
-| NOI real posterior al cierre | EX-99.1 del reporte mensual | 10-D |
+| Underwriting and history at closing | Annex A | FWP |
+| Actual post-closing NOI | EX-99.1 of the monthly report | 10-D |
 
-El Annex A publica, por préstamo: el NOI que el suscriptor proyectó, hasta cuatro
-añadas de NOI histórico, tres LTV según denominador, dos DSCR, siete saldos y
-unas ciento cincuenta columnas más. El 10-D publica lo que la propiedad produjo
-después.
-
----
-
-## La parte que no es obvia
-
-Los datos son públicos: cualquiera baja los mismos archivos. Lo que cuesta es
-interpretarlos, y el documento no declara sus propias convenciones.
-
-**Un Annex A publica siete saldos del mismo préstamo.** Los ratios se calculan
-contra *trust + pari passu no-trust*, no contra la columna que dice "Balance".
-Usar la equivocada da debt yields de 3947%.
-
-**El servicio de deuda es el de la nota del trust; el DSCR, el del préstamo
-entero.** Hay que escalarlo por saldo antes de dividir.
-
-**Un préstamo con período de solo intereses tiene dos servicios de deuda**, y el
-DSCR publicado usa el menor.
-
-**"0.00" con fechas vacías significa no reportado**, no cero.
-
-Cada una de esas está documentada en `docs/taxonomia-cre.md` junto al incidente
-que la reveló, porque ninguna se dedujo leyendo: todas salieron de que un número
-no cerraba.
+The Annex A publishes, per loan: the NOI the underwriter projected, up to four
+vintages of historical NOI, three LTVs by denominator, two DSCRs, seven balances
+and about a hundred and fifty more columns. The 10-D publishes what the property
+actually produced afterwards.
 
 ---
 
-## Cómo se verifica
+## The part that is not obvious
 
-El corpus se verifica contra sí mismo. El emisor publica ratios que tienen que
-ser consistentes con las columnas de las que se derivan, y cada columna se mapea
-de forma independiente. Si columnas mapeadas por separado satisfacen las
-relaciones que el emisor usó para calcularlas, el mapeo es correcto.
+The data is public: anyone can download the same files. What costs effort is
+interpreting them, and the document does not declare its own conventions.
+
+**An Annex A publishes seven balances for the same loan.** The ratios are computed
+against *trust + non-trust pari passu*, not against the column labelled "Balance".
+Using the wrong one gives debt yields of 3947%.
+
+**Debt service is for the trust's note; the DSCR is for the whole loan.** It has to
+be scaled by balance before dividing.
+
+**A loan with an interest-only period has two debt service figures**, and the
+published DSCR uses the smaller one.
+
+**"0.00" with empty dates means not reported**, not zero.
+
+Each of those is documented in `docs/cre-taxonomy.md` alongside the incident that
+revealed it, because none was deduced by reading: they all came from a number that
+did not add up.
+
+---
+
+## How it is verified
+
+The corpus verifies itself. The issuer publishes ratios that have to be consistent
+with the columns they derive from, and each column is mapped independently. If
+independently mapped columns satisfy the relationships the issuer used to compute
+them, the mapping is correct.
 
 ```
 npm run db:identities
 ```
 
-| identidad | cierra |
+| identity | closes |
 |---|---|
-| DSCR (NCF) = NCF / servicio de deuda | 95% |
-| DSCR (NOI) = NOI suscrito / servicio de deuda | 95% |
-| NCF = NOI − reposición − TI/LC | 100% |
-| Debt yield = NOI suscrito / saldo | 99% |
-| LTV = saldo / tasación | 99% |
+| DSCR (NCF) = NCF / debt service | 95% |
+| DSCR (NOI) = underwritten NOI / debt service | 95% |
+| NCF = NOI − replacement − TI/LC | 100% |
+| Debt yield = underwritten NOI / balance | 99% |
+| LTV = balance / appraised value | 99% |
 
-No necesita ninguna fuente externa, y detecta la clase de error que ninguna
-métrica mirada sola delata.
+It needs no external source, and it catches the class of error that no metric
+looked at alone reveals.
 
-Además, cada análisis intenta falsear su propio resultado antes de reportarlo:
-`db:challenge` y los bloques de control de `db:outcomes` tienen los umbrales
-fijados en el código *antes* de ver los números. Varios hallazgos se cayeron ahí
-—están registrados en los comentarios, con lo que los reemplazó—.
+Beyond that, each analysis tries to falsify its own result before reporting it:
+`analysis/challenge.ts` and the control blocks in `analysis/outcomes.ts` have their
+thresholds fixed in the code *before* seeing the numbers. Several findings died
+there — they are recorded in the comments, along with what replaced them.
 
 ---
 
-## Lo que está roto y lo sabemos
+## What is broken and we know it
 
-- **560 préstamos** de las añadas 2020-2022 no pegan entre el informe del
-  servicer y el Annex A. El parser anda; el identificador no matchea.
-- **67 préstamos sin tipo de propiedad** mapeado.
-- **Las identidades no corren solas** después de cosechar.
-- Tres emisiones tienen el Annex A en un formato que todavía no manejamos.
+- **790 loans with an empty state.** Most are multi-property portfolios whose
+  geography lives in the property rows the harvester used to discard; that is what
+  `corpus.properties` and migration 014 exist to fix.
+- **362 loans with no property type**, across three distinct populations —
+  portfolios, headers with data glued inside them, and BBCMS 2022-C17.
+- **The identities do not run automatically** after harvesting.
+- Three issuances have their Annex A in a format we do not handle yet.
 
 ---
 
 ## Tests
 
 ```bash
-npm run test:all      # 177 checks, todos offline
+npm run test:all       # 137 checks, all offline
+npm run api:smoke      # 26 checks against the running server
+npm run api:contract   # the HTML pages against the API's field names
 ```
 
-Los fixtures son documentos reales recortados, no sintéticos. Un test que pasa
-sobre datos inventados no dice nada sobre el próximo Annex A.
+The fixtures are real documents, trimmed, not synthetic. A test that passes on
+invented data says nothing about the next Annex A.
 
 ---
 
-## Restricciones
+## Constraints
 
-- **Node ≥ 20.3.** El piso lo pone `AbortSignal.any()`.
-- **Máximo 10 pedidos por segundo a SEC.** El cliente limita a 8 con margen.
-- **Una migración aplicada no se toca.** Los cambios van en un archivo nuevo;
-  editar una vieja obliga a `db:reset`, que borra el corpus.
+- **Node ≥ 20.3.** The floor is set by `AbortSignal.any()`.
+- **Maximum 10 requests per second to SEC.** The client limits to 8 for margin.
+- **An applied migration is not touched.** Changes go in a new file; editing an old
+  one forces `db:reset`, which wipes the corpus.
+- **The API has no auth.** Do not expose it to the internet until that is decided.
