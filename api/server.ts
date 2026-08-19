@@ -32,7 +32,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { closePool, ping } from "../db/client.js";
-import { estadoCorpus, estampa } from "../db/procedencia.js";
+import { corpusState, provenanceStamp } from "../db/provenance.js";
 import { buscarComparables, MIN_COMPARABLES, TIPOS, type Tipo } from "./comps.js";
 
 const PUERTO = Number(process.env.PORT ?? 8787);
@@ -178,8 +178,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === "/corpus") {
-      const e = await estadoCorpus();
-      return responder(200, { ...e, estampa: estampa(e), tipos: TIPOS });
+      const e = await corpusState();
+      return responder(200, { ...e, provenanceStamp: provenanceStamp(e), tipos: TIPOS });
     }
 
     if (url.pathname === "/comps") {

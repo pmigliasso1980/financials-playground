@@ -118,7 +118,7 @@
 
 import { closePool, ping, query } from "./client.js";
 import { METRIC_SPECS, scoreHeader } from "../harvest/normalize/columnMap.js";
-import { estadoCorpus, estampa } from "./procedencia.js";
+import { corpusState, provenanceStamp } from "./provenance.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -483,6 +483,6 @@ if (concentradas.length === 0) {
   );
 }
 
-const estado = await estadoCorpus();
+const estado = await corpusState();
 await closePool();
-console.log(`\n\x1b[90m  ${estampa(estado)}\x1b[0m\n`);
+console.log(`\n\x1b[90m  ${provenanceStamp(estado)}\x1b[0m\n`);

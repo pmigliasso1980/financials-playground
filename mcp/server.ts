@@ -136,7 +136,7 @@ function comoTexto(r: Respuesta): string {
     `Cada métrica se calculó solo sobre los comparables que la publican, por eso las ` +
     `bases difieren. Al citar un número, citá también sobre cuántos préstamos está.\n\n` +
     `Ejemplos verificables:\n${ejemplos}\n\n` +
-    `${r.corpus.canal}\n${r.corpus.estampa}`
+    `${r.corpus.canal}\n${r.corpus.provenanceStamp}`
   );
 }
 

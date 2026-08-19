@@ -29,7 +29,6 @@
     "db:performance": "tsx db/servicerBatch.ts",
     "db:power": "tsx analysis/power.ts",
     "db:predictors": "tsx analysis/predictors.ts",
-    "db:procedencia": "tsx db/procedenciaCli.ts",
     "db:reset": "tsx db/migrate.ts --reset",
     "db:seller": "tsx analysis/sellerEffect.ts",
     "db:servicer-effect": "tsx analysis/servicerEffect.ts",
@@ -66,8 +65,9 @@
     "db:monitor": "tsx db/monitor.ts",
     "mcp": "tsx mcp/server.ts",
     "api:casos": "tsx api/casos.ts",
-    "db:fix-estados": "tsx db/fixEstados.ts",
-    "db:sin-estado": "tsx db/sinEstado.ts"
+    "db:fix-states": "tsx db/fixStates.ts",
+    "db:missing-state": "tsx db/missingState.ts",
+    "db:provenance": "tsx db/provenanceCli.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",

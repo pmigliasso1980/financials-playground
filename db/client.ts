@@ -1,21 +1,20 @@
 /**
- * Conexión a Postgres.
+ * Postgres connection.
  *
- * Usa `pg`, que es JavaScript puro. Elegido a propósito sobre alternativas más
- * rápidas con bindings nativos: en este proyecto ya perdimos tiempo con
- * binarios compilados para la plataforma equivocada, y para un corpus de
- * decenas de miles de filas la diferencia de rendimiento no justifica el
- * riesgo.
+ * Uses `pg`, which is pure JavaScript. Chosen deliberately over faster
+ * alternatives with native bindings: this project has already lost time to
+ * binaries compiled for the wrong platform, and for a corpus of tens of
+ * thousands of rows the performance difference does not justify the risk.
  */
 
-// Puebla process.env desde .env antes de leer DATABASE_URL.
+// Populates process.env from .env before reading DATABASE_URL.
 import "../harvest/env.js";
 
 import pg from "pg";
 
 /**
- * Postgres devuelve NUMERIC como string para no perder precisión. Para
- * `confidence`, que es un decimal chico y acotado, queremos el número.
+ * Postgres returns NUMERIC as a string so as not to lose precision. For
+ * `confidence`, which is a small bounded decimal, we want the number.
  */
 pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v)));
 
@@ -23,7 +22,7 @@ let pool: pg.Pool | null = null;
 
 export interface DbConfig {
   connectionString?: string;
-  /** Máximo de conexiones simultáneas. Default 10. */
+  /** Maximum simultaneous connections. Defaults to 10. */
   max?: number;
 }
 
@@ -40,13 +39,14 @@ export function getPool(config: DbConfig = {}): pg.Pool {
   pool = new pg.Pool({
     connectionString: config.connectionString ?? connectionString(),
     max: config.max ?? 10,
-    // Sin esto, un Postgres caído deja el proceso colgado sin explicación.
+    // Without this, a downed Postgres leaves the process hanging with no
+    // explanation.
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,
   });
 
   pool.on("error", (err) => {
-    console.error("[db] error en una conexión inactiva:", err.message);
+    console.error("[db] error on an idle connection:", err.message);
   });
 
   return pool;
@@ -59,11 +59,11 @@ export async function closePool(): Promise<void> {
 }
 
 /**
- * Corre una función dentro de una transacción, con rollback ante error.
+ * Runs a function inside a transaction, rolling back on error.
  *
- * Importa para el corpus: un filing se escribe entero o no se escribe. Una
- * cosecha a medias —préstamos sin sus observations— sería peor que ninguna,
- * porque parecería completa.
+ * It matters for the corpus: a filing is written whole or not at all. A
+ * half-finished harvest —loans without their observations— would be worse than
+ * none, because it would look complete.
  */
 export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>,
@@ -98,14 +98,14 @@ export interface PingResult {
   schemaReady?: boolean;
 }
 
-/** Chequeo de conectividad con un mensaje que dice qué hacer si falla. */
+/** Connectivity check with a message that says what to do when it fails. */
 export async function ping(): Promise<PingResult> {
   const url = connectionString();
   const safe = url.replace(/:\/\/([^:]+):[^@]+@/, "://$1:***@");
 
   try {
     const { rows } = await query<{ version: string }>("SELECT version()");
-    const version = rows[0]?.version?.split(",")[0] ?? "desconocida";
+    const version = rows[0]?.version?.split(",")[0] ?? "unknown";
 
     const { rows: schema } = await query<{ exists: boolean }>(
       `SELECT EXISTS (
@@ -118,7 +118,7 @@ export async function ping(): Promise<PingResult> {
       ok: true,
       version,
       schemaReady: schema[0]?.exists ?? false,
-      message: `Conectado a ${safe}`,
+      message: `Connected to ${safe}`,
     };
   } catch (err) {
     const code = (err as { code?: string })?.code;
@@ -128,24 +128,24 @@ export async function ping(): Promise<PingResult> {
       return {
         ok: false,
         message:
-          `No hay Postgres escuchando en ${safe}.\n\n` +
-          `  Levantalo con Docker:\n` +
+          `No Postgres listening on ${safe}.\n\n` +
+          `  Start it with Docker:\n` +
           `    docker compose up -d\n\n` +
-          `  O apuntá a otra instancia:\n` +
-          `    export DATABASE_URL=postgres://usuario:clave@host:5432/base`,
+          `  Or point at another instance:\n` +
+          `    export DATABASE_URL=postgres://user:password@host:5432/database`,
       };
     }
 
     if (code === "28P01" || code === "28000") {
-      return { ok: false, message: `Credenciales rechazadas para ${safe}.\n  ${detail}` };
+      return { ok: false, message: `Credentials rejected for ${safe}.\n  ${detail}` };
     }
 
     if (code === "3D000") {
       return {
         ok: false,
         message:
-          `La base no existe en ${safe}.\n` +
-          `  Con docker compose se crea sola; si usás otra instancia, creala a mano.`,
+          `The database does not exist at ${safe}.\n` +
+          `  With docker compose it is created automatically; on another instance, create it by hand.`,
       };
     }
 

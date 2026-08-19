@@ -1,43 +1,43 @@
 /**
- * El monitor: lo que antes te pedía correr a mano, corriendo solo.
+ * The monitor: what used to be a list of scripts to run by hand, running itself.
  *
  *   npm run db:monitor
  *
- * QUÉ REEMPLAZA
+ * WHAT IT REPLACES
  *
- * Durante toda la construcción del corpus hubo un ciclo manual: correr un script
- * de diagnóstico, pegar la salida, leerla entre dos. Eso servía para DESCUBRIR
- * —cada corrida hacía una pregunta nueva— pero es la peor forma posible de
- * VIGILAR, porque depende de que alguien se acuerde.
+ * The whole construction of the corpus ran on a manual loop: run a diagnostic
+ * script, paste the output, read it together. That was good for DISCOVERING
+ * —each run asked a new question— but it is the worst possible way to WATCH,
+ * because it depends on someone remembering.
  *
- * Las preguntas ya están decididas. Lo que queda es que alguien las haga todos los
- * días sin que se le pida, y avise solo cuando algo cambió.
+ * The questions are already settled. What is left is for someone to ask them
+ * every day without being told, and speak up only when something changed.
  *
- * LA REGLA QUE HACE QUE UN MONITOR SE LEA
+ * THE RULE THAT MAKES A MONITOR GET READ
  *
- * **Solo imprime lo que cambió.** Un monitor que reporta todo cada vez enseña a
- * ignorarlo, y a las dos semanas nadie lo mira. Si el corpus está igual, esto son
- * tres líneas.
+ * **It only prints what changed.** A monitor that reports everything every time
+ * teaches you to ignore it, and two weeks later nobody looks. If the corpus is
+ * unchanged, this is three lines.
  *
- * COMPARA CONTRA LA CORRIDA ANTERIOR, NO CONTRA UMBRALES INVENTADOS
+ * IT COMPARES AGAINST THE PREVIOUS RUN, NOT AGAINST INVENTED THRESHOLDS
  *
- * "La cobertura de DSCR es 78%" no dice nada sin referencia: puede ser lo normal
- * de este corpus o una caída de veinte puntos. Lo que importa es el cambio, así
- * que cada corrida guarda su foto en `out/salud.json` y la siguiente compara.
+ * "DSCR coverage is 78%" says nothing without a reference: it could be normal
+ * for this corpus or a twenty-point drop. What matters is the change, so each
+ * run saves its snapshot to `out/health.json` and the next one compares.
  *
- * La primera corrida no puede alertar de nada —no hay contra qué— y lo dice en vez
- * de fingir que todo está bien.
+ * The first run cannot alert on anything —there is nothing to compare against—
+ * and it says so instead of pretending everything is fine.
  *
- * SALE CON CÓDIGO 1 SI HAY ALGO QUE MIRAR
+ * IT EXITS 1 IF THERE IS SOMETHING TO LOOK AT
  *
- * Para que sirva en cron: `npm run db:monitor || mandar-mail`. Un monitor que
- * siempre sale con 0 es un log.
+ * So it works in cron: `npm run db:monitor || send-mail`. A monitor that always
+ * exits 0 is a log.
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { closePool, ping, query } from "./client.js";
-import { estadoCorpus, estampa } from "./procedencia.js";
-import { CODIGOS } from "../harvest/normalize/estados.js";
+import { corpusState, provenanceStamp } from "./provenance.js";
+import { STATE_CODES } from "../harvest/normalize/states.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -46,258 +46,260 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Cuánto puede caer una cobertura antes de que sea noticia. */
-const CAIDA_ALERTA = 0.02;
+/** How far a coverage figure can fall before it is news. */
+const DROP_ALERT = 0.02;
 
-const ARCHIVO = new URL("../out/salud.json", import.meta.url).pathname;
+const FILE = new URL("../out/health.json", import.meta.url).pathname;
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
-interface Foto {
-  fecha: string;
-  taxonomia: string;
-  prestamos: number;
-  emisiones: number;
-  cobertura: Record<string, number>;
-  sinTipo: number;
-  headersSinMapear: string[];
+interface Snapshot {
+  date: string;
+  taxonomy: string;
+  loans: number;
+  issuances: number;
+  coverage: Record<string, number>;
+  withoutType: number;
+  unmappedHeaders: string[];
 }
 
 /**
- * Las métricas que el producto usa. Si la cobertura de una de estas cae, `/comps`
- * empieza a contestar con menos base sin que nada lo diga.
+ * The metrics the product uses. If coverage of one of these falls, `/comps`
+ * starts answering with less backing and nothing says so.
  */
-const CLAVE = ["loan_amount", "dscr", "ltv", "debt_yield", "interest_rate"];
+const KEY_METRICS = ["loan_amount", "dscr", "ltv", "debt_yield", "interest_rate"];
 
 /**
- * EL CAMPO QUE NUNCA AUDITAMOS.
+ * THE FIELD WE NEVER AUDITED.
  *
- * `/comps` filtra por cuatro campos: estado, tipo, monto y fecha. De los cuatro,
- * tres pasaron por una revisión —el tipo tiene su propio diagnóstico, el monto y
- * las métricas tienen cobertura vigilada— y el estado nunca.
+ * `/comps` filters on four fields: state, type, amount and date. Of the four,
+ * three had been reviewed —type has its own diagnostic, amount and the metrics
+ * have watched coverage— and state never had.
  *
- * La sospecha llegó por el costado: industrial en California da 9 comparables y el
- * Pacífico entero también 9. Oregón, Washington, Alaska y Hawái no aportan ninguno
- * en dieciocho meses. Seattle y Portland son mercados industriales de verdad, así
- * que o es real, o el estado está mal escrito en algunos documentos y esos
- * préstamos no entran a ninguna consulta.
+ * The suspicion arrived sideways: industrial in California returns 9 comparables
+ * and the entire Pacific division also 9. Oregon, Washington, Alaska and Hawaii
+ * contribute none in eighteen months. Seattle and Portland are real industrial
+ * markets, so either it is genuine, or the state is written differently in some
+ * documents and those loans do not enter any query.
  *
- * Un estado inválido no es como una cobertura que cae: es un defecto lo tenga o no
- * la corrida anterior, así que se reporta SIEMPRE y no solo cuando cambia.
+ * An invalid state is not like a coverage figure that falls: it is a defect
+ * whether or not the previous run had it, so it is reported ALWAYS and not only
+ * when it changes.
  *
- * EL CRITERIO ES EL DE /COMPS, NO UNO PROPIO
+ * THE CRITERION IS /COMPS'S, NOT ITS OWN
  *
- * La primera versión preguntaba `~ '^[A-Za-z]{2}$'`, que es MÁS PERMISIVO que el
- * producto: `/comps` compara `btrim(state) = ANY($1)` contra códigos en mayúscula.
- * Un "ny" en minúscula pasaba el monitor y no matcheaba ninguna consulta —
- * exactamente el defecto que este chequeo existe para encontrar, invisible para el
- * chequeo mismo.
+ * The first version asked `~ '^[A-Za-z]{2}$'`, which is MORE PERMISSIVE than the
+ * product: `/comps` compares `btrim(state) = ANY($1)` against uppercase codes. A
+ * lowercase "ny" passed the monitor and matched no query — exactly the defect
+ * this check exists to find, invisible to the check itself.
  *
- * Y un par de letras cualquiera tampoco alcanza: "XX" es sintácticamente un código
- * y no es ningún estado. La lista sale de `estados.ts`, la misma que usa el
- * harvester, para que no haya dos definiciones de "estado válido".
+ * And any two letters is not enough either: "XX" is syntactically a code and is
+ * no state at all. The list comes from `states.ts`, the same one the harvester
+ * uses, so that there are not two definitions of "valid state".
  */
-async function estadosInvalidos() {
-  const filtro = `state IS NULL OR NOT (btrim(state) = ANY($1))`;
+async function invalidStates() {
+  const filter = `state IS NULL OR NOT (btrim(state) = ANY($1))`;
 
   /**
-   * EL TOTAL SE CUENTA APARTE, Y ESTA LÍNEA ES UNA CORRECCIÓN.
+   * THE TOTAL IS COUNTED SEPARATELY, AND THIS LINE IS A CORRECTION.
    *
-   * La versión anterior sumaba las doce filas que imprime, así que reportaba el
-   * tamaño del problema a partir del pedazo que había decidido mostrar. Dijo
-   * "1.585 préstamos" cuando eran 1.900: un 20% de subconteo, en el número que
-   * justifica arreglarlo.
+   * The previous version summed the twelve rows it prints, so it reported the
+   * size of the problem from the slice it had decided to show. It said "1,585
+   * loans" when there were 1,900: a 20% undercount, in the very number that
+   * justifies fixing it.
    *
-   * Es el mismo error que los tests que no podían fallar —medir contra lo que ya
-   * se eligió mirar— y acá salió porque el arreglo recuperó 1.107 donde yo había
-   * predicho 795.
+   * It is the same error as the tests that could not fail —measuring against
+   * what you already chose to look at— and it surfaced here because the fix
+   * recovered 1,107 where I had predicted 795.
    */
   const { rows: tot } = await query<{ n: string }>(
-    `SELECT count(*)::text AS n FROM corpus.loans WHERE ${filtro}`,
-    [[...CODIGOS]],
+    `SELECT count(*)::text AS n FROM corpus.loans WHERE ${filter}`,
+    [[...STATE_CODES]],
   );
-  const { rows } = await query<{ valor: string; n: string }>(
-    `SELECT coalesce(nullif(btrim(state), ''), '(vacío)') AS valor, count(*)::text AS n
+  const { rows } = await query<{ value: string; n: string }>(
+    `SELECT coalesce(nullif(btrim(state), ''), '(empty)') AS value, count(*)::text AS n
        FROM corpus.loans
-      WHERE ${filtro}
+      WHERE ${filter}
       GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`,
-    [[...CODIGOS]],
+    [[...STATE_CODES]],
   );
   return {
     total: Number(tot[0]!.n),
-    distintos: rows.map((r) => ({ valor: r.valor, n: Number(r.n) })),
+    distinct: rows.map((r) => ({ value: r.value, n: Number(r.n) })),
   };
 }
 
-async function tomarFoto(): Promise<Foto> {
-  const e = await estadoCorpus();
+async function takeSnapshot(): Promise<Snapshot> {
+  const e = await corpusState();
 
-  const { rows: cob } = await query<{ metrica: string; n: string }>(
-    `SELECT metric_key AS metrica, count(DISTINCT loan_id)::text AS n
+  const { rows: cov } = await query<{ metric: string; n: string }>(
+    `SELECT metric_key AS metric, count(DISTINCT loan_id)::text AS n
        FROM corpus.facts
       WHERE metric_key = ANY($1) AND value ~ '^[0-9.]+$'
       GROUP BY 1`,
-    [CLAVE],
+    [KEY_METRICS],
   );
-  const cobertura: Record<string, number> = {};
-  for (const r of cob) cobertura[r.metrica] = Number(r.n) / Math.max(1, e.prestamos);
+  const coverage: Record<string, number> = {};
+  for (const r of cov) coverage[r.metric] = Number(r.n) / Math.max(1, e.loans);
 
   const { rows: st } = await query<{ n: string }>(
     `SELECT count(*)::text AS n FROM corpus.loans WHERE property_type IS NULL`,
   );
 
   /**
-   * Los encabezados sin mapear son la cola de trabajo del parser: si aparece uno
-   * nuevo, un emisor cambió su formato y estamos perdiendo una columna.
+   * Unmapped headers are the parser's work queue: if a new one appears, an
+   * issuer changed format and we are losing a column.
    */
   const { rows: hs } = await query<{ header: string }>(
     `SELECT header FROM corpus.unmapped_headers ORDER BY filings DESC LIMIT 400`,
   );
 
   return {
-    fecha: new Date().toISOString(),
-    taxonomia: e.taxonomia,
-    prestamos: e.prestamos,
-    emisiones: e.emisiones,
-    cobertura,
-    sinTipo: Number(st[0]!.n),
-    headersSinMapear: hs.map((r) => r.header),
+    date: new Date().toISOString(),
+    taxonomy: e.taxonomy,
+    loans: e.loans,
+    issuances: e.issuances,
+    coverage,
+    withoutType: Number(st[0]!.n),
+    unmappedHeaders: hs.map((r) => r.header),
   };
 }
 
-const hoy = await tomarFoto();
-const invalidos = await estadosInvalidos();
+const today = await takeSnapshot();
+const invalid = await invalidStates();
 
 /**
- * Los estados con menos préstamos de los que su mercado haría esperar. No es una
- * alerta —puede ser real— pero es el dato que hace falta para decidir si una
- * región vacía es del mercado o del parser.
+ * The states with fewer loans than their market would lead you to expect. It is
+ * not an alert —it may be genuine— but it is the figure you need in order to
+ * decide whether an empty region is the market or the parser.
  */
-const { rows: porEstado } = await query<{ estado: string; n: string }>(
-  `SELECT btrim(state) AS estado, count(*)::text AS n
+const { rows: byState } = await query<{ state: string; n: string }>(
+  `SELECT btrim(state) AS state, count(*)::text AS n
      FROM corpus.loans
     WHERE btrim(state) = ANY($1)
     GROUP BY 1 ORDER BY count(*) DESC`,
-  [[...CODIGOS]],
+  [[...STATE_CODES]],
 );
-const estado = await estadoCorpus();
+const state = await corpusState();
 await closePool();
 
-let anterior: Foto | null = null;
+let previous: Snapshot | null = null;
 try {
-  anterior = JSON.parse(await readFile(ARCHIVO, "utf8")) as Foto;
+  previous = JSON.parse(await readFile(FILE, "utf8")) as Snapshot;
 } catch {
-  anterior = null;
+  previous = null;
 }
 
-const alertas: string[] = [];
-const notas: string[] = [];
+const alerts: string[] = [];
+const notes: string[] = [];
 
 /**
- * Esta no necesita comparación: más de una versión de taxonomía conviviendo
- * significa que parte del corpus se cosechó con otro mapeo, y cualquier consulta
- * que cruce las dos mezcla criterios distintos.
+ * This one needs no comparison: more than one taxonomy version coexisting means
+ * part of the corpus was harvested with a different mapping, and any query
+ * spanning both mixes two different criteria.
  */
-if (estado.versiones > 1) {
-  alertas.push(
-    `${estado.versiones} versiones de taxonomía conviven en el corpus: parte quedó sin recosechar`,
+if (state.versions > 1) {
+  alerts.push(
+    `${state.versions} taxonomy versions coexist in the corpus: part was never re-harvested`,
   );
 }
 
-if (!anterior) {
-  notas.push("Primera corrida: no hay foto anterior contra la cual comparar.");
+if (!previous) {
+  notes.push("First run: there is no previous snapshot to compare against.");
 } else {
-  if (hoy.taxonomia !== anterior.taxonomia) {
-    notas.push(`Taxonomía: ${anterior.taxonomia} → ${hoy.taxonomia} (los números pueden moverse)`);
-  }
-
-  const dPrestamos = hoy.prestamos - anterior.prestamos;
-  if (dPrestamos !== 0) {
-    notas.push(
-      `Préstamos: ${anterior.prestamos.toLocaleString("en-US")} → ${hoy.prestamos.toLocaleString("en-US")}` +
-        ` (${dPrestamos > 0 ? "+" : ""}${dPrestamos.toLocaleString("en-US")})`,
+  if (today.taxonomy !== previous.taxonomy) {
+    notes.push(
+      `Taxonomy: ${previous.taxonomy} → ${today.taxonomy} (the numbers may move)`,
     );
   }
 
-  for (const m of CLAVE) {
-    const antes = anterior.cobertura[m] ?? 0;
-    const ahora = hoy.cobertura[m] ?? 0;
-    if (antes - ahora >= CAIDA_ALERTA) {
-      alertas.push(
-        `Cobertura de ${m} cayó de ${pct(antes)} a ${pct(ahora)} — /comps contesta con menos base`,
+  const dLoans = today.loans - previous.loans;
+  if (dLoans !== 0) {
+    notes.push(
+      `Loans: ${previous.loans.toLocaleString("en-US")} → ${today.loans.toLocaleString("en-US")}` +
+        ` (${dLoans > 0 ? "+" : ""}${dLoans.toLocaleString("en-US")})`,
+    );
+  }
+
+  for (const m of KEY_METRICS) {
+    const before = previous.coverage[m] ?? 0;
+    const now = today.coverage[m] ?? 0;
+    if (before - now >= DROP_ALERT) {
+      alerts.push(
+        `Coverage of ${m} fell from ${pct(before)} to ${pct(now)} — /comps answers with less backing`,
       );
     }
   }
 
   /**
-   * El agujero de tipo se mide en porción, no en cantidad: si el corpus crece un
-   * 20% es normal que suban los préstamos sin tipo, y eso no es una regresión.
+   * The type gap is measured as a share, not a count: if the corpus grows 20%
+   * it is normal for the number of loans without a type to rise, and that is
+   * not a regression.
    */
-  const antesShare = anterior.sinTipo / Math.max(1, anterior.prestamos);
-  const ahoraShare = hoy.sinTipo / Math.max(1, hoy.prestamos);
-  if (ahoraShare - antesShare >= 0.005) {
-    alertas.push(
-      `Préstamos sin tipo de propiedad: ${pct(antesShare, 2)} → ${pct(ahoraShare, 2)}` +
-        ` (${anterior.sinTipo} → ${hoy.sinTipo})`,
+  const beforeShare = previous.withoutType / Math.max(1, previous.loans);
+  const nowShare = today.withoutType / Math.max(1, today.loans);
+  if (nowShare - beforeShare >= 0.005) {
+    alerts.push(
+      `Loans without a property type: ${pct(beforeShare, 2)} → ${pct(nowShare, 2)}` +
+        ` (${previous.withoutType} → ${today.withoutType})`,
     );
   }
 
-  const nuevos = hoy.headersSinMapear.filter((h) => !anterior!.headersSinMapear.includes(h));
-  if (nuevos.length > 0) {
-    alertas.push(
-      `${nuevos.length} encabezado(s) sin mapear que antes no estaban — un emisor cambió de formato:\n` +
-        nuevos.slice(0, 6).map((h) => `      · ${h.slice(0, 70)}`).join("\n"),
+  const added = today.unmappedHeaders.filter((h) => !previous!.unmappedHeaders.includes(h));
+  if (added.length > 0) {
+    alerts.push(
+      `${added.length} unmapped header(s) that were not there before — an issuer changed format:\n` +
+        added.slice(0, 6).map((h) => `      · ${h.slice(0, 70)}`).join("\n"),
     );
   }
 }
 
-if (invalidos.total > 0) {
-  const mostrados = invalidos.distintos.reduce((t, i) => t + i.n, 0);
-  const resto = invalidos.total - mostrados;
-  alertas.push(
-    `${invalidos.total} préstamos con estado inválido o vacío — no entran a ninguna consulta de /comps:\n` +
-      invalidos.distintos.map((i) => `      "${i.valor}" × ${i.n}`).join("\n") +
-      (resto > 0 ? `\n      \x1b[90m… y ${resto} más en otros valores\x1b[0m` : ""),
+if (invalid.total > 0) {
+  const shown = invalid.distinct.reduce((t, i) => t + i.n, 0);
+  const rest = invalid.total - shown;
+  alerts.push(
+    `${invalid.total} loans with an invalid or empty state — they enter no /comps query:\n` +
+      invalid.distinct.map((i) => `      "${i.value}" × ${i.n}`).join("\n") +
+      (rest > 0 ? `\n      \x1b[90m… and ${rest} more across other values\x1b[0m` : ""),
   );
 }
 
 await mkdir(new URL("../out/", import.meta.url).pathname, { recursive: true });
-await writeFile(ARCHIVO, JSON.stringify(hoy, null, 2), "utf8");
+await writeFile(FILE, JSON.stringify(today, null, 2), "utf8");
 
 // ---------------------------------------------------------------------------
 
-console.log(`\n  ${estampa(estado)}`);
+console.log(`\n  ${provenanceStamp(state)}`);
 console.log(
-  `  \x1b[90m${porEstado.length} estados con código válido · ` +
-    `los cinco con más préstamos: ${porEstado.slice(0, 5).map((e) => `${e.estado} ${e.n}`).join(" · ")}\x1b[0m`,
+  `  \x1b[90m${byState.length} states with a valid code · ` +
+    `the five with the most loans: ${byState.slice(0, 5).map((e) => `${e.state} ${e.n}`).join(" · ")}\x1b[0m`,
 );
 /**
- * Los estados con mercado real y pocos préstamos son la pista de un hueco de
- * cosecha. Se listan sin alarma: puede ser el mercado y puede ser el parser.
+ * States with a real market and few loans are the clue to a harvesting gap.
+ * They are listed without alarm: it could be the market and it could be the
+ * parser.
  */
-const GRANDES = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "GA", "NC", "MI", "NJ", "VA", "WA", "AZ", "MA"];
-const cuantos = (g: string) => Number(porEstado.find((e) => e.estado === g)?.n ?? 0);
-const flacos = GRANDES.filter((g) => cuantos(g) < 30);
-if (flacos.length > 0) {
+const BIG_STATES = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "GA", "NC", "MI", "NJ", "VA", "WA", "AZ", "MA"];
+const howMany = (g: string) => Number(byState.find((e) => e.state === g)?.n ?? 0);
+const thin = BIG_STATES.filter((g) => howMany(g) < 30);
+if (thin.length > 0) {
   console.log(
-    `  \x1b[90mestados grandes con menos de 30 préstamos: ` +
-      `${flacos.map((f) => `${f} (${cuantos(f)})`).join(" · ")}\x1b[0m`,
+    `  \x1b[90mbig states with fewer than 30 loans: ` +
+      `${thin.map((f) => `${f} (${howMany(f)})`).join(" · ")}\x1b[0m`,
   );
 }
 
-if (alertas.length === 0 && notas.length === 0) {
-  console.log(`\n  \x1b[32mSin cambios.\x1b[0m\n`);
+if (alerts.length === 0 && notes.length === 0) {
+  console.log(`\n  \x1b[32mNo changes.\x1b[0m\n`);
   process.exit(0);
 }
 
-for (const n of notas) console.log(`\n  \x1b[90m· ${n}\x1b[0m`);
+for (const n of notes) console.log(`\n  \x1b[90m· ${n}\x1b[0m`);
 
-if (alertas.length > 0) {
-  console.log(`\n  \x1b[31m${alertas.length} cosa(s) para mirar:\x1b[0m\n`);
-  for (const a of alertas) console.log(`  \x1b[33m→ ${a}\x1b[0m`);
-  console.log(
-    `\n  \x1b[90mDiagnóstico del agujero de tipo:  npm run db:type-gap\x1b[0m`,
-  );
-  console.log(`  \x1b[90mCobertura por métrica:            npm run db:coverage\x1b[0m\n`);
+if (alerts.length > 0) {
+  console.log(`\n  \x1b[31m${alerts.length} thing(s) to look at:\x1b[0m\n`);
+  for (const a of alerts) console.log(`  \x1b[33m→ ${a}\x1b[0m`);
+  console.log(`\n  \x1b[90mDiagnosis of the type gap:  npm run db:type-gap\x1b[0m`);
+  console.log(`  \x1b[90mCoverage by metric:         npm run db:coverage\x1b[0m\n`);
   process.exit(1);
 }
 

@@ -62,7 +62,7 @@ try {
 }
 
 const corpus = await get("/corpus");
-check("/corpus trae la estampa de procedencia", typeof corpus.data?.estampa === "string");
+check("/corpus trae la provenanceStamp de procedencia", typeof corpus.data?.provenanceStamp === "string");
 check("/corpus lista los tipos", Array.isArray(corpus.data?.tipos) && corpus.data.tipos.length > 0);
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ check(
 const r = await get("/comps?state=NY&type=Multifamily&amount=25000000&months=60&target_ltv=70");
 check("consulta válida → 200", r.status === 200);
 check("trae el límite del canal en la respuesta", typeof r.data?.corpus?.canal === "string");
-check("trae la estampa del corpus", typeof r.data?.corpus?.estampa === "string");
+check("trae la provenanceStamp del corpus", typeof r.data?.corpus?.provenanceStamp === "string");
 check(
   "el LTV se normalizó de 70 a 0,70",
   r.data?.criterios?.ltvObjetivo === 0.7,

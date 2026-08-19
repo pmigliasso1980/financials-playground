@@ -65,7 +65,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { closePool, ping } from "./client.js";
 import { calcularBenchmark, cargarCandidatas, pct, type Benchmark } from "./cohortBenchmark.js";
 import { esc, render } from "./pageRender.js";
-import { estadoCorpus, estampa } from "./procedencia.js";
+import { corpusState, provenanceStamp } from "./provenance.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -103,7 +103,7 @@ for (const c of cohorte) {
   fichas.push({ b, slug });
 }
 
-const estado = await estadoCorpus();
+const estado = await corpusState();
 await closePool();
 
 /**
@@ -296,7 +296,7 @@ const html = `<!doctype html>
     se dice eso en vez de elegir una.
     <br><br>
     Datos de los FWP / Annex A publicados en SEC EDGAR. Generado por
-    <code>npm run db:catalog</code>. ${esc(estampa(estado))}
+    <code>npm run db:catalog</code>. ${esc(provenanceStamp(estado))}
   </footer>
 </main>
 <script>
@@ -354,4 +354,4 @@ console.log(
   `  \x1b[90mUn préstamo vale hasta ${pct(grano, 1)} de composición: por debajo de eso el orden` +
     ` es redondeo.\x1b[0m`,
 );
-console.log(`\n\x1b[90m  ${estampa(estado)}\x1b[0m\n`);
+console.log(`\n\x1b[90m  ${provenanceStamp(estado)}\x1b[0m\n`);

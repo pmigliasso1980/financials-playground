@@ -17,7 +17,7 @@ import {
   type ColumnMatch,
   type MetricKey,
 } from "./columnMap.js";
-import { normalizarEstado } from "./estados.js";
+import { normalizeState } from "./states.js";
 
 export interface SourceRef {
   /** CIK del emisor. */
@@ -331,7 +331,7 @@ export function rowsToObservations(
          * se queja—. Normalizar al escribir es la única forma de que una consulta
          * escrita después no tenga que saber de esto.
          */
-        state: normalizarEstado(textOf("state")),
+        state: normalizeState(textOf("state")),
         property_type: textOf("property_type"),
         loan_seller: textOf("loan_seller"),
       },

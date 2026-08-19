@@ -28,7 +28,7 @@
  */
 
 import { query } from "../db/client.js";
-import { estadoCorpus, estampa } from "../db/procedencia.js";
+import { corpusState, provenanceStamp } from "../db/provenance.js";
 
 /**
  * REVISADO CON DATOS, Y ESO SE DECLARA.
@@ -192,7 +192,7 @@ export type Respuesta =
       /** Qué pasaría si se afloja cada criterio, para que decida quien pregunta. */
       siAmplias: Array<{ criterio: string; encontrados: number }>;
       criterios: Criterios;
-      corpus: { estampa: string; canal: string };
+      corpus: { provenanceStamp: string; canal: string };
     }
   | {
       suficiente: true;
@@ -209,7 +209,7 @@ export type Respuesta =
       objetivo: { ltv: number; alcanzaron: number; de: number } | null;
       muestra: Comparable[];
       criterios: Criterios;
-      corpus: { estampa: string; canal: string };
+      corpus: { provenanceStamp: string; canal: string };
     };
 
 /**
@@ -274,8 +274,8 @@ const METRICAS: Array<{ key: string; etiqueta: string; max: number }> = [
 ];
 
 export async function buscarComparables(c: Criterios): Promise<Respuesta> {
-  const estado = await estadoCorpus();
-  const corpus = { estampa: estampa(estado), canal: CANAL };
+  const estado = await corpusState();
+  const corpus = { provenanceStamp: provenanceStamp(estado), canal: CANAL };
   const div = divisionDe(c.estado);
 
   /**
