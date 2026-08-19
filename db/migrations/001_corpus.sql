@@ -1,25 +1,26 @@
--- Corpus cosechado de SEC EDGAR.
+-- Corpus harvested from SEC EDGAR.
 --
--- Alcance deliberado: solo lo que viene de documentos reales. El seed sintético
--- del mock sigue en memoria, porque no hay nada que acumular ahí.
+-- Deliberate scope: only what comes from real documents. The mock's synthetic
+-- seed stays in memory, because there is nothing to accumulate there.
 --
--- DECISIONES QUE VALE EXPLICAR
+-- DECISIONS WORTH EXPLAINING
 --
--- 1. La clave natural de un filing es el accession number de SEC. Es único,
---    estable y público, así que lo usamos como identidad en vez de un id
---    sintético. Recosechar el mismo filing actualiza en vez de duplicar.
+-- 1. The natural key of a filing is SEC's accession number. It is unique,
+--    stable and public, so we use it as identity instead of a synthetic id.
+--    Re-harvesting the same filing updates instead of duplicating.
 --
--- 2. Las observations guardan el header original de la columna. Cuando el mapeo
---    mejora —y esta semana mejoró cuatro veces— se puede reprocesar el corpus
---    sin volver a bajar los documentos.
+-- 2. Observations store the original column header. When the mapping improves
+--    —and this week it improved four times— the corpus can be reprocessed
+--    without downloading the documents again.
 --
--- 3. Los facts canónicos se derivan de las observations, no se cargan sueltos.
---    Se recalculan al reprocesar. Guardarlos igual evita recomputar la
---    promoción en cada lectura.
+-- 3. Canonical facts are derived from observations, they are not loaded on
+--    their own. They get recomputed on reprocessing. Storing them anyway avoids
+--    recomputing the promotion on every read.
 --
--- 4. Todo valor va como TEXT. Un Annex A mezcla monedas, porcentajes, ratios y
---    fechas en la misma columna según la fila, y el tipo lo determina la
---    métrica, no la celda. Castear en la base perdería información.
+-- 4. Every value goes in as TEXT. An Annex A mixes currencies, percentages,
+--    ratios and dates in the same column depending on the row, and the type is
+--    determined by the metric, not by the cell. Casting in the database would
+--    lose information.
 
 CREATE SCHEMA IF NOT EXISTS corpus;
 
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS corpus.filings (
   file_name        TEXT        NOT NULL,
   file_url         TEXT        NOT NULL,
 
-  -- Trazabilidad del procesamiento: con qué versión del mapeo se cosechó.
+  -- Processing traceability: which version of the mapping harvested this.
   harvested_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   columns_mapped   JSONB       NOT NULL DEFAULT '[]'::jsonb,
   columns_unmapped JSONB       NOT NULL DEFAULT '[]'::jsonb,
@@ -44,23 +45,23 @@ CREATE TABLE IF NOT EXISTS corpus.filings (
 );
 
 COMMENT ON COLUMN corpus.filings.columns_unmapped IS
-  'Encabezados que el mapeo no reconoció. Revisarlos es la forma más directa de encontrar métricas que se están perdiendo.';
+  'Headers the mapping did not recognise. Reviewing them is the most direct way to find metrics we are losing.';
 
 CREATE INDEX IF NOT EXISTS filings_cik_idx        ON corpus.filings (cik);
 CREATE INDEX IF NOT EXISTS filings_filed_at_idx   ON corpus.filings (filed_at DESC);
 
 -- ---------------------------------------------------------------------------
--- Préstamos
+-- Loans
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS corpus.loans (
   id             BIGSERIAL PRIMARY KEY,
   accession      TEXT   NOT NULL REFERENCES corpus.filings(accession) ON DELETE CASCADE,
 
-  -- Índice de la fila dentro del Annex A. Junto al accession identifica al
-  -- préstamo de forma estable entre recosechas.
+  -- Index of the row within the Annex A. Together with the accession it
+  -- identifies the loan stably across re-harvests.
   row_index      INTEGER NOT NULL,
-  -- El "Loan ID Number" que publica el emisor, cuando existe.
+  -- The "Loan ID Number" the issuer publishes, when it exists.
   loan_ref       TEXT,
 
   property_name  TEXT,
@@ -90,19 +91,19 @@ CREATE TABLE IF NOT EXISTS corpus.observations (
   unit           TEXT    NOT NULL,
   entity_type    TEXT    NOT NULL,
 
-  -- Valor normalizado y valor crudo de la celda. El crudo permite auditar el
-  -- parseo sin volver al documento.
+  -- Normalised value and raw cell value. The raw one allows auditing the
+  -- parsing without going back to the document.
   value          TEXT    NOT NULL,
   raw_value      TEXT,
 
   confidence     NUMERIC(4,3) NOT NULL,
 
-  -- Provenance: qué columna del documento originó este valor.
+  -- Provenance: which column of the document produced this value.
   source_header  TEXT    NOT NULL,
   source_column  INTEGER,
 
-  -- Un préstamo no puede tener dos observations de la misma métrica desde la
-  -- misma columna: eso sería un duplicado de procesamiento, no dos fuentes.
+  -- A loan cannot have two observations of the same metric from the same
+  -- column: that would be a processing duplicate, not two sources.
   UNIQUE (loan_id, metric_key, source_header)
 );
 
@@ -110,7 +111,7 @@ CREATE INDEX IF NOT EXISTS observations_loan_idx   ON corpus.observations (loan_
 CREATE INDEX IF NOT EXISTS observations_metric_idx ON corpus.observations (metric_key);
 
 -- ---------------------------------------------------------------------------
--- Facts canónicos
+-- Canonical facts
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS corpus.facts (
@@ -121,13 +122,13 @@ CREATE TABLE IF NOT EXISTS corpus.facts (
   entity_ref     TEXT    NOT NULL,
   value          TEXT    NOT NULL,
 
-  -- De qué observation salió. NULL cuando un usuario lo pisó a mano.
+  -- Which observation it came from. NULL when a user overrode it by hand.
   observation_id BIGINT  REFERENCES corpus.observations(id) ON DELETE SET NULL,
   is_manual_override BOOLEAN NOT NULL DEFAULT false,
 
-  -- Por qué ganó este valor. No existe en la API de Lev; acá lo guardamos
-  -- porque en underwriting la pregunta "¿por qué le creemos a este dato?" es
-  -- tan importante como el dato.
+  -- Why this value won. It does not exist in Lev's API; we store it here
+  -- because in underwriting the question "why do we believe this figure?" is
+  -- as important as the figure.
   promotion_rationale TEXT,
 
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -139,11 +140,11 @@ CREATE INDEX IF NOT EXISTS facts_loan_idx   ON corpus.facts (loan_id);
 CREATE INDEX IF NOT EXISTS facts_metric_idx ON corpus.facts (metric_key);
 
 -- ---------------------------------------------------------------------------
--- Vistas de conveniencia
+-- Convenience views
 -- ---------------------------------------------------------------------------
 
--- Cobertura por métrica: la forma más rápida de ver si un cambio en el mapeo
--- mejoró o empeoró el corpus.
+-- Coverage by metric: the fastest way to see whether a change in the mapping
+-- improved or degraded the corpus.
 CREATE OR REPLACE VIEW corpus.metric_coverage AS
 SELECT
   o.metric_key,
@@ -158,9 +159,9 @@ GROUP BY o.metric_key, o.metric_label, o.unit
 ORDER BY loans DESC;
 
 COMMENT ON VIEW corpus.metric_coverage IS
-  'distinct_headers > 1 significa que varios emisores nombran distinto la misma métrica: útil para saber qué patrones están cargando el peso.';
+  'distinct_headers > 1 means several issuers name the same metric differently: useful to know which patterns are carrying the weight.';
 
--- Encabezados que ningún filing supo mapear, con cuántos los traen.
+-- Headers no filing managed to map, with how many filings carry them.
 CREATE OR REPLACE VIEW corpus.unmapped_headers AS
 SELECT
   header,
@@ -171,4 +172,4 @@ GROUP BY header
 ORDER BY filings DESC, header;
 
 COMMENT ON VIEW corpus.unmapped_headers IS
-  'Cola de trabajo del mapeo: los encabezados de arriba son los que más filings desaprovechan.';
+  'Work queue for the mapping: the headers at the top are the ones wasting the most filings.';

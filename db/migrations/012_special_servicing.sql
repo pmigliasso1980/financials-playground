@@ -1,41 +1,43 @@
--- De qué bloque del 10-D salió cada fila.
+-- Which block of the 10-D each row came from.
 --
--- EL EVENTO ESTABA EN OTRA TABLA
+-- THE EVENT WAS IN A DIFFERENT TABLE
 --
--- `corpus.delinquency` se llenaba solo desde el bloque "Delinquency Loan
--- Detail". Pero el 10-D trae además "Specially Serviced Loan Detail", con su
--- propia columna `Servicing Transfer Date`, y un préstamo puede estar en special
--- servicing PAGANDO AL DÍA — en cuyo caso aparece ahí y no entre los morosos.
+-- `corpus.delinquency` was only filled from the "Delinquency Loan Detail"
+-- block. But the 10-D also carries "Specially Serviced Loan Detail", with its
+-- own `Servicing Transfer Date` column, and a loan can be in special servicing
+-- while PAYING ON TIME — in which case it appears there and not among the
+-- delinquent ones.
 --
--- BANK 2021-BNK36 dice "No delinquent loans this period" y tiene al Pros ID 71
--- —multifamily en Illinois, transferido el 12/02/2025— en el otro bloque. El
--- pipeline lo contaba como cero eventos.
+-- BANK 2021-BNK36 says "No delinquent loans this period" and has Pros ID 71
+-- —multifamily in Illinois, transferred on 2025-02-12— in the other block. The
+-- pipeline counted it as zero events.
 --
--- POR QUÉ IMPORTA MÁS DE LO QUE PARECE
+-- WHY IT MATTERS MORE THAN IT LOOKS
 --
--- La brecha "BANK transfiere 4 veces menos que BBCMS" sobrevivió ocho intentos
--- de matarla: cobertura del join, población listada, formato, filtros, valor
--- crudo en veinte emisiones, administrador maestro, administrador especial y
--- composición por tipo de propiedad × añada.
+-- The "BANK transfers 4 times less than BBCMS" gap survived eight attempts to
+-- kill it: join coverage, listed population, format, filters, raw value across
+-- twenty issuances, master servicer, special servicer, and composition by
+-- property type × vintage.
 --
--- Los ocho atacaron el denominador o los controles. Ninguno preguntó si el
--- NUMERADOR estaba completo. Si un shelf tiene préstamos que entran a special
--- servicing antes de dejar de pagar y otro no, la diferencia entre sus tasas
--- mide qué bloque llenó cada administrador y no quién suscribe mejor.
+-- All eight attacked the denominator or the controls. None asked whether the
+-- NUMERATOR was complete. If one shelf has loans that enter special servicing
+-- before they stop paying and another does not, the difference between their
+-- rates measures which block each servicer filled in, not who underwrites
+-- better.
 --
--- LA CONSTRAINT NO CAMBIA
+-- THE CONSTRAINT DOES NOT CHANGE
 --
--- Sigue siendo UNIQUE (report_accession, loan_id): un préstamo que aparece en
--- los dos bloques es un préstamo, no dos. `source` registra dónde se lo vio, y
--- el upsert desde el bloque especial NO pisa `months_delinquent` —ese dato solo
--- existe en el bloque de morosidad—.
+-- It remains UNIQUE (report_accession, loan_id): a loan appearing in both
+-- blocks is one loan, not two. `source` records where it was seen, and the
+-- upsert from the special block does NOT overwrite `months_delinquent` —that
+-- datum only exists in the delinquency block.
 
 ALTER TABLE corpus.delinquency
   ADD COLUMN IF NOT EXISTS source TEXT,
   ADD COLUMN IF NOT EXISTS resolution_code TEXT;
 
 COMMENT ON COLUMN corpus.delinquency.source IS
-  'De qué bloque del 10-D salió: delinquency, special, o ambos. Sin esto, "no hay evento" y "el evento estaba en la tabla que no leíamos" son la misma fila ausente.';
+  'Which block of the 10-D it came from: delinquency, special, or both. Without this, "there is no event" and "the event was in the table we were not reading" are the same absent row.';
 
--- Las filas ya cargadas vienen todas del bloque de morosidad.
+-- The already-loaded rows all come from the delinquency block.
 UPDATE corpus.delinquency SET source = 'delinquency' WHERE source IS NULL;

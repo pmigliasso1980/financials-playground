@@ -1,34 +1,34 @@
--- El sénior pasa a preferir la columna publicada sobre la suma.
+-- Senior now prefers the published column over the sum.
 --
--- POR QUÉ ESTA MIGRACIÓN EXISTE
+-- WHY THIS MIGRATION EXISTS
 --
--- `db:identities` cambió su definición de sénior: si el Annex publica el total
--- en una columna propia usa esa, y solo si no está suma trust + pari passu.
--- Esta vista tenía la definición vieja escrita a mano.
+-- `db:identities` changed its definition of senior: if the Annex publishes the
+-- total in a column of its own it uses that, and only when it is absent does it
+-- sum trust + pari passu. This view had the old definition written by hand.
 --
--- Dos definiciones del mismo concepto en dos archivos divergen en silencio: las
--- identidades cerrarían al 97% mientras `db:outcomes` compararía el NOI contra
--- otro denominador, y nada avisaría. El hallazgo del proyecto —proyectado contra
--- entregado por añada— se calcula con esta vista, así que la divergencia no
--- sería cosmética.
+-- Two definitions of the same concept in two files diverge silently: the
+-- identities would close at 97% while `db:outcomes` compared NOI against a
+-- different denominator, and nothing would warn. The project's finding
+-- —projected against delivered, by vintage— is computed with this view, so the
+-- divergence would not be cosmetic.
 --
--- DE DÓNDE SALIÓ LA COLUMNA NUEVA
+-- WHERE THE NEW COLUMN CAME FROM
 --
--- No de leer encabezados. El reconciliador buscó, para cada préstamo cuyo debt
--- yield no cierra, qué celda sin mapear de esa misma fila vale el saldo
--- implícito por la identidad. "Total Cut-off Date Pari Passu Debt" coincidió en
--- 33 préstamos de 4 emisiones dentro del 1% —1.001,0M contra 1.001,3M—, y se
--- identificó por su valor.
+-- Not from reading headers. For each loan whose debt yield does not close, the
+-- reconciler searched which unmapped cell in that same row is worth the balance
+-- implied by the identity. "Total Cut-off Date Pari Passu Debt" matched on 33
+-- loans across 4 issuances within 1% —1,001.0M against 1,001.3M— and was
+-- identified by its value.
 --
--- Es preferible a la suma cuando está: no depende de que las dos partes se hayan
--- mapeado bien, ni de que el emisor las publique por separado.
+-- It is preferable to the sum when present: it does not depend on both parts
+-- having been mapped correctly, nor on the issuer publishing them separately.
 --
--- NO se usa `balance_total_debt`: eso incluye subordinada y mezzanine, y en un
--- préstamo con B-note daría un denominador inflado. Coinciden solo cuando no hay
--- deuda junior.
+-- `balance_total_debt` is NOT used: that includes subordinate and mezzanine
+-- debt, and on a loan with a B-note it would give an inflated denominator. They
+-- coincide only when there is no junior debt.
 --
--- La vista se recrea entera —DROP + CREATE— porque CREATE OR REPLACE VIEW no
--- puede cambiar la definición de una columna existente.
+-- The view is recreated whole —DROP + CREATE— because CREATE OR REPLACE VIEW
+-- cannot change the definition of an existing column.
 
 DROP VIEW IF EXISTS corpus.underwriting_outcomes;
 
@@ -44,14 +44,14 @@ SELECT
   uw.value::numeric          AS noi_underwritten,
   mr.value::numeric          AS noi_trailing,
   p.annualized_noi           AS noi_actual,
-  -- La porción de este trust.
+  -- This trust's portion.
   amt.value::numeric         AS loan_amount,
-  -- Lo que debe el prestatario sobre el inmueble en el tramo senior. Es el
-  -- denominador que usa el emisor para debt yield, LTV y DSCR, y por lo tanto
-  -- el que corresponde para comparar contra cualquier NOI de la propiedad.
+  -- What the borrower owes on the property in the senior tranche. It is the
+  -- denominator the issuer uses for debt yield, LTV and DSCR, and therefore the
+  -- right one to compare against any property-level NOI.
   --
-  -- La columna publicada gana sobre la suma; ver el encabezado de esta
-  -- migración. Tiene que coincidir con `SENIOR` en db/identities.ts.
+  -- The published column wins over the sum; see the header of this migration.
+  -- It has to match `SENIOR` in db/identities.ts.
   coalesce(
     sen.value::numeric,
     amt.value::numeric + coalesce(npp.value::numeric, 0)
@@ -60,9 +60,9 @@ SELECT
   p.noi_start,
   p.noi_end,
   p.is_full_year,
-  -- Negativo significa que el período reportado empieza ANTES del cierre: solapa
-  -- con el histórico que el suscriptor ya tenía a la vista, así que la brecha
-  -- contra él no mide un resultado.
+  -- Negative means the reported period starts BEFORE closing: it overlaps with
+  -- the historical figures the underwriter already had in front of them, so the
+  -- gap against those does not measure an outcome.
   (p.noi_start - f.filed_at) AS days_after_origination,
   uw.value::numeric / NULLIF(mr.value::numeric, 0) - 1 AS gap_vs_trailing,
   uw.value::numeric / NULLIF(p.annualized_noi, 0)  - 1 AS gap_vs_actual,
@@ -86,4 +86,4 @@ LEFT JOIN corpus.facts wl  ON wl.loan_id  = l.id AND wl.metric_key  = 'balance_w
                            AND wl.value  ~ '^-?[0-9.]+$';
 
 COMMENT ON VIEW corpus.underwriting_outcomes IS
-  'Promesa, historia y resultado en una fila. Para cualquier ratio contra el NOI usar loan_amount_senior: es el denominador que usa el emisor. Su definición tiene que coincidir con SENIOR en db/identities.ts.';
+  'Promise, history and outcome in one row. For any ratio against NOI use loan_amount_senior: it is the denominator the issuer uses. Its definition has to match SENIOR in db/identities.ts.';

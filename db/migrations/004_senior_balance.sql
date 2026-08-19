@@ -1,33 +1,31 @@
--- El saldo senior en la vista de resultados.
+-- The senior balance in the outcomes view.
 --
--- POR QUÉ HACE FALTA
+-- WHY IT IS NEEDED
 --
--- Las identidades aritméticas determinaron contra qué saldo publica el emisor
--- sus ratios, y no es ninguno de los dos que la vista tenía. Sobre 3.528
--- préstamos:
+-- The arithmetic identities determined which balance the issuer publishes its
+-- ratios against, and it is neither of the two the view had. Over 3,528 loans:
 --
---   denominador                     debt yield        LTV
+--   denominator                     debt yield        LTV
 --   trust (cut-off)                    75%           75%
 --   whole loan                         72%           72%
---   trust + pari passu no-trust        99%           99%   ← este
---   whole loan + subordinada           72%           72%
+--   trust + non-trust pari passu       99%           99%   ← this one
+--   whole loan + subordinate           72%           72%
 --
--- El "senior" es lo que debe el prestatario sobre el inmueble con la prioridad
--- de cobro más alta: la porción que compró este trust más las notas pari passu
--- que quedaron en otras emisiones. No incluye la deuda subordinada ni la
--- mezzanine, que son las que hacen que "whole loan LTV" sea mayor.
+-- The "senior" balance is what the borrower owes on the property at the highest
+-- payment priority: the slice this trust bought plus the pari passu notes that
+-- ended up in other issuances. It does not include subordinate or mezzanine
+-- debt, which are what make "whole loan LTV" larger.
 --
--- QUÉ ANÁLISIS ESTABA MAL
+-- WHICH ANALYSIS WAS WRONG
 --
--- `db:outcomes` calculaba el debt yield real como NOI del servicer sobre
--- `loan_amount` —la rebanada del trust— mientras que el NOI es de la propiedad
--- entera. En los préstamos repartidos eso infla el debt yield por el factor de
--- reparto, que llega a 288x.
+-- `db:outcomes` computed actual debt yield as servicer NOI over `loan_amount`
+-- —the trust's slice— while the NOI is for the entire property. On split loans
+-- that inflates the debt yield by the split factor, which reaches 288x.
 --
--- Ese cálculo es el bloque B2, el control que descartó la hipótesis de que el
--- optimismo al originar predice el resultado. La conclusión fue "el debt yield
--- real es parejo entre tramos"; con el denominador corregido hay que rehacerla
--- antes de darla por buena.
+-- That computation is block B2, the control that discarded the hypothesis that
+-- optimism at origination predicts the outcome. The conclusion was "actual debt
+-- yield is even across tranches"; with the denominator corrected it has to be
+-- redone before being taken as good.
 
 DROP VIEW IF EXISTS corpus.underwriting_outcomes;
 
@@ -43,19 +41,19 @@ SELECT
   uw.value::numeric          AS noi_underwritten,
   mr.value::numeric          AS noi_trailing,
   p.annualized_noi           AS noi_actual,
-  -- La porción de este trust.
+  -- This trust's portion.
   amt.value::numeric         AS loan_amount,
-  -- Lo que debe el prestatario sobre el inmueble en el tramo senior. Es el
-  -- denominador que usa el emisor para debt yield, LTV y DSCR, y por lo tanto
-  -- el que corresponde para comparar contra cualquier NOI de la propiedad.
+  -- What the borrower owes on the property in the senior tranche. It is the
+  -- denominator the issuer uses for debt yield, LTV and DSCR, and therefore the
+  -- right one to compare against any property-level NOI.
   (amt.value::numeric + coalesce(npp.value::numeric, 0)) AS loan_amount_senior,
   wl.value::numeric          AS loan_amount_whole,
   p.noi_start,
   p.noi_end,
   p.is_full_year,
-  -- Negativo significa que el período reportado empieza ANTES del cierre: solapa
-  -- con el histórico que el suscriptor ya tenía a la vista, así que la brecha
-  -- contra él no mide un resultado.
+  -- Negative means the reported period starts BEFORE closing: it overlaps with
+  -- the historical figures the underwriter already had in front of them, so the
+  -- gap against those does not measure an outcome.
   (p.noi_start - f.filed_at) AS days_after_origination,
   uw.value::numeric / NULLIF(mr.value::numeric, 0) - 1 AS gap_vs_trailing,
   uw.value::numeric / NULLIF(p.annualized_noi, 0)  - 1 AS gap_vs_actual,
@@ -76,4 +74,4 @@ LEFT JOIN corpus.facts wl  ON wl.loan_id  = l.id AND wl.metric_key  = 'balance_w
                            AND wl.value  ~ '^-?[0-9.]+$';
 
 COMMENT ON VIEW corpus.underwriting_outcomes IS
-  'Promesa, historia y resultado en una fila. Para cualquier ratio contra el NOI usar loan_amount_senior: es el denominador que usa el emisor, verificado al 99% por las identidades aritméticas.';
+  'Promise, history and outcome in one row. For any ratio against NOI use loan_amount_senior: it is the denominator the issuer uses, verified at 99% by the arithmetic identities.';

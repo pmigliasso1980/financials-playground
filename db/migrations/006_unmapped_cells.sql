@@ -1,40 +1,41 @@
--- Las celdas que el mapeo no supo interpretar, con su valor.
+-- The cells the mapping could not interpret, with their value.
 --
--- POR QUÉ GUARDAR LO QUE NO ENTENDEMOS
+-- WHY STORE WHAT WE DO NOT UNDERSTAND
 --
--- `filings.columns_unmapped` ya guardaba los ENCABEZADOS sin mapear, y eso
--- alcanzó para dos arreglos: buscando ahí apareció el nombre real de la columna
--- de identificador en las añadas 2020, y salió el ranking de columnas candidatas
--- por préstamos afectados.
+-- `filings.columns_unmapped` already stored the unmapped HEADERS, and that was
+-- enough for two fixes: searching there surfaced the real name of the
+-- identifier column in the 2020 vintages, and produced the ranking of candidate
+-- columns by affected loans.
 --
--- Pero un encabezado solo permite adivinar. Sobre Tysons Corner Center sabemos,
--- por dos identidades independientes, que el saldo que falta vale 708.777.715:
--- el implícito por debt yield da 708.777.715 y el implícito por LTV da
--- 709.200.000, 0,06% de diferencia. Con esa cifra en la mano, encontrar la
--- columna no debería requerir leer ochenta y siete nombres y elegir el que suene
--- mejor — debería ser una comparación numérica contra las celdas de esa fila.
+-- But a header only lets you guess. For Tysons Corner Center we know, from two
+-- independent identities, that the missing balance is 708,777,715: the one
+-- implied by debt yield gives 708,777,715 and the one implied by LTV gives
+-- 709,200,000, a 0.06% difference. With that figure in hand, finding the column
+-- should not require reading eighty-seven names and picking the one that sounds
+-- best — it should be a numeric comparison against the cells of that row.
 --
--- Eso es lo que esta tabla habilita. La diferencia práctica: durante esta sesión
--- predije tres veces de qué columna venía un problema y acerté una. Cada
--- predicción costó un ciclo de recosecha de diez minutos.
+-- That is what this table enables. The practical difference: during this
+-- session I predicted three times which column a problem came from and got one
+-- right. Each prediction cost a ten-minute re-harvest cycle.
 --
--- QUÉ SE GUARDA Y QUÉ NO
+-- WHAT IS STORED AND WHAT IS NOT
 --
--- Solo celdas que parsean como número. Las fechas, descripciones y notas al pie
--- no sirven para reconciliar y triplicarían la tabla.
+-- Only cells that parse as a number. Dates, descriptions and footnotes are no
+-- use for reconciling and would triple the table.
 --
--- `value_num` es la magnitud tal como está impresa, sin interpretar según
--- unidad: no se convierte porcentaje a fracción ni se quita el sufijo "x". Para
--- comparar contra un valor implícito hace falta el número crudo; la
--- interpretación es justamente lo que todavía no sabemos hacer con esta columna.
+-- `value_num` is the magnitude exactly as printed, without interpreting it by
+-- unit: percentages are not converted to fractions and the "x" suffix is not
+-- stripped. Comparing against an implied value needs the raw number; the
+-- interpretation is precisely what we do not yet know how to do with this
+-- column.
 --
--- EL ÍNDICE DE loan_id NO ES OPCIONAL
+-- THE loan_id INDEX IS NOT OPTIONAL
 --
--- Es el lado que referencia de una foreign key con ON DELETE CASCADE, y Postgres
--- no lo indexa solo. Sin él, cada recosecha —que borra el filing antes de
--- reescribirlo— haría un Seq Scan completo de esta tabla por cada préstamo
--- borrado. Ya nos pasó con `facts.observation_id` y costó que un lote pasara de
--- minutos a horas.
+-- It is the referencing side of a foreign key with ON DELETE CASCADE, and
+-- Postgres does not index it on its own. Without it, every re-harvest —which
+-- deletes the filing before rewriting it— would do a full Seq Scan of this
+-- table for each deleted loan. It already happened to us with
+-- `facts.observation_id` and it took a batch from minutes to hours.
 
 CREATE TABLE IF NOT EXISTS corpus.unmapped_cells (
   id         BIGSERIAL PRIMARY KEY,
@@ -48,11 +49,11 @@ CREATE TABLE IF NOT EXISTS corpus.unmapped_cells (
 CREATE INDEX IF NOT EXISTS unmapped_cells_loan_idx
   ON corpus.unmapped_cells (loan_id);
 
--- El reconciliador busca "qué celda de esta fila vale ~X", así que el filtro
--- fuerte es por loan_id y después por magnitud. Este índice sirve para el
--- agregado inverso: qué encabezados aparecen con valores en cierto rango.
+-- The reconciler asks "which cell of this row is worth ~X", so the strong
+-- filter is by loan_id and then by magnitude. This index serves the inverse
+-- aggregate: which headers appear with values in a given range.
 CREATE INDEX IF NOT EXISTS unmapped_cells_header_idx
   ON corpus.unmapped_cells (header);
 
 COMMENT ON TABLE corpus.unmapped_cells IS
-  'Celdas numéricas de columnas que el mapeo no interpretó. Existen para reconciliar valores implícitos contra columnas candidatas sin adivinar por el nombre del encabezado.';
+  'Numeric cells from columns the mapping did not interpret. They exist to reconcile implied values against candidate columns without guessing from the header name.';

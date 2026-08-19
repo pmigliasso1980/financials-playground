@@ -1,35 +1,35 @@
--- El Pros ID crudo en la tabla de morosidad.
+-- The raw Pros ID in the delinquency table.
 --
--- POR QUÉ APARECE AHORA
+-- WHY IT SHOWS UP NOW
 --
--- El lote informó 341 préstamos morosos persistidos y la tabla tenía 282, sobre
--- 349 filas parseadas. Tres números para lo que parecía una sola cosa:
+-- The batch reported 341 delinquent loans persisted and the table had 282, out
+-- of 349 parsed rows. Three numbers for what looked like a single thing:
 --
---   349  filas de morosidad en el 10-D
---   341  filas que encontraron su préstamo en el corpus   (join: 97,7%)
---   282  filas distintas en la tabla                      (59 colapsadas)
+--   349  delinquency rows in the 10-D
+--   341  rows that found their loan in the corpus            (join: 97.7%)
+--   282  distinct rows in the table                          (59 collapsed)
 --
--- Las 59 no se perdieron en el join: se perdieron en el ON CONFLICT. Dos filas
--- del informe que caen sobre el mismo `loan_id` porque `loanInt()` toma los
--- dígitos iniciales del Pros ID, y el servicer numera los tramos pari passu
--- como `1`, `1A`, `1B`. Colapsarlos es correcto —un préstamo, varios tramos—
--- pero sin guardar el identificador crudo no hay forma de demostrarlo sin
--- volver a bajar el documento.
+-- The 59 were not lost in the join: they were lost in the ON CONFLICT. Two rows
+-- of the report landing on the same `loan_id` because `loanInt()` takes the
+-- leading digits of the Pros ID, and the servicer numbers pari passu tranches
+-- as `1`, `1A`, `1B`. Collapsing them is correct —one loan, several tranches—
+-- but without storing the raw identifier there is no way to demonstrate it
+-- without downloading the document again.
 --
--- `corpus.performance` ya guarda `pros_id` con exactamente ese argumento en su
--- comentario. La tabla de morosidad se creó sin él y por eso una diferencia de
--- 59 filas quedó indistinguible de un join roto.
+-- `corpus.performance` already stores `pros_id` with exactly that argument in
+-- its comment. The delinquency table was created without it, and that is why a
+-- 59-row difference was indistinguishable from a broken join.
 --
--- LA CONSTRAINT NO CAMBIA
+-- THE CONSTRAINT DOES NOT CHANGE
 --
--- Sigue siendo UNIQUE (report_accession, loan_id): el estado de pago es del
--- préstamo, no del tramo, y dos tramos del mismo préstamo no son dos morosos.
--- `pros_id` queda como el último tramo visto —sirve para auditar, no para
--- identificar—. Meterlo en la clave inflaría el numerador de morosidad con
--- tramos, que es el error opuesto y peor.
+-- It remains UNIQUE (report_accession, loan_id): payment status belongs to the
+-- loan, not the tranche, and two tranches of the same loan are not two
+-- delinquencies. `pros_id` remains the last tranche seen —useful for auditing,
+-- not for identifying. Putting it in the key would inflate the delinquency
+-- numerator with tranches, which is the opposite error and a worse one.
 
 ALTER TABLE corpus.delinquency
   ADD COLUMN IF NOT EXISTS pros_id TEXT;
 
 COMMENT ON COLUMN corpus.delinquency.pros_id IS
-  'Identificador tal como lo publica el servicer, antes de normalizar. Auditoría del join: si dos filas del informe colapsan en un loan_id, acá queda el último tramo visto.';
+  'Identifier exactly as the servicer publishes it, before normalising. Join audit: if two report rows collapse into one loan_id, the last tranche seen is kept here.';

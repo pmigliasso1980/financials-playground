@@ -1,31 +1,32 @@
--- Quién administra cada trust.
+-- Who services each trust.
 --
--- LA PREGUNTA QUE ESTO PERMITE HACER
+-- THE QUESTION THIS MAKES POSSIBLE
 --
--- Ajustado por añada y por tercil de DSCR, BANK transfiere a special servicing
--- 4 veces menos que BBCMS (SIR 0,39 contra 1,60, intervalos que no se pisan).
--- Eso sobrevivió cinco intentos de matarlo: el join, la población listada, el
--- formato, los filtros, y el valor crudo en veinte emisiones.
+-- Adjusted by vintage and by DSCR tercile, BANK transfers to special servicing
+-- 4 times less often than BBCMS (SIR 0.39 against 1.60, non-overlapping
+-- intervals). That survived five attempts to kill it: the join, the listed
+-- population, the format, the filters, and the raw value across twenty
+-- issuances.
 --
--- Pero el SIR correlaciona 0,73 con la cobertura del NOI, y esa correlación NO
--- puede ser causal: el numerador sale de la tabla de morosidad, que pega al
--- 97,7% y no depende del NOI para nada. Una correlación real sin mecanismo pide
--- una causa común.
+-- But the SIR correlates 0.73 with NOI coverage, and that correlation CANNOT be
+-- causal: the numerator comes from the delinquency table, which joins at 97.7%
+-- and does not depend on the NOI at all. A real correlation with no mechanism
+-- calls for a common cause.
 --
--- El administrador maestro arma LAS DOS tablas del informe. Si uno publica el
--- NOI sin período Y lista menos préstamos como morosos, las dos cosas se mueven
--- juntas sin causarse. BANK usa Trimont; Benchmark usa Midland.
+-- The master servicer builds BOTH tables in the report. If one publishes NOI
+-- without a period AND lists fewer loans as delinquent, the two move together
+-- without causing each other. BANK uses Trimont; Benchmark uses Midland.
 --
--- Si es eso, "BANK suscribe mejor" es "Trimont reporta distinto" — el hallazgo
--- cambia de sujeto y de importancia.
+-- If that is what is happening, "BANK underwrites better" becomes "Trimont
+-- reports differently" — the finding changes subject and importance.
 --
--- LO QUE ESTA TABLA PUEDE NO PODER RESPONDER
+-- WHAT THIS TABLE MAY NOT BE ABLE TO ANSWER
 --
--- Si cada shelf usa un administrador distinto y ningún administrador aparece en
--- dos shelves, emisora y administrador son la misma columna con dos nombres y
--- ningún dato del corpus las separa. Por eso lo primero que hay que mirar no es
--- el resultado sino la tabla cruzada: si no hay celdas fuera de la diagonal, la
--- pregunta no se puede hacer y hay que decirlo en vez de responderla igual.
+-- If every shelf uses a different servicer and no servicer appears in two
+-- shelves, issuer and servicer are the same column under two names and no datum
+-- in the corpus separates them. That is why the first thing to look at is not
+-- the result but the cross-tabulation: if there are no off-diagonal cells, the
+-- question cannot be asked and that has to be said instead of answered anyway.
 
 ALTER TABLE corpus.servicer_reports
   ADD COLUMN IF NOT EXISTS master_servicer  TEXT,
@@ -35,4 +36,4 @@ CREATE INDEX IF NOT EXISTS servicer_reports_master_idx
   ON corpus.servicer_reports (master_servicer);
 
 COMMENT ON COLUMN corpus.servicer_reports.master_servicer IS
-  'Administrador maestro según la carátula del 10-D. Arma la tabla de NOI y la de morosidad: es el candidato a causa común de que las dos degraden juntas.';
+  'Master servicer per the 10-D cover page. It builds both the NOI table and the delinquency table: it is the candidate common cause for both degrading together.';

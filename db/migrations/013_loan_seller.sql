@@ -1,31 +1,31 @@
--- Quién originó el préstamo, que no es quién armó la emisión.
+-- Who originated the loan, which is not who assembled the issuance.
 --
--- LA CONFUSIÓN QUE ESTO DESHACE
+-- THE CONFUSION THIS UNDOES
 --
--- Todo el análisis de "emisoras" viene atribuyéndole a BANK o a BBCMS lo que
--- hicieron sus vendedores. Un deal BANK agrupa préstamos originados por Bank of
--- America, Morgan Stanley y Wells Fargo: el shelf es el empaquetador, no el
--- suscriptor. Decir "BANK suscribe mejor" es como felicitar a la caja por lo
--- que hizo la fábrica.
+-- All the "issuer" analysis has been attributing to BANK or BBCMS what their
+-- sellers did. A BANK deal groups loans originated by Bank of America, Morgan
+-- Stanley and Wells Fargo: the shelf is the packager, not the underwriter.
+-- Saying "BANK underwrites better" is like congratulating the box for what the
+-- factory did.
 --
--- POR QUÉ ESTA VARIABLE Y NO OTRO CONFUNDIDO MÁS
+-- WHY THIS VARIABLE AND NOT ONE MORE CONFOUNDER
 --
--- Los nueve ataques anteriores fueron defensivos: cada uno preguntaba "¿esto es
--- un artefacto?" y la respuesta era "no". Nueve "no" no hacen un "sí".
+-- The nine previous attacks were defensive: each one asked "is this an
+-- artefact?" and the answer was "no". Nine "no"s do not make a "yes".
 --
--- El vendedor es distinto porque puede CONFIRMAR el efecto. El mismo vendedor
--- coloca en varias emisiones, así que el diseño queda cruzado sin que nadie lo
--- diseñe: Wells Fargo vende hacia BANK (SIR 0,42) y hacia su propio shelf
--- (1,20). Si el vendedor manda, fijarlo tiene que aplanar esa diferencia. Si el
--- shelf manda, no.
+-- The seller is different because it can CONFIRM the effect. The same seller
+-- places loans into several issuances, so the design ends up crossed without
+-- anyone designing it: Wells Fargo sells into BANK (SIR 0.42) and into its own
+-- shelf (1.20). If the seller drives it, holding it fixed has to flatten that
+-- difference. If the shelf drives it, it will not.
 --
--- LO QUE PUEDE SALIR MAL
+-- WHAT CAN GO WRONG
 --
--- Que la columna no exista en la mayoría de los Annex A. `columnMap` ya sabía
--- que "Mortgage Loan Seller" aparece en 9 filings —figuraba como exclusión de
--- `loan_amount`— pero nueve de 150 no alcanza para nada. La cobertura hay que
--- medirla antes de correr cualquier análisis encima, y si es baja la respuesta
--- correcta es "no se puede saber con este corpus".
+-- That the column does not exist in most Annex A documents. `columnMap` already
+-- knew that "Mortgage Loan Seller" appears in 9 filings —it was listed as an
+-- exclusion for `loan_amount`— but nine out of 150 is not enough for anything.
+-- Coverage has to be measured before running any analysis on top of it, and if
+-- it is low the correct answer is "this corpus cannot tell".
 
 ALTER TABLE corpus.loans
   ADD COLUMN IF NOT EXISTS loan_seller TEXT;
@@ -33,4 +33,4 @@ ALTER TABLE corpus.loans
 CREATE INDEX IF NOT EXISTS loans_seller_idx ON corpus.loans (loan_seller);
 
 COMMENT ON COLUMN corpus.loans.loan_seller IS
-  'Vendedor del préstamo según el Annex A. Es el originador; la emisora es el vehículo que lo empaqueta. Un vendedor coloca en varias emisiones, lo que hace identificable la pregunta "¿shelf o suscriptor?".';
+  'Loan seller per the Annex A. This is the originator; the issuer is the vehicle that packages it. One seller places loans into several issuances, which makes the question "shelf or underwriter?" identifiable.';

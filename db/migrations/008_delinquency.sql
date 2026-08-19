@@ -1,29 +1,32 @@
--- Estado de pago y special servicing, del bloque "Delinquency Loan Detail".
+-- Payment status and special servicing, from the "Delinquency Loan Detail"
+-- block.
 --
--- POR QUÉ ESTA VARIABLE
+-- WHY THIS VARIABLE
 --
--- El crecimiento del NOI tiene un error estándar de 2,4 puntos por añada y
--- ninguna añada del corpus es distinguible de otra (`db:power`). Esta es un
--- conteo: con ~400 préstamos por añada el piso de ruido baja a ~3 puntos
--- porcentuales, sobre tasas base observadas de 0% a 3%. Es la primera variable
--- del proyecto donde el efecto esperado supera el ruido con margen.
+-- NOI growth has a standard error of 2.4 points per vintage and no vintage in
+-- the corpus is distinguishable from another (`db:power`). This one is a count:
+-- with ~400 loans per vintage the noise floor drops to ~3 percentage points,
+-- against observed base rates of 0% to 3%. It is the first variable in the
+-- project where the expected effect exceeds the noise with margin.
 --
--- LA TABLA LISTA SOLO LOS AFECTADOS
+-- THE TABLE LISTS ONLY THE AFFECTED LOANS
 --
--- El 10-D no publica el estado de cada préstamo: publica los que están morosos o
--- en special servicing. Las filas son el numerador; el denominador es el pool
--- del Annex A, que ya está en `corpus.loans`. No hace falta parsear los sanos.
+-- The 10-D does not publish the status of every loan: it publishes those that
+-- are delinquent or in special servicing. The rows are the numerator; the
+-- denominator is the Annex A pool, which is already in `corpus.loans`. There is
+-- no need to parse the healthy ones.
 --
--- ATRASO Y SPECIAL SERVICING NO SON LO MISMO
+-- DELINQUENCY AND SPECIAL SERVICING ARE NOT THE SAME THING
 --
--- Benchmark 2020-B16 tiene un préstamo transferido a special servicing en enero
--- que paga al día: 0 meses de atraso. La transferencia es la señal temprana; el
--- atraso es el síntoma tardío. Se guardan las dos porque miden cosas distintas.
+-- Benchmark 2020-B16 has a loan transferred to special servicing in January
+-- that is paying on time: 0 months delinquent. The transfer is the early
+-- signal; delinquency is the late symptom. Both are stored because they measure
+-- different things.
 --
--- `months_delinquent` y `paid_through` son el mismo hecho por dos caminos —los
--- meses tienen que ser ≈ (fin del período − paid through)/30— y están las dos
--- para poder contrastarlas. Es la clase de verificación que en el Annex A
--- descubrimos tarde.
+-- `months_delinquent` and `paid_through` are the same fact by two routes —the
+-- months should be ≈ (end of period − paid through)/30— and both are present so
+-- they can be checked against each other. It is the class of verification we
+-- discovered late in the Annex A.
 
 CREATE TABLE IF NOT EXISTS corpus.delinquency (
   id                BIGSERIAL PRIMARY KEY,
@@ -39,10 +42,10 @@ CREATE TABLE IF NOT EXISTS corpus.delinquency (
   UNIQUE (report_accession, loan_id)
 );
 
--- El lado que referencia de un CASCADE necesita índice: sin él cada préstamo
--- borrado en una recosecha dispara un Seq Scan. Ya pasó con facts.observation_id
--- y costó que un lote pasara de minutos a horas.
+-- The referencing side of a CASCADE needs an index: without it every loan
+-- deleted in a re-harvest triggers a Seq Scan. It already happened with
+-- facts.observation_id and it took a batch from minutes to hours.
 CREATE INDEX IF NOT EXISTS delinquency_loan_idx ON corpus.delinquency (loan_id);
 
 COMMENT ON TABLE corpus.delinquency IS
-  'Préstamos morosos o en special servicing según el 10-D. Las filas son el numerador; el denominador es el pool en corpus.loans.';
+  'Loans delinquent or in special servicing according to the 10-D. The rows are the numerator; the denominator is the pool in corpus.loans.';

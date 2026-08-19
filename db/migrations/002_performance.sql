@@ -1,26 +1,26 @@
--- Desempeño post-originación, tomado de los 10-D.
+-- Post-origination performance, taken from the 10-D filings.
 --
--- POR QUÉ ES UNA TABLA APARTE Y NO MÁS observations
+-- WHY THIS IS A SEPARATE TABLE AND NOT MORE observations
 --
--- Las observations del Annex A describen el préstamo al cierre: son una foto,
--- y por eso su clave es (préstamo, métrica, header de origen). El desempeño es
--- una serie: el mismo préstamo tiene un NOI por período reportado, y el período
--- es parte de la identidad del dato, no un atributo suelto.
+-- The Annex A observations describe the loan at closing: they are a snapshot,
+-- which is why their key is (loan, metric, source header). Performance is a
+-- series: the same loan has one NOI per reported period, and the period is part
+-- of the identity of the datum, not a loose attribute.
 --
--- Meterlo en observations obligaría a codificar el período dentro del
--- metric_key —"noi_real_2025"— y eso rompe el catálogo de métricas, que es
--- justamente la pieza que más nos costó ordenar.
+-- Putting it in observations would force encoding the period inside the
+-- metric_key —"noi_actual_2025"— and that breaks the metric catalogue, which is
+-- precisely the piece that cost us the most to get in order.
 --
--- DÓNDE ESTA TABLA SE APARTA DE LA CONVENCIÓN DEL CORPUS
+-- WHERE THIS TABLE DEPARTS FROM THE CORPUS CONVENTION
 --
--- En corpus.observations todo valor va como TEXT, porque un Annex A mezcla
--- monedas, porcentajes y fechas en la misma columna y el tipo lo determina la
--- métrica. Acá no: annualized_noi es siempre dinero anualizado, con una sola
--- interpretación posible. Guardarlo como NUMERIC evita castear en cada consulta
--- y permite que la base valide lo que entra.
+-- In corpus.observations every value goes in as TEXT, because an Annex A mixes
+-- currencies, percentages and dates in the same column and the type is
+-- determined by the metric. Not here: annualized_noi is always annualised
+-- money, with a single possible interpretation. Storing it as NUMERIC avoids
+-- casting on every query and lets the database validate what goes in.
 
 -- ---------------------------------------------------------------------------
--- Informes del servicer
+-- Servicer reports
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS corpus.servicer_reports (
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS corpus.servicer_reports (
   cik              TEXT        NOT NULL,
   company_name     TEXT        NOT NULL,
   filed_at         DATE,
-  -- Fecha de distribución que reporta el 10-D.
+  -- Distribution date reported by the 10-D.
   period_of_report DATE,
   file_name        TEXT        NOT NULL,
   file_url         TEXT        NOT NULL,
@@ -38,12 +38,12 @@ CREATE TABLE IF NOT EXISTS corpus.servicer_reports (
 );
 
 COMMENT ON TABLE corpus.servicer_reports IS
-  'EX-99.1 de los 10-D. Uno por trust y mes; normalmente cosechamos el de abril, que es cuando el ejercicio anterior ya está consolidado.';
+  'EX-99.1 of the 10-D filings. One per trust and month; we normally harvest the April one, which is when the previous year is already consolidated.';
 
 CREATE INDEX IF NOT EXISTS servicer_reports_cik_idx ON corpus.servicer_reports (cik);
 
 -- ---------------------------------------------------------------------------
--- NOI real por préstamo
+-- Actual NOI per loan
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS corpus.performance (
@@ -51,19 +51,19 @@ CREATE TABLE IF NOT EXISTS corpus.performance (
   report_accession TEXT    NOT NULL REFERENCES corpus.servicer_reports(accession) ON DELETE CASCADE,
   loan_id          BIGINT  NOT NULL REFERENCES corpus.loans(id) ON DELETE CASCADE,
 
-  -- Identificador tal como lo publica el servicer, antes de normalizar.
-  -- Se guarda para poder auditar el join sin volver a bajar el documento.
+  -- Identifier exactly as the servicer publishes it, before normalising.
+  -- Stored so the join can be audited without downloading the document again.
   pros_id          TEXT    NOT NULL,
 
   annualized_noi   NUMERIC NOT NULL,
   noi_start        DATE    NOT NULL,
   noi_end          DATE    NOT NULL,
   period_days      INTEGER NOT NULL,
-  -- False significa que el valor viene extrapolado de un período parcial.
-  -- Por política del harvester hoy solo entran los completos, pero la columna
-  -- existe para poder aflojar el criterio sin migrar.
+  -- False means the value is extrapolated from a partial period. By harvester
+  -- policy only complete ones get in today, but the column exists so the
+  -- criterion can be loosened without a migration.
   is_full_year     BOOLEAN NOT NULL,
-  -- Cuántos tramos pari passu reportaron este mismo préstamo.
+  -- How many pari passu tranches reported this same loan.
   tranches         INTEGER NOT NULL DEFAULT 1,
 
   UNIQUE (report_accession, loan_id)
@@ -73,19 +73,20 @@ CREATE INDEX IF NOT EXISTS performance_loan_idx ON corpus.performance (loan_id);
 CREATE INDEX IF NOT EXISTS performance_end_idx  ON corpus.performance (noi_end);
 
 -- ---------------------------------------------------------------------------
--- La vista que hace la pregunta de Griffin
+-- The view that asks Griffin's question
 -- ---------------------------------------------------------------------------
 
--- Tres cifras por préstamo: lo que la propiedad producía, lo que el suscriptor
--- dijo que iba a producir, y lo que produjo.
+-- Three figures per loan: what the property was producing, what the underwriter
+-- said it was going to produce, and what it produced.
 --
--- El caso que motivó incluir las tres: Benchmark 2024-V7, préstamo 8. Suscrito
--- 3,4% POR DEBAJO del histórico —conservador según cualquier medición de
--- originación— y el NOI real cayó 62%. Mirando solo suscrito contra histórico
--- ese préstamo aparecía del lado prudente de la distribución.
--- La vista de resultados vive en 003_outcomes_view.sql.
+-- The case that motivated including all three: Benchmark 2024-V7, loan 8.
+-- Underwritten 3.4% BELOW the historical figure —conservative by any measure of
+-- origination— and actual NOI fell 62%. Looking only at underwritten against
+-- historical, that loan appeared on the prudent side of the distribution.
+-- The outcomes view lives in 003_outcomes_view.sql.
 --
--- Estuvo acá y la editamos in situ para agregarle columnas. Como `db:migrate`
--- solo aplica lo pendiente, el único modo de que el cambio tomara efecto era
--- `db:reset`, que borra el corpus. Se hizo, y la recosecha falló porque la SEC
--- había empezado a estrangular. Una migración aplicada no se toca.
+-- It used to be here and we edited it in place to add columns. Since
+-- `db:migrate` only applies what is pending, the only way for the change to
+-- take effect was `db:reset`, which wipes the corpus. We did it, and the
+-- re-harvest failed because SEC had started throttling. An applied migration is
+-- not touched.
