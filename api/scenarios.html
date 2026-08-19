@@ -1,0 +1,166 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The twelve scenarios · what the corpus can answer</title>
+<!--
+  The browsable version of `npm run api:scenarios`.
+
+  A DIFFERENT SCREEN BECAUSE IT IS A DIFFERENT AUDIENCE
+
+  The main screen talks to someone with a concrete deal who wants an answer. This
+  one talks to us: in which situations can the corpus answer and in which can it
+  not?
+
+  Mixing them would force a broker to look at twelve rows of which eleven do not
+  concern them. Separating them costs one file.
+
+  WHAT TO LOOK AT
+
+  The scope column. If most of them say "region" rather than the state, the state
+  filter almost never suffices on its own, and that would change the product's
+  default.
+
+  And the dashed row: it expects to find NO comparables. If it returned a range,
+  there would be a problem — the product would be answering something it cannot.
+
+  THE FIELD NAMES HERE ARE A CONTRACT WITH api/comps.ts AND NOTHING CHECKS IT
+
+  This file reads `sufficient`, `ladder`, `scope`, `distributions` and
+  `provenanceStamp` off the JSON with no compiler in between. A rename in comps.ts
+  that is not mirrored here produces a page full of "undefined" and no error.
+-->
+<style>
+  :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
+          --dot:#2b5fa8; --ok:#2f7d43; --warn:#8a6410; --bad:#b3261e; }
+  * { box-sizing:border-box }
+  body { margin:0; padding:40px 24px 64px; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif }
+  main { max-width:1000px; margin:0 auto }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.01em }
+  .sub { color:var(--muted); font-size:13.5px; margin:0 0 24px }
+  .nav { float:right; font-size:13px }
+  a { color:var(--dot) }
+  .summary { padding:14px 16px; border-radius:6px; background:#f4f6fa;
+             border:1px solid #e2e8f2; margin-bottom:22px; font-size:15.5px }
+  table { width:100%; border-collapse:collapse }
+  th, td { padding:9px 8px; text-align:right; border-top:1px solid var(--line);
+           font-variant-numeric:tabular-nums; font-size:14px }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align:left }
+  thead th { border-top:0; border-bottom:1px solid var(--line); font-size:11px;
+             text-transform:uppercase; letter-spacing:.05em; color:var(--muted) }
+  tr.expected td { color:var(--muted) }
+  tr.problem td:first-child { box-shadow:inset 3px 0 0 var(--bad) }
+  .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px;
+          font-weight:600; text-transform:uppercase; letter-spacing:.04em }
+  .pill.state   { background:#eef2f8; color:var(--dot) }
+  .pill.region  { background:#fdf6ec; color:var(--warn) }
+  .pill.country { background:#fdeeed; color:var(--bad) }
+  .pill.none    { background:#f2f2f2; color:var(--muted) }
+  .muted { color:var(--muted) }
+  .sm { font-size:12.5px }
+  footer { margin-top:32px; padding-top:18px; border-top:1px solid var(--line);
+           font-size:12.5px; color:var(--muted) }
+</style>
+<main>
+  <a class="nav" href="/">← back to the search</a>
+  <h1>The twelve scenarios</h1>
+  <p class="sub">What the corpus can and cannot answer, run live.</p>
+
+  <div id="summary" class="summary">Running all twelve…</div>
+  <table>
+    <thead><tr>
+      <th>situation</th><th>query</th><th>comps</th><th>from where</th>
+      <th>LTV</th><th>DSCR</th><th>debt yield</th><th>rate</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p class="sm muted" style="margin-top:14px">The greyed rows expect <b>not</b> to find
+  comparables: for those deals this channel is not the route, and saying so is the useful
+  answer. If one of them returned a range, there would be a problem.</p>
+
+  <footer id="foot"></footer>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const pct = (v) => (v * 100).toFixed(1) + "%";
+const fmt = { ltv: pct, debt_yield: pct, interest_rate: pct, dscr: (v) => v.toFixed(2) + "x" };
+
+/** The same twelve as `api/scenarios.ts`. If they diverge, one of the two is lying. */
+const SCENARIOS = [
+  { t: "Multifamily refi", q: { state: "GA", type: "Multifamily", amount: 28e6, target_ltv: 70 } },
+  { t: "Large market", q: { state: "TX", type: "Multifamily", amount: 15e6 } },
+  { t: "Office", q: { state: "NY", type: "Office", amount: 45e6, target_ltv: 60 } },
+  { t: "Industrial", q: { state: "CA", type: "Industrial", amount: 30e6 } },
+  { t: "Hospitality", q: { state: "FL", type: "Hospitality", amount: 22e6 } },
+  { t: "Retail", q: { state: "FL", type: "Retail", amount: 12e6 } },
+  { t: "Pricing check", q: { state: "NJ", type: "Industrial", amount: 25e6, target_ltv: 65 } },
+  { t: "How much debt can I get", q: { state: "NY", type: "Multifamily", amount: 60e6, target_ltv: 75 } },
+  { t: "Niche", q: { state: "AZ", type: "Self Storage", amount: 8e6 } },
+  { t: "Mixed use", q: { state: "IL", type: "Mixed Use", amount: 20e6 } },
+  { t: "Small deal", q: { state: "OH", type: "Retail", amount: 4e6 } },
+  { t: "Rare type, small market", q: { state: "WY", type: "Manufactured", amount: 6e6 }, empty: true },
+];
+
+const LABEL = { state: "state", region: "region", country: "whole country" };
+
+function metricCell(d, key) {
+  const m = (d.distributions ?? []).find((x) => x.metric === key);
+  if (!m) return `<td class="muted">—</td>`;
+  const f = fmt[key] ?? ((v) => v.toFixed(2));
+  return `<td>${f(m.p50)}<div class="muted sm">${f(m.p25)}–${f(m.p75)} · ${m.base}</div></td>`;
+}
+
+async function run() {
+  const rows = [];
+  let answered = 0, expected = 0, problems = 0, widened = 0;
+
+  for (const c of SCENARIOS) {
+    const q = new URLSearchParams(Object.fromEntries(
+      Object.entries(c.q).map(([k, v]) => [k, String(v)]),
+    ));
+    const r = await fetch("/comps?" + q).then((x) => x.json());
+    const d = r.data;
+    const query = `${c.q.type} · ${c.q.state} · ${(c.q.amount / 1e6).toFixed(0)}M`;
+
+    if (!d.sufficient) {
+      if (c.empty) expected++; else problems++;
+      rows.push(`<tr class="${c.empty ? "expected" : "problem"}">
+        <td>${c.t}</td><td class="muted sm">${query}</td>
+        <td>${d.ladder[0].found}</td>
+        <td><span class="pill none">${c.empty ? "not conduit" : "no data"}</span></td>
+        <td colspan="4" class="muted sm">${d.ladder
+          .map((p) => `${p.label}: ${p.found}`)
+          .join(" · ")}</td>
+      </tr>`);
+      continue;
+    }
+
+    answered++;
+    if (d.scope !== "state") widened++;
+    rows.push(`<tr>
+      <td>${c.t}</td><td class="muted sm">${query}</td>
+      <td><b>${d.found}</b></td>
+      <td><span class="pill ${d.scope}">${LABEL[d.scope]}</span>
+        ${d.scope === "state" ? "" : `<div class="muted sm">${d.scopeLabel}</div>`}</td>
+      ${metricCell(d, "ltv")}${metricCell(d, "dscr")}
+      ${metricCell(d, "debt_yield")}${metricCell(d, "interest_rate")}
+    </tr>`);
+    $("#foot").textContent = d.corpus.provenanceStamp + " · " + d.corpus.channel;
+  }
+
+  $("#rows").innerHTML = rows.join("");
+  $("#summary").innerHTML =
+    `<b>${answered} of ${SCENARIOS.length}</b> scenarios answered with a range. ` +
+    `${expected} expected refusals.` +
+    (problems > 0
+      ? ` <b style="color:var(--bad)">${problems} that should answer and cannot.</b>`
+      : "") +
+    (widened > 0
+      ? `<div class="sm muted" style="margin-top:6px">${widened} needed the radius opened
+         beyond the state. If that happens for most of them, the state filter almost never
+         suffices on its own and starting from the region would be better.</div>`
+      : "");
+}
+
+run();
+</script>

@@ -2,32 +2,42 @@
 <meta charset="utf-8">
 <title>Comparables · conduit CMBS</title>
 <!--
-  La pantalla. Un archivo, sin dependencias, servido por el mismo proceso.
+  The screen. One file, no dependencies, served by the same process.
 
-  LAS TRES COSAS QUE ESTA PANTALLA HACE Y UNA PLANILLA NO
+  THE FOUR THINGS THIS SCREEN DOES AND A SPREADSHEET DOES NOT
 
-  1. Dice sobre cuántos préstamos está cada número. Una mediana de 31 y una de 6
-     se ven igual en una planilla y no significan lo mismo.
-  2. Se niega. Con menos de cinco comparables muestra qué habría que aflojar en
-     vez de dibujar un rango con tres préstamos.
-  3. Cada comparable lleva el link al documento de la SEC. Un número que no se
-     puede abrir hay que creerlo; con el filing atrás, se verifica.
-  4. Dice DE DÓNDE salieron los comparables. Si hubo que abrir el radio del estado
-     a la región, eso cambia lo que el número significa y va arriba, no al pie.
+  1. It says how many loans each number is based on. A median of 31 and a median
+     of 6 look the same in a spreadsheet and do not mean the same thing.
+  2. It refuses. Below the minimum it shows what would have to be loosened instead
+     of drawing a range from three loans.
+  3. Every comparable carries the link to its SEC document. A number you cannot
+     open has to be taken on trust; with the filing behind it, it is verifiable.
+  4. It says WHERE the comparables came from. If the radius had to open from the
+     state to the region, that changes what the number means and it goes at the
+     top, not in a footnote.
 
-  LOS CASOS APARECEN CUANDO HACEN FALTA Y SE VAN CUANDO NO
+  THE SCENARIOS APPEAR WHEN THEY HELP AND LEAVE WHEN THEY DO NOT
 
-  Un formulario en blanco le pide al usuario que ya sepa qué preguntar, así que en
-  la pantalla vacía los ejemplos son lo más útil que puede haber. Pero una vez que
-  hay un resultado, esos mismos botones son ruido compitiendo con la respuesta.
+  A blank form asks the user to already know what to ask, so on an empty screen the
+  examples are the most useful thing there can be. But once there is a result,
+  those same buttons are noise competing with the answer.
 
-  Se muestran solo en el estado vacío y se esconden con la primera búsqueda, con un
-  enlace discreto para traerlos de vuelta. Es la diferencia entre una ayuda y un
-  cartel.
+  They are shown only in the empty state and hidden on the first search, with a
+  discreet link to bring them back. That is the difference between a help and a
+  billboard.
 
-  Y la corrida de los doce juntos vive en /casos, que es otra pantalla y otro
-  público: eso es para nosotros, para ver de un vistazo qué puede y qué no puede
-  contestar el corpus. Un broker no necesita ver los doce.
+  And the run of all twelve at once lives at /scenarios, which is a different
+  screen for a different audience: that one is for us, to see at a glance what the
+  corpus can and cannot answer. A broker does not need to see all twelve.
+
+  THE FIELD NAMES HERE ARE A CONTRACT WITH api/comps.ts AND NOTHING CHECKS IT
+
+  This file reads `sufficient`, `found`, `ladder`, `scope`, `target`, `sample` and
+  `provenanceStamp` straight off the JSON. There is no compiler between the two.
+  Renaming a field in comps.ts and forgetting it here produces a page that renders
+  "undefined" without any error — which is exactly what happened to the footer when
+  `estampa` became `provenanceStamp` during the migration to English, and it went
+  unnoticed for several commits.
 -->
 <style>
   :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
@@ -59,73 +69,73 @@
   .big { font-size:17px; font-weight:600 }
   .muted { color:var(--muted) }
   .sm { font-size:12.5px }
-  .veredicto { font-size:16px; padding:14px 16px; border-radius:6px; margin-bottom:20px;
-               background:#f4f6fa; border:1px solid #e2e8f2 }
-  .aviso { background:var(--warnbg); border:1px solid #f0e2bc; color:#5c4409;
-           padding:16px 18px; border-radius:6px }
-  .aviso h2 { color:var(--warn) }
-  .aviso li { margin:4px 0 }
+  .verdict { font-size:16px; padding:14px 16px; border-radius:6px; margin-bottom:20px;
+             background:#f4f6fa; border:1px solid #e2e8f2 }
+  .notice { background:var(--warnbg); border:1px solid #f0e2bc; color:#5c4409;
+            padding:16px 18px; border-radius:6px }
+  .notice h2 { color:var(--warn) }
+  .notice li { margin:4px 0 }
   a { color:var(--dot) }
   footer { margin-top:40px; padding-top:18px; border-top:1px solid var(--line);
            font-size:12.5px; color:var(--muted) }
-  .canal { background:#fafafa; border-left:3px solid var(--line); padding:10px 14px;
-           font-size:13px; color:var(--muted); margin-top:18px }
-  .casos { margin:0 0 14px }
-  .casos b { display:block; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em;
-             color:var(--muted); margin-bottom:8px; font-weight:600 }
+  .channel { background:#fafafa; border-left:3px solid var(--line); padding:10px 14px;
+             font-size:13px; color:var(--muted); margin-top:18px }
+  .scenarios { margin:0 0 14px }
+  .scenarios b { display:block; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em;
+                 color:var(--muted); margin-bottom:8px; font-weight:600 }
   .chip { display:inline-block; margin:0 6px 6px 0; padding:6px 11px; border-radius:20px;
           border:1px solid #d8d8d8; background:#fff; font:inherit; font-size:13px;
           cursor:pointer; color:var(--fg) }
   .chip:hover { border-color:var(--dot); color:var(--dot) }
-  .chip.vacio { border-style:dashed; color:var(--muted) }
-  .casos.oculto { display:none }
-  .reabrir { background:none; border:0; padding:0; font:inherit; font-size:13px;
-             color:var(--muted); cursor:pointer; text-decoration:underline;
-             margin:14px 0 0; display:none }
-  .reabrir.visible { display:inline }
+  .chip.empty { border-style:dashed; color:var(--muted) }
+  .scenarios.hidden { display:none }
+  .reopen { background:none; border:0; padding:0; font:inherit; font-size:13px;
+            color:var(--muted); cursor:pointer; text-decoration:underline;
+            margin:14px 0 0; display:none }
+  .reopen.visible { display:inline }
   .nav { float:right; font-size:13px }
-  .alcance { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11.5px;
-             font-weight:600; text-transform:uppercase; letter-spacing:.04em;
-             background:#eef2f8; color:var(--dot); margin-left:8px; vertical-align:middle }
-  .alcance.abierto { background:var(--warnbg); color:var(--warn) }
-  .escalera { font-size:12.5px; color:var(--muted); margin:8px 0 0 }
-  .escalera i { font-style:normal; color:var(--fg) }
+  .scope { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11.5px;
+           font-weight:600; text-transform:uppercase; letter-spacing:.04em;
+           background:#eef2f8; color:var(--dot); margin-left:8px; vertical-align:middle }
+  .scope.widened { background:var(--warnbg); color:var(--warn) }
+  .ladder { font-size:12.5px; color:var(--muted); margin:8px 0 0 }
+  .ladder i { font-style:normal; color:var(--fg) }
   @media (max-width:720px) { form { grid-template-columns:1fr 1fr } }
 </style>
 <main>
-  <a class="nav" href="/casos">ver los doce casos de una →</a>
-  <h1>¿Qué términos consiguieron préstamos parecidos?</h1>
-  <p class="sub">Comparables de préstamos conduit CMBS, de documentos públicos de SEC EDGAR.</p>
+  <a class="nav" href="/scenarios">see all twelve scenarios at once →</a>
+  <h1>What terms did similar loans get?</h1>
+  <p class="sub">Comparables from conduit CMBS loans, taken from public SEC EDGAR documents.</p>
 
-  <div class="casos" id="casos">
-    <b>Situaciones para probar</b>
+  <div class="scenarios" id="scenarios">
+    <b>Situations to try</b>
     <div id="chips"></div>
   </div>
 
   <form id="f">
     <div>
-      <label for="state">Estado</label>
+      <label for="state">State</label>
       <input id="state" value="GA" maxlength="2" style="text-transform:uppercase">
     </div>
     <div>
-      <label for="type">Tipo</label>
+      <label for="type">Type</label>
       <select id="type"></select>
     </div>
     <div>
-      <label for="amount">Monto (US$)</label>
+      <label for="amount">Amount (US$)</label>
       <input id="amount" value="28000000" inputmode="numeric">
     </div>
     <div>
-      <label for="ltv">LTV que pide</label>
-      <input id="ltv" value="70" placeholder="opcional">
+      <label for="ltv">LTV sought</label>
+      <input id="ltv" value="70" placeholder="optional">
     </div>
-    <div><button id="go">Buscar</button></div>
+    <div><button id="go">Search</button></div>
   </form>
 
-  <button type="button" class="reabrir" id="reabrir">ver otras situaciones</button>
+  <button type="button" class="reopen" id="reopen">see other situations</button>
   <div id="out"></div>
 
-  <footer id="pie"></footer>
+  <footer id="foot"></footer>
 </main>
 
 <script>
@@ -134,40 +144,40 @@ const fmtPct = (v) => (v * 100).toFixed(1) + "%";
 const fmtX = (v) => v.toFixed(2) + "x";
 const fmtUSD = (v) => "US$" + Math.round(v).toLocaleString("en-US");
 
-/** Cada métrica sabe cómo se lee: un LTV en 0,61 y un DSCR en 1,44 no son lo mismo. */
-const FORMATO = { ltv: fmtPct, debt_yield: fmtPct, interest_rate: fmtPct, dscr: fmtX };
+/** Each metric knows how it reads: an LTV of 0.61 and a DSCR of 1.44 are not alike. */
+const FORMAT = { ltv: fmtPct, debt_yield: fmtPct, interest_rate: fmtPct, dscr: fmtX };
 
 /**
- * Los mismos doce casos que corre `npm run api:casos`.
+ * The same twelve scenarios that `npm run api:scenarios` runs.
  *
- * Los dos marcados `vacio` esperan NO encontrar comparables, y eso es una
- * respuesta útil: "esto no es un deal conduit". Se muestran con borde punteado
- * para que se entienda que están ahí a propósito.
+ * The two marked `empty` expect to find NO comparables, and that is a useful
+ * answer: "this is not a conduit deal". They are shown with a dashed border so it
+ * is clear they are there on purpose.
  */
-const CASOS = [
-  { t: "Refi multifamily GA 28M", state: "GA", type: "Multifamily", amount: 28e6, ltv: 70 },
+const SCENARIOS = [
+  { t: "Multifamily refi GA 28M", state: "GA", type: "Multifamily", amount: 28e6, ltv: 70 },
   { t: "Multifamily TX 15M", state: "TX", type: "Multifamily", amount: 15e6 },
-  { t: "Oficinas NY 45M", state: "NY", type: "Office", amount: 45e6, ltv: 60 },
+  { t: "Office NY 45M", state: "NY", type: "Office", amount: 45e6, ltv: 60 },
   { t: "Industrial CA 30M", state: "CA", type: "Industrial", amount: 30e6 },
-  { t: "Hotelería FL 22M", state: "FL", type: "Hospitality", amount: 22e6 },
+  { t: "Hospitality FL 22M", state: "FL", type: "Hospitality", amount: 22e6 },
   { t: "Retail FL 12M", state: "FL", type: "Retail", amount: 12e6 },
   { t: "Industrial NJ 25M", state: "NJ", type: "Industrial", amount: 25e6, ltv: 65 },
   { t: "Multifamily NY 60M", state: "NY", type: "Multifamily", amount: 60e6, ltv: 75 },
   { t: "Self storage AZ 8M", state: "AZ", type: "Self Storage", amount: 8e6 },
   { t: "Mixed use IL 20M", state: "IL", type: "Mixed Use", amount: 20e6 },
-  { t: "Retail OH 4M", state: "OH", type: "Retail", amount: 4e6, vacio: true },
-  { t: "Manufactured WY 6M", state: "WY", type: "Manufactured", amount: 6e6, vacio: true },
+  { t: "Retail OH 4M", state: "OH", type: "Retail", amount: 4e6, empty: true },
+  { t: "Manufactured WY 6M", state: "WY", type: "Manufactured", amount: 6e6, empty: true },
 ];
 
-function pintarCasos() {
-  $("#chips").innerHTML = CASOS.map(
-    (c, i) => `<button type="button" class="chip${c.vacio ? " vacio" : ""}" data-i="${i}"
-                 title="${c.vacio ? "Esperamos que NO haya comparables: esa es la respuesta" : ""}">${c.t}</button>`,
+function paintScenarios() {
+  $("#chips").innerHTML = SCENARIOS.map(
+    (c, i) => `<button type="button" class="chip${c.empty ? " empty" : ""}" data-i="${i}"
+                 title="${c.empty ? "We expect NO comparables: that is the answer" : ""}">${c.t}</button>`,
   ).join("");
   $("#chips").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-i]");
     if (!b) return;
-    const c = CASOS[+b.dataset.i];
+    const c = SCENARIOS[+b.dataset.i];
     $("#state").value = c.state;
     $("#type").value = c.type;
     $("#amount").value = String(c.amount);
@@ -176,109 +186,111 @@ function pintarCasos() {
   });
 }
 
-async function cargarTipos() {
+async function loadTypes() {
   const r = await fetch("/corpus").then((x) => x.json());
-  $("#type").innerHTML = r.data.tipos
+  $("#type").innerHTML = r.data.types
     .map((t) => `<option${t === "Multifamily" ? " selected" : ""}>${t}</option>`)
     .join("");
-  $("#pie").textContent = r.data.estampa;
+  $("#foot").textContent = r.data.provenanceStamp;
 }
 
 function render(d) {
-  if (!d.suficiente) {
+  if (!d.sufficient) {
     /**
-     * La negativa no es una pantalla vacía: dice cuántos hay, cuántos hacen falta
-     * y qué pasaría al aflojar cada criterio, para que decida quien pregunta.
+     * The refusal is not an empty screen: it says how many there are, how many are
+     * needed and what would happen on loosening each criterion, so the asker
+     * decides.
      */
-    return `<div class="aviso">
-      <h2>No alcanza para dar un rango</h2>
-      <p>Hacen falta al menos <b>${d.minimo}</b> comparables y no los hay ni abriendo
-      el radio a todo el país. Con menos, una mediana diría más de lo que estos datos saben.</p>
-      <p>Lo que se intentó:</p>
-      <ul>${d.escalera
-        .map((p) => `<li>${p.etiqueta} → <b>${p.encontrados}</b></li>`)
+    return `<div class="notice">
+      <h2>Not enough to give a range</h2>
+      <p>At least <b>${d.minimum}</b> comparables are needed and there are not that many
+      even opening the radius to the whole country. With fewer, a median would say more
+      than this data knows.</p>
+      <p>What was tried:</p>
+      <ul>${d.ladder
+        .map((p) => `<li>${p.label} → <b>${p.found}</b></li>`)
         .join("")}</ul>
-      <p>Y si además aflojás el tamaño o la ventana:</p>
-      <ul>${d.siAmplias
-        .map((s) => `<li>${s.criterio} → <b>${s.encontrados}</b></li>`)
+      <p>And if you also loosen the size or the window:</p>
+      <ul>${d.ifWidened
+        .map((s) => `<li>${s.criterion} → <b>${s.found}</b></li>`)
         .join("")}</ul>
-      <p class="sm">Para un préstamo así, este canal probablemente no sea el camino:
-      un banco regional o una agencia son la alternativa.</p>
+      <p class="sm">For a loan like this, this channel is probably not the route:
+      a regional bank or an agency is the alternative.</p>
     </div>`;
   }
 
-  const obj = d.objetivo
-    ? `<div class="veredicto">De los <b>${d.objetivo.de}</b> comparables con LTV publicado,
-       <b>${d.objetivo.alcanzaron}</b> llegaron a ${fmtPct(d.objetivo.ltv)} o más.
+  const target = d.target
+    ? `<div class="verdict">Of the <b>${d.target.of}</b> comparables that publish an LTV,
+       <b>${d.target.reached}</b> reached ${fmtPct(d.target.ltv)} or higher.
        ${
-         d.objetivo.alcanzaron / Math.max(1, d.objetivo.de) < 0.25
-           ? "<b>Es una porción chica del canal:</b> conviene revisar la expectativa antes de salir a buscar."
-           : "Está dentro de lo que este canal viene dando."
+         d.target.reached / Math.max(1, d.target.of) < 0.25
+           ? "<b>That is a small slice of the channel:</b> the expectation is worth revisiting before going out to market."
+           : "It is within what this channel has been delivering."
        }</div>`
     : "";
 
-  return `${obj}
+  return `${target}
     <section>
-      <h2>${d.encontrados} comparables<span class="alcance${
-        d.alcance === "estado" ? "" : " abierto"
-      }">${d.alcance === "estado" ? d.alcanceEtiqueta : `${d.alcanceEtiqueta} — radio ampliado`}</span></h2>
+      <h2>${d.found} comparables<span class="scope${
+        d.scope === "state" ? "" : " widened"
+      }">${d.scope === "state" ? d.scopeLabel : `${d.scopeLabel} — radius widened`}</span></h2>
       ${
-        d.alcance === "estado"
+        d.scope === "state"
           ? ""
-          : `<p class="escalera">No alcanzaba con ${d.escalera[0].etiqueta} solo (<i>${
-              d.escalera[0].encontrados
-            }</i> comparables), así que se abrió el radio. ${d.escalera
-              .map((p) => `${p.etiqueta}: <i>${p.encontrados}</i>`)
+          : `<p class="ladder">${d.ladder[0].label} alone was not enough (<i>${
+              d.ladder[0].found
+            }</i> comparables), so the radius was opened. ${d.ladder
+              .map((p) => `${p.label}: <i>${p.found}</i>`)
               .join(" · ")}</p>`
       }
       <table>
-        <thead><tr><th></th><th>p25</th><th>mediana</th><th>p75</th><th>sobre</th></tr></thead>
-        <tbody>${d.distribuciones
+        <thead><tr><th></th><th>p25</th><th>median</th><th>p75</th><th>over</th></tr></thead>
+        <tbody>${d.distributions
           .map((m) => {
-            const f = FORMATO[m.metrica] ?? ((v) => v.toFixed(2));
+            const f = FORMAT[m.metric] ?? ((v) => v.toFixed(2));
             return `<tr>
-              <td>${m.etiqueta}</td>
+              <td>${m.label}</td>
               <td class="muted">${f(m.p25)}</td>
               <td class="big">${f(m.p50)}</td>
               <td class="muted">${f(m.p75)}</td>
-              <td class="muted sm">${m.base} préstamos</td>
+              <td class="muted sm">${m.base} loans</td>
             </tr>`;
           })
           .join("")}</tbody>
       </table>
-      <p class="muted sm" style="margin-top:10px">La columna "sobre" no es la misma para
-      todas: no todos los préstamos publican todas las métricas, y cada fila se calculó
-      solo con los que sí.</p>
+      <p class="muted sm" style="margin-top:10px">The "over" column is not the same for
+      all of them: not every loan publishes every metric, and each row was computed only
+      with the ones that do.</p>
     </section>
 
     <section>
-      <h2>Los comparables</h2>
+      <h2>The comparables</h2>
       <table>
-        <thead><tr><th>propiedad</th><th>ciudad</th><th>monto</th><th>fecha</th><th>fuente</th></tr></thead>
-        <tbody>${d.muestra
+        <thead><tr><th>property</th><th>city</th><th>amount</th><th>date</th><th>source</th></tr></thead>
+        <tbody>${d.sample
           .map(
             (c) => `<tr>
-              <td>${c.propiedad ?? "<span class=muted>sin nombre</span>"}</td>
-              <td class="muted sm">${c.ciudad ?? "—"}</td>
-              <td>${fmtUSD(c.monto)}</td>
-              <td class="muted sm">${c.fecha}</td>
-              <td class="sm"><a target="_blank" rel="noopener" href="${c.documento}"
-                 title="Annex A de ${c.emision}">${c.emision.slice(0, 26)}</a>
-                 <a class="muted" target="_blank" rel="noopener" href="${c.indice}"
-                    title="Todos los documentos de esta emisión en EDGAR">↗</a></td>
+              <td>${c.property ?? "<span class=muted>no name</span>"}</td>
+              <td class="muted sm">${c.city ?? "—"}</td>
+              <td>${fmtUSD(c.amount)}</td>
+              <td class="muted sm">${c.date}</td>
+              <td class="sm"><a target="_blank" rel="noopener" href="${c.document}"
+                 title="Annex A of ${c.issuance}">${c.issuance.slice(0, 26)}</a>
+                 <a class="muted" target="_blank" rel="noopener" href="${c.index}"
+                    title="All documents of this issuance on EDGAR">↗</a></td>
             </tr>`,
           )
           .join("")}</tbody>
       </table>
     </section>
 
-    <div class="canal">${d.corpus.canal}</div>`;
+    <div class="channel">${d.corpus.channel}</div>`;
 }
 
 $("#f").addEventListener("submit", async (e) => {
   e.preventDefault();
   $("#go").disabled = true;
-  $("#out").innerHTML = `<p class="muted" style="margin-top:32px">Buscando…</p>`;
+  $("#out").innerHTML = `<p class="muted" style="margin-top:32px">Searching…</p>`;
   const q = new URLSearchParams({
     state: $("#state").value.trim(),
     type: $("#type").value,
@@ -288,31 +300,31 @@ $("#f").addEventListener("submit", async (e) => {
   try {
     const r = await fetch("/comps?" + q).then((x) => x.json());
     if (r.data.error) {
-      $("#out").innerHTML = `<div class="aviso"><h2>Parámetros</h2><ul>${r.data.error.fallos
-        .map((f) => `<li>${f.mensaje}${f.esperado ? ` — ejemplo: <code>${f.esperado}</code>` : ""}</li>`)
+      $("#out").innerHTML = `<div class="notice"><h2>Parameters</h2><ul>${r.data.error.failures
+        .map((f) => `<li>${f.message}${f.expected ? ` — example: <code>${f.expected}</code>` : ""}</li>`)
         .join("")}</ul></div>`;
     } else {
       $("#out").innerHTML = render(r.data);
-      $("#pie").textContent = r.data.corpus.estampa;
+      $("#foot").textContent = r.data.corpus.provenanceStamp;
       /**
-       * Con un resultado en pantalla los ejemplos dejan de ayudar y empiezan a
-       * competir con la respuesta. Se esconden, y queda el enlace por si alguien
-       * quiere volver a mirarlos.
+       * With a result on screen the examples stop helping and start competing with
+       * the answer. They are hidden, and the link remains for anyone who wants to
+       * look at them again.
        */
-      $("#casos").classList.add("oculto");
-      $("#reabrir").classList.add("visible");
+      $("#scenarios").classList.add("hidden");
+      $("#reopen").classList.add("visible");
     }
   } catch (err) {
-    $("#out").innerHTML = `<div class="aviso"><h2>No se pudo consultar</h2><p>${err}</p></div>`;
+    $("#out").innerHTML = `<div class="notice"><h2>Could not query</h2><p>${err}</p></div>`;
   }
   $("#go").disabled = false;
 });
 
-$("#reabrir").addEventListener("click", () => {
-  $("#casos").classList.remove("oculto");
-  $("#reabrir").classList.remove("visible");
+$("#reopen").addEventListener("click", () => {
+  $("#scenarios").classList.remove("hidden");
+  $("#reopen").classList.remove("visible");
 });
 
-cargarTipos();
-pintarCasos();
+paintScenarios();
+loadTypes();
 </script>

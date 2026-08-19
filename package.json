@@ -67,7 +67,8 @@
     "db:fix-states": "tsx db/fixStates.ts",
     "db:missing-state": "tsx db/missingState.ts",
     "db:provenance": "tsx db/provenanceCli.ts",
-    "api:scenarios": "tsx api/scenarios.ts"
+    "api:scenarios": "tsx api/scenarios.ts",
+    "api:contract": "python3 tools/check-html-contract.py"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",
