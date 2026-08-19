@@ -1,33 +1,34 @@
 /**
- * ¿La brecha entre emisoras es composición de cartera?
+ * Is the gap between issuers portfolio composition?
  *
  *   npm run db:composition
  *
- * EL ÚLTIMO ATAQUE QUE QUEDA
+ * THE LAST ATTACK REMAINING
  *
- * BANK transfiere a special servicing 4 veces menos que BBCMS. Eso sobrevivió
- * siete intentos de matarlo: la cobertura del join (97,7%), la población que
- * cada shelf lista, el formato del bloque, los filtros del parser, el valor
- * crudo verificado en veinte emisiones, el administrador maestro y el especial.
+ * BANK transfers to special servicing 4 times less often than BBCMS. That survived
+ * seven attempts to kill it: join coverage (97.7%), the population each shelf
+ * lists, the block format, the parser's filters, the raw value verified across
+ * twenty issuances, the master servicer and the special servicer.
  *
- * Falta el que mató todo lo demás en este proyecto: la composición. El SIR de
- * `db:predictors` estandariza por añada y por tercil de DSCR. Nunca por tipo de
- * propiedad. Si BANK es pesado en multifamily y BBCMS en oficinas, la brecha se
- * explica entera sin que nadie suscriba mejor.
+ * What is missing is the one that killed everything else in this project:
+ * composition. The SIR in `db:predictors` standardises by vintage and by DSCR
+ * tercile. Never by property type. If BANK is heavy in multifamily and BBCMS in
+ * office, the gap is explained entirely without anyone underwriting better.
  *
- * Ya nos pasó exactamente eso: el pico de 2023 sobrevivió cinco ataques y murió
- * cuando la composición mostró 17,5% oficinas y 15% hotel contra 11,2% y 10%.
+ * That is exactly what already happened to us: the 2023 peak survived five attacks
+ * and died when the composition showed 17.5% office and 15% hotel against 11.2%
+ * and 10%.
  *
- * EL ORDEN ESTÁ FORZADO POR EL CÓDIGO
+ * THE ORDER IS ENFORCED BY THE CODE
  *
- * Primero la cobertura, después los valores crudos, y solo entonces el SIR. Si
- * la cobertura no llega al umbral, el script NO reporta SIR.
+ * Coverage first, then the raw values, and only then the SIR. If coverage does not
+ * reach the threshold, the script does NOT report a SIR.
  *
- * Y los valores crudos van antes que cualquier agregación porque `property_type`
- * se guarda como texto tal cual viene del Annex A, sin canónico. "Office",
- * "office", "Various" y "Mixed Use" en la misma columna producen estratos que
- * parecen tipos y son variantes de escritura. Agrupar sin mirar sería fabricar
- * celdas vacías y después estandarizar contra ellas.
+ * And the raw values come before any aggregation because `property_type` is stored
+ * as text exactly as it comes from the Annex A, with no canonicalisation.
+ * "Office", "office", "Various" and "Mixed Use" in the same column produce strata
+ * that look like types and are spelling variants. Grouping without looking would
+ * be manufacturing empty cells and then standardising against them.
  */
 
 import { closePool, ping, query } from "../db/client.js";
@@ -39,76 +40,77 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Fijados antes de ver nada. */
+/** Fixed before looking at anything. */
 const COBERTURA_MINIMA = 0.9;
 const MIN_POOL_SHELF = 150;
 
 /**
- * `--sin-vendedor NCB`: sacar un originador del numerador Y del denominador.
+ * `--without-seller NCB`: remove an originator from the numerator AND the
+ * denominator.
  *
- * POR QUÉ HACE FALTA
+ * WHY IT IS NEEDED
  *
- * `db:seller` mostró que NCB —National Cooperative Bank— aporta 396 préstamos
- * al corpus con CERO transferencias, y 363 de esos están en BANK: el 27% de su
- * pool. NCB presta a cooperativas de vivienda, un producto con apalancamiento
- * bajísimo que estructuralmente no incumple.
+ * `db:seller` showed that NCB —National Cooperative Bank— contributes 396 loans to
+ * the corpus with ZERO transfers, and 363 of those are in BANK: 27% of its pool.
+ * NCB lends to housing co-operatives, a product with extremely low leverage that
+ * structurally does not default.
  *
- * El problema es que `property_type` no distingue eso. Solo 17 filas del corpus
- * dicen "Cooperative"; el resto de los préstamos de cooperativa vienen
- * etiquetados como multifamily, que es la categoría de MAYOR riesgo (5,4%). O
- * sea que la estandarización les asigna una tasa esperada alta a préstamos que
- * nunca fallan, e infla el esperado de quien los tenga.
+ * The problem is that `property_type` does not distinguish that. Only 17 rows in
+ * the corpus say "Cooperative"; the rest of the co-operative loans come labelled as
+ * multifamily, which is the HIGHEST risk category (5.4%). So the standardisation
+ * assigns a high expected rate to loans that never fail, and inflates the expected
+ * count of whoever holds them.
  *
- * Cuenta gruesa: 363 × 5% son ~18 eventos esperados imposibles. El esperado de
- * BANK es 30,9 con 13 observados. Sin esos, sería 13 sobre ~13.
+ * Rough arithmetic: 363 × 5% is ~18 impossible expected events. BANK's expected is
+ * 30.9 with 13 observed. Without those, it would be 13 over ~13.
  *
- * POR QUÉ SE EXCLUYE POR NOMBRE Y NO POR RESULTADO
+ * WHY IT IS EXCLUDED BY NAME AND NOT BY OUTCOME
  *
- * Excluir "vendedores con cero eventos" sería seleccionar por la variable
- * dependiente y garantizaría el resultado. NCB se excluye porque es un
- * prestamista de un producto distinto, lo cual se sabe sin mirar sus eventos.
- * El criterio es discutible; por eso es un flag explícito y no un default.
+ * Excluding "sellers with zero events" would be selecting on the dependent
+ * variable and would guarantee the result. NCB is excluded because it is a lender
+ * of a different product, which is known without looking at its events. The
+ * criterion is debatable; that is why it is an explicit flag and not a default.
  */
 /**
- * `--estrato vendedor`: estandarizar por originador en vez de por tipo.
+ * `--stratum seller`: standardise by originator instead of by type.
  *
- * Excluir a NCB a mano movió el SIR de BANK de 0,42 a 0,57 — un solo vendedor
- * explicaba un tercio de la brecha. Esta es la versión sistemática de esa
- * intervención: en vez de sacar un originador elegido a dedo, se pregunta
- * cuántos eventos esperaría cada emisora si sus préstamos fallaran a la tasa
- * general DE SU MISMO VENDEDOR Y AÑADA.
+ * Excluding NCB by hand moved BANK's SIR from 0.42 to 0.57 — a single seller
+ * explained a third of the gap. This is the systematic version of that
+ * intervention: instead of removing a hand-picked originator, it asks how many
+ * events each issuer would expect if its loans failed at the general rate OF ITS
+ * OWN SELLER AND VINTAGE.
  *
- * QUÉ SIGNIFICA CADA RESULTADO
+ * WHAT EACH RESULT MEANS
  *
- * Si el SIR por vendedor se aplana cerca de 1 para todas las emisoras, entonces
- * "efecto emisora" era el mix de originadores: el shelf no suscribe, elige a
- * quién comprarle.
+ * If the per-seller SIR flattens near 1 for every issuer, then the "issuer effect"
+ * was the mix of originators: the shelf does not underwrite, it chooses who to buy
+ * from.
  *
- * Si se mantiene, el mismo vendedor rinde distinto según a qué emisión coloca,
- * y eso ya no es composición: es selección dentro del vendedor —qué préstamos
- * acepta cada shelf— o algo que todavía no vimos.
+ * If it holds, the same seller performs differently depending on which issuance it
+ * places into, and that is no longer composition: it is selection within the
+ * seller —which loans each shelf accepts— or something we have not seen yet.
  *
- * POR QUÉ NO ES CIRCULAR
+ * WHY IT IS NOT CIRCULAR
  *
- * Estandarizar por la variable que uno sospecha causa el efecto no es hacer
- * trampa: es la definición de descomponer. Sería circular si el vendedor fuera
- * una función de la emisora, y no lo es —el mismo vendedor coloca en varias—.
+ * Standardising by the variable you suspect causes the effect is not cheating: it
+ * is the definition of decomposing. It would be circular if the seller were a
+ * function of the issuer, and it is not — the same seller places into several.
  *
- * LOS 136 VENDEDORES SE COLAPSAN A LOS 15 MÁS GRANDES
+ * THE 136 SELLERS COLLAPSE TO THE 15 LARGEST
  *
- * 136 × 5 añadas son 680 estratos para 168 eventos. La cola de vendedores con
- * dos o tres préstamos produciría estratos donde esperado = observado por
- * construcción, que diluyen sin aportar contraste.
+ * 136 × 5 vintages is 680 strata for 168 events. The tail of sellers with two or
+ * three loans would produce strata where expected = observed by construction, which
+ * dilute without contributing contrast.
  */
-const estratoFlag = process.argv.indexOf("--estrato");
+const estratoFlag = process.argv.indexOf("--stratum");
 const ESTRATO = estratoFlag === -1 ? "tipo" : (process.argv[estratoFlag + 1] ?? "tipo");
-const POR_VENDEDOR = ESTRATO === "vendedor";
-const TOP_VENDEDORES = 15;
+const POR_VENDEDOR = ESTRATO === "seller";
+const TOP_SELLERS = 15;
 
-const sinFlag = process.argv.indexOf("--sin-vendedor");
-const SIN_VENDEDOR = sinFlag === -1 ? null : (process.argv[sinFlag + 1] ?? null);
-const FILTRO_VENDEDOR = SIN_VENDEDOR
-  ? `AND coalesce(btrim(l.loan_seller), '') <> '${SIN_VENDEDOR.replace(/'/g, "''")}'`
+const sinFlag = process.argv.indexOf("--without-seller");
+const WITHOUT_SELLER = sinFlag === -1 ? null : (process.argv[sinFlag + 1] ?? null);
+const FILTRO_VENDEDOR = WITHOUT_SELLER
+  ? `AND coalesce(btrim(l.loan_seller), '') <> '${WITHOUT_SELLER.replace(/'/g, "''")}'`
   : "";
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
@@ -129,26 +131,26 @@ const SHELF = `
 /**
  * Los 41 valores crudos colapsados a nueve tipos.
  *
- * POR QUÉ HACE FALTA
+ * WHY IT IS NEEDED
  *
- * `property_type` trae de todo: tipos reales (Multifamily, Office), subtipos
- * que algunos filings publican en la misma columna (Suburban, CBD, Garden,
- * Anchored, Low Rise, Full Service) y cosas que no son propiedades en absoluto
- * (Mezzanine, "Equityholder Debt or Debt-Like Pre").
+ * `property_type` carries everything: real types (Multifamily, Office), subtypes
+ * that some filings publish in the same column (Suburban, CBD, Garden, Anchored,
+ * Low Rise, Full Service) and things that are not properties at all (Mezzanine,
+ * "Equityholder Debt or Debt-Like Pre").
  *
- * Con 41 tipos × 5 añadas son hasta 205 estratos para 147 eventos. En un
- * estrato de un préstamo la tasa "general" la determina ese mismo préstamo, así
- * que esperado = observado y el estrato no aporta contraste: solo diluye. Peor,
- * con celdas de dos o tres la estandarización empieza a producir SIR extremos
- * por ruido. Sobre-estratificar es una forma conocida de fabricar un hallazgo.
+ * With 41 types × 5 vintages that is up to 205 strata for 147 events. In a stratum
+ * of one loan the "general" rate is determined by that same loan, so expected =
+ * observed and the stratum contributes no contrast: it only dilutes. Worse, with
+ * cells of two or three the standardisation starts producing extreme SIRs from
+ * noise. Over-stratifying is a known way of manufacturing a finding.
  *
- * POR QUÉ EL CANÓNICO VIVE ACÁ Y NO EN EL COSECHADOR
+ * WHY THE CANONICALISATION LIVES HERE AND NOT IN THE HARVESTER
  *
- * A diferencia del nombre del administrador —donde la variante era un artefacto
- * de nuestra extracción— acá el valor crudo ES lo que dice el documento. Un
- * filing que publica "Suburban" está diciendo eso. Agrupar es una decisión
- * analítica, no una corrección, y por eso se toma en el análisis, se imprime, y
- * se puede discutir sin recosechar.
+ * Unlike the servicer's name —where the variant was an artefact of our extraction—
+ * here the raw value IS what the document says. A filing publishing "Suburban" is
+ * saying that. Grouping is an analytical decision, not a correction, and that is
+ * why it is taken in the analysis, printed, and can be argued with without
+ * re-harvesting.
  */
 const TIPO = `
   CASE
@@ -168,9 +170,9 @@ const BASE = `
   SELECT l.id,
          ${SHELF} AS shelf,
          ${TIPO} AS tipo_crudo,
-         nullif(btrim(l.loan_seller), '') AS vendedor,
+         nullif(btrim(l.loan_seller), '') AS seller,
          l.property_type AS tipo_original,
-         extract(year FROM f.filed_at)::int AS anada,
+         extract(year FROM f.filed_at)::int AS vintage,
          (d.transfer_date IS NOT NULL)::int AS evento
     FROM corpus.loans l
     JOIN corpus.filings f ON f.accession = l.accession
@@ -181,20 +183,20 @@ const BASE = `
 `;
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿Composición de cartera?");
+console.log("Portfolio composition?");
 console.log(`${"═".repeat(78)}`);
-if (SIN_VENDEDOR) {
+if (WITHOUT_SELLER) {
   console.log(
-    `\n\x1b[33m  Excluyendo al vendedor "${SIN_VENDEDOR}" del numerador y del denominador.\x1b[0m`,
+    `\n\x1b[33m  Excluding the seller "${WITHOUT_SELLER}" from the numerator and the denominator.\x1b[0m`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// 1. Cobertura, antes que nada
+// 1. Coverage, before anything else
 // ---------------------------------------------------------------------------
 
 const { rows: cob } = await query<{
-  n: string; con_tipo: string; shelves_flojos: string;
+  n: string; con_tipo: string; weak_shelves: string;
 }>(
   `WITH base AS (${BASE})
    SELECT count(*)::text AS n,
@@ -203,29 +205,29 @@ const { rows: cob } = await query<{
              SELECT shelf FROM base GROUP BY shelf
               HAVING count(*) FILTER (WHERE tipo_crudo IS NOT NULL)::numeric
                      / count(*) < ${COBERTURA_MINIMA}
-           ) x) AS shelves_flojos
+           ) x) AS weak_shelves
      FROM base`,
 );
 
 const n = Number(cob[0]!.n);
-const conTipo = Number(cob[0]!.con_tipo);
-const cobertura = conTipo / n;
+const withType = Number(cob[0]!.con_tipo);
+const cobertura = withType / n;
 
 console.log(`\n${"─".repeat(78)}`);
 console.log("Cobertura de property_type");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
-  `  ${conTipo.toLocaleString("en-US")} de ${n.toLocaleString("en-US")} préstamos  →  ` +
+  `  ${withType.toLocaleString("en-US")} of ${n.toLocaleString("en-US")} loans  →  ` +
     `${cobertura >= COBERTURA_MINIMA ? "\x1b[32m" : "\x1b[31m"}${pct(cobertura)}\x1b[0m` +
     `   \x1b[90m(umbral ${pct(COBERTURA_MINIMA, 0)})\x1b[0m`,
 );
 
 /**
- * La cobertura global puede estar bien y estar rota en un shelf.
+ * Global coverage can be fine and broken within one shelf.
  *
- * Si a BANK le falta el tipo en la mitad de sus préstamos y a BBCMS en ninguno,
- * estandarizar compara la composición conocida de uno contra la de otro — que
- * es el sesgo que este script viene a descartar, entrando por la puerta de al
+ * If BANK is missing the type on half its loans and BBCMS on none, standardising
+ * compares one's known composition against the other's — which is the bias this
+ * script exists to rule out, coming in through the side
  * lado.
  */
 const { rows: porShelfCob } = await query<{
@@ -237,15 +239,15 @@ const { rows: porShelfCob } = await query<{
      FROM base GROUP BY shelf ORDER BY count(*) DESC`,
 );
 
-console.log(`\n  por emisora:`);
+console.log(`\n  por issuer:`);
 /**
- * Este filtro estaba CALCULADO y sin usar: la consulta traía `shelves_flojos`
- * y el script nunca lo miraba. Benchmark entró al SIR con 88,3% de cobertura,
- * `otros` con 87,5% y GS con 76,5%, todos debajo del umbral que el propio
- * script declara.
+ * This filter was CALCULATED and unused: the query returned `weak_shelves` and the
+ * script never looked at it. Benchmark entered the SIR with 88.3% coverage,
+ * `other` with 87.5% and GS with 76.5%, all below the threshold the script itself
+ * declares.
  *
- * Escribir la verificación y no conectarla es peor que no escribirla: deja la
- * apariencia de que el control existe.
+ * Writing the check and not wiring it up is worse than not writing it: it leaves
+ * the appearance that the control exists.
  */
 const excluidos: string[] = [];
 for (const r of porShelfCob) {
@@ -263,7 +265,7 @@ const FILTRO_SHELF = excluidos.length
   : "";
 
 // ---------------------------------------------------------------------------
-// 2. Los valores crudos, antes de agrupar
+// 2. The raw values, before grouping
 // ---------------------------------------------------------------------------
 
 const { rows: crudos } = await query<{
@@ -278,7 +280,7 @@ const { rows: crudos } = await query<{
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Tipos canónicos y qué valores crudos absorbió cada uno`);
+console.log(`Canonical types and which raw values each absorbed`);
 console.log(`${"─".repeat(78)}\n`);
 
 for (const r of crudos) {
@@ -291,41 +293,41 @@ for (const r of crudos) {
 }
 
 /**
- * Si hay muchas variantes de escritura, cualquier estandarización posterior es
- * ruido con forma de estrato. Se avisa acá y no después.
+ * If there are many spelling variants, any later standardisation is noise in the
+ * shape of a stratum. It is flagged here and not afterwards.
  */
-const sospechosos = crudos.filter((r) => {
+const suspects = crudos.filter((r) => {
   const t = (r.tipo || "").toLowerCase().trim();
   return crudos.some(
     (o) => o !== r && (o.tipo || "").toLowerCase().trim() === t,
   );
 });
-if (sospechosos.length > 0) {
+if (suspects.length > 0) {
   console.log(
-    `\n  \x1b[31m${sospechosos.length} valores difieren solo en mayúsculas o espacios.\x1b[0m`,
+    `\n  \x1b[31m${suspects.length} values differ only in case or spacing.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mSon el mismo tipo partido en estratos distintos: hay que canonizar antes.\x1b[0m`,
+    `  \x1b[90mThey are the same type split across different strata: canonicalise first.\x1b[0m`,
   );
 }
 
 if (cobertura < COBERTURA_MINIMA) {
   console.log(
-    `\n  \x1b[31mCOBERTURA INSUFICIENTE. No se reporta SIR.\x1b[0m`,
+    `\n  \x1b[31mINSUFFICIENT COVERAGE. No SIR is reported.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mEstandarizar con un tercio de los préstamos sin tipo compara la\x1b[0m`,
+    `  \x1b[90mStandardising with a third of the loans lacking a type compares one\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mcomposición conocida de una emisora contra la de otra, que es\x1b[0m`,
+    `  \x1b[90missuer's known composition against another's, which is\x1b[0m`,
   );
-  console.log(`  \x1b[90mexactamente el sesgo que este script viene a descartar.\x1b[0m\n`);
+  console.log(`  \x1b[90mexactly the bias this script exists to rule out.\x1b[0m\n`);
   await closePool();
   process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
-// 3. Mezcla por emisora
+// 3. Mezcla por issuer
 // ---------------------------------------------------------------------------
 
 const { rows: mezcla } = await query<{
@@ -351,10 +353,10 @@ for (const r of mezcla) {
 }
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Mezcla de tipos por emisora (% del pool con tipo conocido)");
+console.log("Type mix by issuer (% of the pool with a known type)");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
-  `  emisora     ` + tiposTop.map((t) => (t || "?").slice(0, 9).padStart(10)).join(""),
+  `  issuer     ` + tiposTop.map((t) => (t || "?").slice(0, 9).padStart(10)).join(""),
 );
 console.log(`  ${"─".repeat(72)}`);
 for (const [shelf, m] of [...mezclaMap].sort()) {
@@ -366,16 +368,16 @@ for (const [shelf, m] of [...mezclaMap].sort()) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. SIR estandarizado por tipo × añada
+// 4. SIR standardised by type × vintage
 // ---------------------------------------------------------------------------
 
 /**
- * Estandarización indirecta: cuántos eventos esperaría cada emisora si sus
- * préstamos fallaran a la tasa general de su mismo tipo y añada.
+ * Indirect standardisation: how many events each issuer would expect if its loans
+ * failed at the general rate of their own type and vintage.
  *
- * El estrato es tipo × añada y no solo tipo, porque las dos cosas confunden a la
- * vez: BANK es más viejo que BBCMS (64% en 2020-21 contra 37%) y eso empuja en
- * dirección contraria a la composición.
+ * The stratum is type × vintage and not type alone, because both confound at once:
+ * BANK is older than BBCMS (64% in 2020-21 against 37%) and that pushes in the
+ * opposite direction to composition.
  */
 const { rows: sir } = await query<{
   shelf: string; n: string; obs: string; esp: string;
@@ -383,42 +385,42 @@ const { rows: sir } = await query<{
   POR_VENDEDOR
     ? `WITH base0 AS (${BASE} AND l.loan_seller IS NOT NULL ${FILTRO_SHELF}),
        top AS (
-         SELECT vendedor FROM base0 GROUP BY vendedor
-          ORDER BY count(*) DESC LIMIT ${TOP_VENDEDORES}
+         SELECT seller FROM base0 GROUP BY seller
+          ORDER BY count(*) DESC LIMIT ${TOP_SELLERS}
        ),
        base AS (
-         SELECT b.*, CASE WHEN b.vendedor IN (SELECT vendedor FROM top)
-                          THEN b.vendedor ELSE 'otros' END AS v
+         SELECT b.*, CASE WHEN b.seller IN (SELECT seller FROM top)
+                          THEN b.seller ELSE 'otros' END AS v
            FROM base0 b
        ),
        tasas AS (
-         SELECT v, anada, sum(evento)::numeric / count(*) AS tasa
-           FROM base GROUP BY v, anada
+         SELECT v, vintage, sum(evento)::numeric / count(*) AS tasa
+           FROM base GROUP BY v, vintage
        )
        SELECT b.shelf, count(*)::text AS n,
               sum(b.evento)::text AS obs,
               round(sum(t.tasa), 2)::text AS esp
-         FROM base b JOIN tasas t ON t.v = b.v AND t.anada = b.anada
+         FROM base b JOIN tasas t ON t.v = b.v AND t.vintage = b.vintage
         GROUP BY b.shelf
        HAVING count(*) >= ${MIN_POOL_SHELF}
         ORDER BY sum(b.evento)::numeric / nullif(sum(t.tasa), 0)`
     : `WITH base AS (${BASE} AND l.property_type IS NOT NULL ${FILTRO_SHELF}),
    tasas AS (
-     SELECT tipo_crudo, anada,
+     SELECT tipo_crudo, vintage,
             sum(evento)::numeric / count(*) AS tasa
-       FROM base GROUP BY tipo_crudo, anada
+       FROM base GROUP BY tipo_crudo, vintage
    )
    SELECT b.shelf, count(*)::text AS n,
           sum(b.evento)::text AS obs,
           round(sum(t.tasa), 2)::text AS esp
      FROM base b JOIN tasas t
-       ON t.tipo_crudo = b.tipo_crudo AND t.anada = b.anada
+       ON t.tipo_crudo = b.tipo_crudo AND t.vintage = b.vintage
     GROUP BY b.shelf
    HAVING count(*) >= ${MIN_POOL_SHELF}
     ORDER BY sum(b.evento)::numeric / nullif(sum(t.tasa), 0)`,
 );
 
-/** Byar: con 0 eventos observados el intervalo normal no existe. */
+/** Byar: with 0 observed events the normal interval does not exist. */
 function byar(obs: number, esp: number): [number, number] {
   if (esp <= 0) return [0, 0];
   const lo =
@@ -433,8 +435,8 @@ function byar(obs: number, esp: number): [number, number] {
 console.log(`\n${"─".repeat(78)}`);
 console.log(
   POR_VENDEDOR
-    ? `SIR estandarizado por VENDEDOR (top ${TOP_VENDEDORES}) × AÑADA`
-    : "SIR estandarizado por TIPO DE PROPIEDAD × AÑADA",
+    ? `SIR standardised by SELLER (top ${TOP_SELLERS}) × VINTAGE`
+    : "SIR standardised by PROPERTY TYPE × VINTAGE",
 );
 console.log(`${"─".repeat(78)}\n`);
 if (excluidos.length > 0) {
@@ -442,7 +444,7 @@ if (excluidos.length > 0) {
     `  \x1b[90mExcluidas por cobertura < ${pct(COBERTURA_MINIMA, 0)}: ${excluidos.join(", ")}\x1b[0m\n`,
   );
 }
-console.log(`  emisora        n    obs   esperado    SIR        IC 95%`);
+console.log(`  issuer        n    obs   esperado    SIR        IC 95%`);
 console.log(`  ${"─".repeat(66)}`);
 
 for (const r of sir) {
@@ -459,16 +461,16 @@ for (const r of sir) {
 }
 
 console.log(
-  `\n  \x1b[90mComparar contra el SIR de db:predictors, que estandariza por añada y\x1b[0m`,
+  `\n  \x1b[90mCompare against the SIR in db:predictors, which standardises by vintage and\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mtercil de DSCR pero NO por tipo: BANK 0,39 · Benchmark 1,02 · BBCMS 1,60.\x1b[0m`,
+  `  \x1b[90mDSCR tercile but NOT by type: BANK 0.39 · Benchmark 1.02 · BBCMS 1.60.\x1b[0m`,
 );
 console.log(
-  `\n  \x1b[90mSi acá BANK sube hacia 1, la brecha era composición. Si se queda abajo,\x1b[0m`,
+  `\n  \x1b[90mIf BANK rises towards 1 here, the gap was composition. If it stays low,\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mel octavo ataque también falla y no quedan explicaciones fáciles.\x1b[0m\n`,
+  `  \x1b[90mthe eighth attack fails too and there are no easy explanations left.\x1b[0m\n`,
 );
 
 await closePool();
