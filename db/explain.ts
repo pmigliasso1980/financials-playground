@@ -206,7 +206,7 @@ const { rows: unmapped } = await query<{ header: string; filings: string }>(
 );
 
 if (unmapped.length > 0) {
-  console.log(`\n  \x1b[33mY los que NO mapeamos:\x1b[0m\n`);
+  console.log(`\n  \x1b[33mAnd the ones we do NOT map:\x1b[0m\n`);
   for (const u of unmapped) {
     console.log(`  ${String(u.filings).padStart(4)} filings  ${u.header}`);
   }

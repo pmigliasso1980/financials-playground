@@ -444,7 +444,7 @@ const { rows: crossTab } = await query<{
   shelf: string; master: string; n: string;
 }>(
   `SELECT ${SHELF} AS shelf,
-          coalesce(sr.master_servicer, '(sin dato)') AS master,
+          coalesce(sr.master_servicer, '(no data)') AS master,
           count(*)::text AS n
      FROM corpus.servicer_reports sr
     GROUP BY 1, 2
@@ -475,10 +475,10 @@ for (const [shelf, list] of [...byShelfMap].sort()) {
 }
 
 const shared = [...byMaster.entries()].filter(
-  ([m, s]) => s.size > 1 && m !== "(sin dato)",
+  ([m, s]) => s.size > 1 && m !== "(no data)",
 );
 const mixedShelves = [...byShelfMap.entries()].filter(
-  ([, l]) => l.filter(([m]) => m !== "(sin dato)").length > 1,
+  ([, l]) => l.filter(([m]) => m !== "(no data)").length > 1,
 );
 
 console.log(`\n${"─".repeat(78)}\n`);

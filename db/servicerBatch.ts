@@ -446,9 +446,9 @@ for (const [i, t] of targets.entries()) {
     const yieldTag = y < 50 ? `\x1b[33m${String(y).padStart(3)}%\x1b[0m` : `\x1b[90m${String(y).padStart(3)}%\x1b[0m`;
     console.log(
       `${tag} ✓ ${name} ${String(matched).padStart(3)} loans  ` +
-        `${yieldTag} de ${String(parsed.diagnostics.rowsFound).padStart(3)} filas` +
-        `${attempts > 1 ? ` \x1b[90m(${attempts} meses)\x1b[0m` : ""}` +
-        `${unmatched > 0 ? ` · ${unmatched} sin pegar` : ""}${flag}`,
+        `${yieldTag} of ${String(parsed.diagnostics.rowsFound).padStart(3)} rows` +
+        `${attempts > 1 ? ` \x1b[90m(${attempts} months)\x1b[0m` : ""}` +
+        `${unmatched > 0 ? ` · ${unmatched} unmatched` : ""}${flag}`,
     );
   } catch (err) {
     failed++;

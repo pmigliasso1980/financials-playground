@@ -159,7 +159,7 @@ function buildFixture(): HarvestResult {
   };
 }
 
-// Limpiamos cualquier resto de una corrida anterior.
+// Clear any leftovers from a previous run.
 await query("DELETE FROM corpus.filings WHERE accession = $1", [ACCESSION]);
 
 const fixture = buildFixture();
@@ -177,7 +177,7 @@ await check("stores loans, observations and facts", () => {
   eq(report.replaced, false, "should not have replaced anything");
 });
 
-await check("deriva los facts de las observations", async () => {
+await check("derives the facts from the observations", async () => {
   const { rows } = await query<{ metric_key: string; value: string; rationale: string | null }>(
     `SELECT f.metric_key, f.value, f.promotion_rationale AS rationale
        FROM corpus.facts f
@@ -214,7 +214,7 @@ await check("vuelve a leerse", () => {
   assert(loaded, "loadHarvest returned null");
 });
 
-await check("el source se preserva entero", () => {
+await check("the source is preserved in full", () => {
   eq(loaded!.source.accession, SOURCE.accession, "accession");
   eq(loaded!.source.cik, SOURCE.cik, "cik");
   eq(loaded!.source.companyName, SOURCE.companyName, "companyName");
@@ -240,7 +240,7 @@ await check("las observations conservan valor, crudo y provenance", () => {
   eq(noi!.unit, "currency", "unidad");
 });
 
-await check("no se pierde ninguna observation", () => {
+await check("no observation is lost", () => {
   const original = fixture.properties.flatMap((p) => p.observations.map((o) => `${p.row_index}:${o.metric_key}`));
   const round = loaded!.properties.flatMap((p) => p.observations.map((o) => `${p.row_index}:${o.metric_key}`));
   eq(round.length, original.length, "cantidad");
@@ -249,8 +249,8 @@ await check("no se pierde ninguna observation", () => {
   }
 });
 
-await check("los metadatos del procesamiento se preservan", () => {
-  eq(loaded!.columnsUnmapped.length, 2, "columnas sin mapear");
+await check("the processing metadata is preserved", () => {
+  eq(loaded!.columnsUnmapped.length, 2, "unmapped columns");
   assert(loaded!.columnsUnmapped.includes("Footnotes"), "lost an unmapped header");
   eq(loaded!.columnsMapped.length, 3, "columnas mapeadas");
   eq(loaded!.stats.propertiesKept, 2, "stats");
@@ -271,7 +271,7 @@ await check("recosechar reemplaza en vez de duplicar", async () => {
   eq(Number(rows[0]!.count), 2, "loans after re-harvesting");
 });
 
-await check("un mapeo mejorado actualiza los valores", async () => {
+await check("an improved mapping updates the values", async () => {
   // Simulates the mapping improving and now capturing one more metric.
   const improved = buildFixture();
   improved.properties[1]!.observations.push({
@@ -314,7 +314,7 @@ await check("metric_coverage counts loans per metric", async () => {
   const stats = await corpusStats();
   assert(stats.filings > 0, "sin filings");
   const noi = stats.byMetric.find((m) => m.metric_key === "noi_underwritten");
-  assert(noi, "noi_underwritten no aparece en la cobertura");
+  assert(noi, "noi_underwritten does not appear in the coverage");
   assert(noi!.loans >= 2, `expected at least 2 loans, there are ${noi!.loans}`);
 });
 
@@ -344,10 +344,10 @@ await check("unmapped_headers builds the mapping work queue", async () => {
 
   assert(
     rows.some((r) => r.header === "Footnotes"),
-    `el filing de prueba reporta: ${rows.map((r) => r.header).join(", ") || "(ninguno)"}`,
+    `the test filing reports: ${rows.map((r) => r.header).join(", ") || "(none)"}`,
   );
 
-  // Y la vista global sigue existiendo y ordenando por impacto.
+  // And the global view still exists and still sorts by impact.
   const stats = await corpusStats();
   assert(stats.topUnmapped.length > 0, "the global view returned nothing");
 });
@@ -356,7 +356,7 @@ await check("unmapped_headers builds the mapping work queue", async () => {
 
 console.log("\nLimpieza");
 
-await check("borrar el filing arrastra todo lo suyo", async () => {
+await check("deleting the filing takes everything with it", async () => {
   await query("DELETE FROM corpus.filings WHERE accession = $1", [ACCESSION]);
 
   const { rows: loans } = await query<{ count: string }>(

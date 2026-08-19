@@ -1,40 +1,39 @@
 /**
- * Identidades aritméticas entre métricas mapeadas por separado.
+ * Arithmetic identities between metrics mapped independently.
  *
  *   npm run db:identities
  *
- * POR QUÉ ESTO ES LA VERIFICACIÓN MÁS FUERTE QUE TENEMOS
+ * WHY THIS IS THE STRONGEST VERIFICATION WE HAVE
  *
- * Cada columna del Annex A se mapea de forma independiente: un patrón sobre el
+ * Each Annex A column is mapped independently: one pattern over the
  * encabezado, sin mirar las otras. `net_cash_flow` no sabe nada de
  * `debt_service_pi`, y ninguno sabe de `dscr_ncf`.
  *
- * Pero el emisor las calculó a partir de las mismas cifras, así que tienen que
- * cerrar entre sí:
+ * But the issuer computed them from the same figures, so they have to close
+ * against each other:
  *
- *     DSCR (NCF)  =  NCF / servicio de deuda
- *     NCF         =  NOI − reserva de reposición − TI/LC
- *     debt yield  =  NOI / saldo
- *     LTV         =  saldo / tasación
+ *     DSCR (NCF)  =  NCF / debt service
+ *     NCF         =  NOI − replacement reserve − TI/LC
+ *     debt yield  =  NOI / balance
+ *     LTV         =  balance / appraised value
  *
- * Si tres columnas mapeadas por separado satisfacen una identidad sobre miles de
- * préstamos, la probabilidad de que estén las tres mal de forma compensada es
- * despreciable. Y si NO cierran, hay un error de mapeo que ninguna métrica
- * mirada sola habría delatado —que es exactamente el tipo de error que nos costó
- * ocho iteraciones encontrar a mano.
+ * If three independently mapped columns satisfy an identity over thousands of
+ * loans, the probability that all three are wrong in a mutually cancelling way is
+ * negligible. And if they do NOT close, there is a mapping error no metric looked
+ * at alone would have revealed — which is exactly the kind of error that took us
+ * eight iterations to find by hand.
  *
- * Esta verificación recién es posible desde que se mapearon los bloques del
- * Annex A que antes se descartaban enteros: sin `debt_service_pi` teníamos el
- * DSCR pero no sus partes, así que no había nada contra qué contrastarlo.
+ * This verification only became possible once the Annex A blocks that used to be
+ * discarded whole were mapped: without `debt_service_pi` we had the DSCR but not
+ * its parts, so there was nothing to check it against.
  *
  * SOBRE LA TOLERANCIA
  *
  * No se exige igualdad exacta. Los emisores redondean —el DSCR se publica con
- * dos decimales, y 1.45 puede venir de cualquier cosa entre 1.445 y 1.455— así
- * que la tolerancia por defecto es 1%. Lo que importa no es el caso individual
- * sino la proporción: si el 95% de los préstamos cierra, el mapeo está bien y el
- * 5% restante son casos raros que vale mirar. Si cierra el 60%, hay un problema
- * sistemático.
+ * two decimals, and 1.45 can come from anything between 1.445 and 1.455— so the
+ * default tolerance is 1%. What matters is not the individual case but the
+ * proportion: if 95% of loans close, the mapping is right and the remaining 5%
+ * are odd cases worth looking at. If 60% close, there is a systematic problem.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -51,14 +50,14 @@ const pct = (v: number | string | null, d = 1) =>
   v === null ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Identidades aritméticas");
+console.log("Arithmetic identities");
 console.log(`${"═".repeat(78)}`);
 console.log(
-  `\n\x1b[90m  Cada métrica se mapea sola, sin mirar a las demás. Que cierren entre sí\x1b[0m`,
+  `\n\x1b[90m  Each metric is mapped on its own, without looking at the others. That they\x1b[0m`,
 );
 console.log(`\x1b[90m  es evidencia de que el mapeo es correcto. Tolerancia ${pct(TOLERANCE, 0)}.\x1b[0m\n`);
 
-/** Un fact numérico de una métrica, listo para unir. */
+/** A numeric fact for one metric, ready to join. */
 const fact = (alias: string, key: string) =>
   `LEFT JOIN corpus.facts ${alias} ON ${alias}.loan_id = l.id ` +
   `AND ${alias}.metric_key = '${key}' AND ${alias}.value ~ '^-?[0-9.]+$'`;
@@ -130,36 +129,36 @@ async function checkIdentity(
 const results: IdentityResult[] = [];
 
 /**
- * DSCR contra sus dos partes, escaladas al préstamo completo.
+ * DSCR against its two parts, scaled to the whole loan.
  *
- * Dos cosas hay que acertar acá y ninguna está escrita en el documento.
+ * Two things have to be right here and neither is written in the document.
  *
- * 1. UN PRÉSTAMO CON PERÍODO DE SOLO INTERESES TIENE DOS SERVICIOS DE DEUDA.
- *    El emisor calcula el DSCR contra el que corresponda al momento, así que
- *    usamos el de IO cuando existe y el de P&I cuando no.
+ * 1. A LOAN WITH AN INTEREST-ONLY PERIOD HAS TWO DEBT SERVICE FIGURES.
+ *    The issuer computes the DSCR against whichever applies at the time, so we
+ *    use the IO one when it exists and the P&I one when it does not.
  *
- * 2. EL SERVICIO DE DEUDA ES DE LA NOTA DEL TRUST; EL DSCR, DEL PRÉSTAMO ENTERO.
- *    El Annex A publica "Annual Debt Service" de la porción que compró esta
- *    emisión, pero el ratio contra el NOI de la propiedad completa. Sin escalar,
- *    la identidad falla exactamente en los préstamos repartidos.
+ * 2. DEBT SERVICE IS FOR THE TRUST'S NOTE; THE DSCR IS FOR THE WHOLE LOAN.
+ *    The Annex A publishes "Annual Debt Service" for the portion this issuance
+ *    bought, but the ratio against the whole property's NOI. Without scaling, the
+ *    identity fails precisely on the split loans.
  *
- *    Se escala por saldo porque todas las notas de un mismo préstamo comparten
- *    tasa y amortización: el servicio por dólar es idéntico en todas. Verificado
- *    a mano antes de escribirlo, sobre los tres peores desvíos:
+ *    It scales by balance because every note of the same loan shares the rate and
+ *    amortisation: service per dollar is identical across all of them. Verified by
+ *    hand before writing it, over the three worst deviations:
  *
  *      loan 46:  164.630 × 288,1 = 47,4M → 97.102.547 / 47,4M = 2,05  (pub. 2,04)
  *      loan 23:  557.608 × 207,7 = 115,8M → 236.785.998 / 115,8M = 2,05 (pub. 2,04)
  *      loan 24:  381.529 × 106,6 = 40,7M → 84.349.369 / 40,7M = 2,07  (pub. 2,07)
  *
- *    Tres préstamos de tres emisores distintos, con factores distintos, dando el
+ *    Three loans from three different issuers, with different factors, giving the
  *    valor publicado al segundo decimal. No es coincidencia.
  */
 /**
- * El sénior: la columna publicada si existe, la suma si no.
+ * The senior balance: the published column if it exists, the sum if not.
  *
- * Armar el sénior sumando dos métricas depende de que las DOS se hayan mapeado
- * bien. Varias emisiones publican el total en una sola columna y el
- * reconciliador las encontró comparando valores, no nombres. Cuando está, se usa
+ * Building the senior balance by summing two metrics depends on BOTH having been
+ * mapped correctly. Several issuances publish the total in a single column and the
+ * reconciler found them by comparing values, not names. When it is there, it is
  * esa: no depende de que el pari passu se haya capturado, ni de que el Annex lo
  * publique por separado.
  */
@@ -168,7 +167,7 @@ const SENIOR =
 const SENIOR_JOINS =
   `${fact("amt", "loan_amount")} ${fact("npp", "balance_pari_passu_non_trust")} ` +
   `${fact("sen", "balance_senior_total")}`;
-/** Servicio de deuda de la nota del trust, llevado al préstamo completo. */
+/** Debt service on the trust's note, scaled to the whole loan. */
 const DEBT_SERVICE_SENIOR =
   `coalesce(dsio.value::numeric, dspi.value::numeric) ` +
   `* ${SENIOR} / NULLIF(amt.value::numeric, 0)`;
@@ -195,12 +194,12 @@ if (dscrNoi) results.push(dscrNoi);
 /**
  * La resta que define el NCF.
  *
- * Es la identidad que motivó mapear los bloques descartados: teníamos NOI y NCF
- * pero ninguno de los dos sustraendos, así que la diferencia entre ambos era un
- * número sin explicación.
+ * It is the identity that motivated mapping the discarded blocks: we had NOI and
+ * NCF but neither of the two subtrahends, so the difference between them was a
+ * number with no explanation.
  */
 const ncf = await checkIdentity(
-  "NCF = NOI − reposición − TI/LC",
+  "NCF = NOI − replacement − TI/LC",
   "net_cash_flow · noi_underwritten · underwritten_replacement_reserve · underwritten_tilc",
   `${fact("ncf", "net_cash_flow")} ${fact("noi", "noi_underwritten")} ` +
     `${fact("rep", "underwritten_replacement_reserve")} ${fact("tilc", "underwritten_tilc")}`,
@@ -210,15 +209,15 @@ const ncf = await checkIdentity(
 if (ncf) results.push(ncf);
 
 /**
- * CONTRA QUÉ SALDO CIERRA CADA RATIO
+ * WHICH BALANCE EACH RATIO CLOSES AGAINST
  *
- * Un Annex A publica siete saldos para el mismo préstamo, y los ratios se
- * calculan contra alguno de ellos sin decir cuál. Suponerlo es cómo llegamos al
- * problema: `loan_amount` apuntaba a "Original Balance" —la porción de este
- * trust en un préstamo repartido— y el debt yield calculado daba 3947%.
+ * An Annex A publishes seven balances for the same loan, and the ratios are
+ * computed against one of them without saying which. Assuming is how we got into
+ * the problem: `loan_amount` pointed at "Original Balance" —this trust's portion
+ * of a split loan— and the computed debt yield came out at 3947%.
  *
- * En vez de elegir por intuición, se prueban todos los candidatos y gana el que
- * cierra. La proporción que cierra con cada uno ES la respuesta sobre qué
+ * Rather than choosing by intuition, every candidate is tried and the one that
+ * closes wins. The proportion closing against each one IS the answer as to which
  * significa cada columna, y queda registrada en la salida en vez de en la
  * cabeza de alguien.
  */
@@ -246,7 +245,7 @@ const BALANCE_CANDIDATES: Array<{ label: string; sql: string; joins: string }> =
 ];
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Qué saldo usa cada ratio`);
+console.log(`Which balance each ratio uses`);
 console.log(`${"─".repeat(78)}\n`);
 console.log(`  denominador                     debt yield        LTV`);
 
@@ -289,9 +288,9 @@ console.log(
   `\n  \x1b[1mMejor denominador: ${bestBalance.label}\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mSi ninguno pasa el 90%, faltan saldos por mapear o hay préstamos con\x1b[0m`,
+  `  \x1b[90mIf none passes 90%, there are balances left to map or there are loans with\x1b[0m`,
 );
-console.log(`  \x1b[90muna estructura de deuda que todavía no modelamos.\x1b[0m`);
+console.log(`  \x1b[90ma debt structure we do not model yet.\x1b[0m`);
 
 const debtYield = await checkIdentity(
   "Debt yield = NOI suscrito / saldo",
@@ -303,7 +302,7 @@ const debtYield = await checkIdentity(
 if (debtYield) results.push(debtYield);
 
 const ltv = await checkIdentity(
-  "LTV = saldo / tasación",
+  "LTV = balance / appraised value",
   `ltv · ${bestBalance.label} · appraised_value`,
   `${fact("v", "ltv")} ${bestBalance.joins} ${fact("val", "appraised_value")}`,
   `${bestBalance.sql} / NULLIF(val.value::numeric, 0)`,
@@ -316,7 +315,7 @@ if (ltv) results.push(ltv);
 if (results.length === 0) {
   console.error(
     `  \x1b[33mNinguna identidad tiene muestra suficiente.\x1b[0m\n` +
-      `  ¿Cosechaste con el mapeo nuevo?  npm run harvest:batch -- --limit 100\n`,
+      `  Did you harvest with the new mapping?  npm run harvest:batch -- --limit 100\n`,
   );
   await closePool();
   process.exit(0);
@@ -339,14 +338,14 @@ console.log();
 if (broken.length === 0 && partial.length === 0) {
   console.log(`  \x1b[32mTodas cierran por encima del 90%.\x1b[0m`);
   console.log(
-    `  Métricas mapeadas por separado satisfacen las relaciones que el emisor usó`,
+    `  Independently mapped metrics satisfy the relationships the issuer used`,
   );
-  console.log(`  para calcularlas. Es la evidencia más fuerte de que el mapeo es correcto.`);
+  console.log(`  to compute them. It is the strongest evidence that the mapping is correct.`);
 } else {
   for (const r of [...broken, ...partial]) {
     const sev = r.share < 0.7 ? "\x1b[31m" : "\x1b[33m";
     console.log(`  ${sev}${r.label}\x1b[0m cierra solo en ${pct(r.share, 0)} de ${r.n}.`);
-    console.log(`  \x1b[90m  métricas: ${r.formula}\x1b[0m`);
+    console.log(`  \x1b[90m  metrics: ${r.formula}\x1b[0m`);
     for (const w of r.worst) {
       console.log(
         `  \x1b[90m  loan ${w.loan}: esperado ${w.expected.toFixed(4)}, ` +
@@ -359,42 +358,42 @@ if (broken.length === 0 && partial.length === 0) {
     `  \x1b[90mUna identidad que no cierra es un error de mapeo o un supuesto equivocado\x1b[0m`,
   );
   console.log(
-    `  \x1b[90msobre cómo el emisor calcula. Las dos cosas hay que entenderlas antes de\x1b[0m`,
+    `  \x1b[90mabout how the issuer computes. Both have to be understood before\x1b[0m`,
   );
   console.log(`  \x1b[90mconstruir encima.\x1b[0m`);
 }
 
 // ---------------------------------------------------------------------------
-// ¿Dónde se concentran las fallas?
+// Where do the failures concentrate?
 // ---------------------------------------------------------------------------
 
 /**
- * La pregunta que decide qué arreglar.
+ * The question that decides what to fix.
  *
- * Las cuatro identidades que fallan lo hacen en la misma proporción (73-75%) y
- * en los mismos préstamos, con factores de error de ~280x repetidos. Eso
- * descarta el redondeo y descarta una métrica confundida con otra: es escala, o
+ * The four failing identities fail in the same proportion (73-75%) and on the same
+ * loans, with repeated error factors of ~280x. That rules out rounding and rules
+ * out one metric being confused with another: it is scale, or
  * es que estamos leyendo la fila equivocada.
  *
  * Si las fallas se concentran en pocos filings, el problema es de formato —un
  * emisor que publica en miles, o una columna distinta con el mismo nombre— y se
- * arregla en el mapeo. Si están repartidas parejo entre todos los filings, el
- * problema es por préstamo y hay que buscar qué tienen en común esos préstamos.
+ * fixed in the mapping. If they are spread evenly across all filings, the problem
+ * is per loan and we have to find what those loans have in common.
  *
- * Son dos arreglos completamente distintos, y mirar el agregado no distingue
- * cuál.
+ * They are two completely different fixes, and looking at the aggregate does not
+ * tell them apart.
  */
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Dónde fallan`);
+console.log(`Where they fail`);
 console.log(`${"─".repeat(78)}\n`);
 
 /**
  * La sonda usa el denominador ganador, no `loan_amount` suelto.
  *
- * Antes usaba solo el saldo del trust y reportaba 865 préstamos rotos repartidos
- * entre 99 filings, con la conclusión "el problema es por préstamo". Era cierto
- * —el problema era el pari passu, que es una propiedad del préstamo— pero el
- * diagnóstico quedó obsoleto en cuanto se arregló. Una sonda que mide contra un
+ * It used to use only the trust balance and reported 865 broken loans spread over
+ * 99 filings, with the conclusion "the problem is per loan". That was true —the
+ * problem was the pari passu, which is a property of the loan— but the diagnosis
+ * went stale the moment it was fixed. A probe that measures against a
  * supuesto viejo sigue reportando el problema viejo.
  */
 const { rows: byFiling } = await query<{
@@ -437,7 +436,7 @@ const bf = byFiling[0];
 if (bf) {
   console.log(`  Tomando "debt yield = NOI / saldo" como sonda:\n`);
   console.log(`    filings evaluados        ${String(bf.filings).padStart(4)}`);
-  console.log(`    todos sus préstamos OK   ${String(bf.clean).padStart(4)}`);
+  console.log(`    all its loans OK        ${String(bf.clean).padStart(4)}`);
   console.log(`    ninguno OK               ${String(bf.broken).padStart(4)}`);
   console.log(`    mezclados                ${String(bf.mixed).padStart(4)}`);
 
@@ -448,24 +447,24 @@ if (bf) {
   /**
    * Nombrar las emisiones que fallan enteras, no contarlas.
    *
-   * "15 emisiones con ninguno OK" es una señal concentrada —una convención que
-   * no modelamos, no ruido— y el conteo no deja perseguirla. Es el mismo error
-   * que este archivo señala en otros lados: un diagnóstico que informa magnitud
+   * "15 issuances with none OK" is a concentrated signal —a convention we do not
+   * model, not noise— and the count does not let you chase it. It is the same error
+   * this file points out elsewhere: a diagnostic that reports magnitude
    * en vez de identidad obliga a escribir una consulta a mano para actuar.
    */
   /**
-   * La tabla de desempeño existe.
+   * The performance table exists.
    *
-   * NINGUNA OTRA COMPROBACIÓN LA MIRA
+   * NO OTHER CHECK LOOKS AT IT
    *
-   * `corpus.performance` referencia `loans(id)` con ON DELETE CASCADE, y
-   * `--refresh-stale` borra los préstamos antes de reescribirlos. Cada recosecha
-   * del Annex A destruye el desempeño acumulado.
+   * `corpus.performance` references `loans(id)` with ON DELETE CASCADE, and
+   * `--refresh-stale` deletes the loans before rewriting them. Every Annex A
+   * re-harvest destroys the accumulated performance.
    *
-   * Pasó, y estuvo un día entero sin detectarse. Todo lo demás seguía sano: las
-   * cinco identidades cerraban al 97%, el corpus tenía sus 8.935 préstamos, las
-   * participaciones del pool sumaban 100%. Lo único que faltaba era la mitad del
-   * hallazgo —el lado del resultado real— y no había nada que lo dijera.
+   * It happened, and went undetected for a whole day. Everything else looked
+   * healthy: the five identities closed at 97%, the corpus had its 8,935 loans,
+   * the pool shares summed to 100%. The only thing missing was half the finding
+   * —the actual-outcome side— and nothing said so.
    *
    * Es el mismo principio que la suma del pool aplicado a otra tabla: un corpus
    * al que le falta una pieza entera es indistinguible de uno correcto si nadie
@@ -475,12 +474,12 @@ if (bf) {
     `SELECT count(*)::text AS filas, count(DISTINCT loan_id)::text AS prestamos
        FROM corpus.performance`,
   );
-  const perfFilas = Number(perf[0]?.filas ?? 0);
+  const perfRows = Number(perf[0]?.filas ?? 0);
 
-  console.log(`\n  \x1b[1mDesempeño posterior al cierre\x1b[0m`);
-  if (perfFilas === 0) {
+  console.log(`\n  \x1b[1mPost-closing performance\x1b[0m`);
+  if (perfRows === 0) {
     console.log(
-      `    \x1b[31mVACÍA. El hallazgo no se puede reproducir en este estado.\x1b[0m`,
+      `    \x1b[31mEMPTY. The finding cannot be reproduced in this state.\x1b[0m`,
     );
     console.log(
       `    \x1b[90mUna recosecha con --refresh-stale la borra: el CASCADE viene de\x1b[0m`,
@@ -490,32 +489,32 @@ if (bf) {
     );
   } else {
     console.log(
-      `    ${perfFilas.toLocaleString("en-US")} filas · ${Number(perf[0]!.prestamos).toLocaleString("en-US")} préstamos`,
+      `    ${perfRows.toLocaleString("en-US")} rows · ${Number(perf[0]!.prestamos).toLocaleString("en-US")} loans`,
     );
   }
 
   /**
    * Las participaciones del pool tienen que sumar 100%.
    *
-   * LA VERIFICACIÓN QUE FALTABA: SI SE PIERDEN PRÉSTAMOS, NADIE SE ENTERA
+   * THE CHECK THAT WAS MISSING: IF LOANS ARE LOST, NOBODY FINDS OUT
    *
-   * Todas las demás comprobaciones de este archivo miran préstamos que están.
+   * Every other check in this file looks at loans that are present.
    * Ninguna detecta los que faltan: si el parser descarta la mitad de las filas,
    * la otra mitad sigue cerrando sus identidades, sus valores siguen siendo
    * razonables y los chequeos de sanidad siguen pasando. El corpus no tiene
    * forma de saber que le falta algo.
    *
-   * Pasó con Morgan Stanley 2021-L5. Bajó de 65 a 19 préstamos entre dos
-   * cosechas y solo se notó porque el total del corpus se movió 46 y alguien
+   * It happened with Morgan Stanley 2021-L5. It dropped from 65 to 19 loans
+   * between two harvests and was only noticed because the corpus total moved by 46
    * estaba mirando por otro motivo.
    *
    * `% of Initial Pool Balance` resuelve esto: el emisor publica la
-   * participación de cada préstamo sobre el pool, y por construcción suman uno.
-   * Si una emisión suma 0.30, faltan dos tercios de sus préstamos, y no hace
-   * falta saber cuántos debería tener ni consultar ninguna fuente externa.
+   * each loan's share of the pool, and by construction they sum to one. If an
+   * issuance sums to 0.30, two thirds of its loans are missing, and there is no
+   * need to know how many it should have or to consult any external source.
    *
-   * También distingue la causa. Una suma que se pasa de 1 es lo contrario:
-   * filas contadas dos veces, o filas de propiedad tomadas por préstamos —que
+   * It also distinguishes the cause. A sum going over 1 is the opposite: rows
+   * counted twice, or property rows taken for loans — which
    * es la duda que queda abierta sobre L5—.
    */
   const { rows: pool } = await query<{
@@ -546,11 +545,11 @@ if (bf) {
   const evaluadas = Number(poolTotal[0]?.n ?? 0);
   console.log(`\n  \x1b[1mLa suma de participaciones del pool\x1b[0m`);
   console.log(
-    `  \x1b[90mDetecta préstamos perdidos, que ninguna otra comprobación ve.\x1b[0m\n`,
+    `  \x1b[90mIt detects lost loans, which no other check sees.\x1b[0m\n`,
   );
 
   if (evaluadas === 0) {
-    console.log(`    \x1b[33mNingún filing tiene pool_share mapeado.\x1b[0m`);
+    console.log(`    \x1b[33mNo filing has pool_share mapped.\x1b[0m`);
   } else if (pool.length === 0) {
     console.log(
       `    \x1b[32mLas ${evaluadas} emisiones con pool_share suman 100% ± 3%.\x1b[0m`,
@@ -558,16 +557,16 @@ if (bf) {
   } else {
     console.log(`    ${pool.length} de ${evaluadas} emisiones no suman 100%:\n`);
     /**
-     * La suma sola no dice cuál de las dos causas es.
+     * The sum alone does not say which of the two causes it is.
      *
-     * Si la emisión tiene 31 préstamos y solo 5 traen `pool_share`, el 22.8% no
-     * significa que se perdieron filas: significa que la columna no se mapeó en
-     * las otras 26 y estamos sumando un quinto del pool. Son dos problemas
-     * distintos con dos arreglos distintos, y sin comparar contra el total de
-     * préstamos de la emisión el diagnóstico apunta al lado equivocado.
+     * If the issuance has 31 loans and only 5 carry `pool_share`, the 22.8% does
+     * not mean rows were lost: it means the column was not mapped in the other 26
+     * and we are summing a fifth of the pool. Two different problems with two
+     * different fixes, and without comparing against the issuance's total loan
+     * count the diagnosis points the wrong way.
      *
-     * Pasó en la primera corrida de este mismo check, tres líneas después de que
-     * el archivo declarara que un fallo tiene que decir cuál de sus causas es.
+     * It happened on the first run of this very check, three lines after the file
+     * declared that a failure has to say which of its causes it is.
      */
     for (const p of pool) {
       const s = Number(p.suma);
@@ -578,15 +577,15 @@ if (bf) {
           ? `\x1b[33mparcial: ${con}/${tot} con la columna\x1b[0m`
           : s < 1
             ? "faltan filas del Annex A"
-            : "filas contadas de más";
+            : "rows counted twice";
       console.log(
         `    ${p.year}  ${p.company.slice(0, 36).padEnd(36)} ${pct(s, 1).padStart(7)}  ${String(con).padStart(3)}/${String(tot).padEnd(3)}  \x1b[90m${dx}\x1b[0m`,
       );
     }
     console.log(
-      `\n    \x1b[90mSolo las que dicen "faltan filas" son préstamos perdidos. Las\x1b[0m`,
+      `\n    \x1b[90mOnly those saying "rows missing" are lost loans. The\x1b[0m`,
     );
-    console.log(`    \x1b[90m"parcial" son un agujero de mapeo en esa emisión.\x1b[0m`);
+    console.log(`    \x1b[90m"partial" ones are a mapping gap in that issuance.\x1b[0m`);
   }
 
   if (Number(bf.broken) > 0) {
@@ -616,48 +615,49 @@ if (bf) {
       console.log(`\n  \x1b[33mEmisiones donde no cierra ninguno:\x1b[0m\n`);
       for (const w of worst) {
         console.log(
-          `    ${w.year}  ${w.company.slice(0, 46).padEnd(46)} ${String(w.loans).padStart(4)} préstamos`,
+          `    ${w.year}  ${w.company.slice(0, 46).padEnd(46)} ${String(w.loans).padStart(4)} loans`,
         );
       }
       const years = [...new Set(worst.map((w) => w.year))].sort();
       console.log(
-        `\n    \x1b[90mAñadas: ${years.join(", ")}. Si se concentran en una, es una convención\x1b[0m`,
+        `\n    \x1b[90mVintages: ${years.join(", ")}. If they concentrate in one, it is a format\x1b[0m`,
       );
-      console.log(`    \x1b[90mde formato; si están repartidas, es por préstamo.\x1b[0m`);
+      console.log(`    \x1b[90mconvention; if they are spread out, it is per loan.\x1b[0m`);
     }
   }
   console.log();
   /**
    * Cuando el residuo es chico, decirlo.
    *
-   * Esta sección se escribió cuando fallaba una de cada cuatro filas y servía
-   * para decidir dónde buscar. Con el denominador correcto quedan 27 de 3.528, y
-   * el texto seguía diciendo "hay de las dos cosas" —mandando a investigar un
-   * problema resuelto. Un diagnóstico que no se apaga cuando la causa se arregla
+   * This section was written when one row in four failed and it served to decide
+   * where to look. With the correct denominator 27 of 3,528 remain, and the text
+   * still said "there is some of both" —sending someone to investigate a solved
+   * problem. A diagnostic that does not switch off when its cause is fixed
    * es ruido con formato de alerta.
    */
   if (failing > 0 && failing < 60) {
-    console.log(`  \x1b[32mQuedan ${failing} préstamos fuera de tolerancia sobre miles.\x1b[0m`);
-    console.log(`  Es residuo: redondeo del emisor y estructuras de deuda sueltas.`);
-    console.log(`  \x1b[90mNo hay patrón que perseguir hasta que ese número vuelva a crecer.\x1b[0m`);
+    console.log(`  \x1b[32m${failing} loans remain outside tolerance out of thousands.\x1b[0m`);
+    console.log(`  It is residue: issuer rounding and one-off debt structures.`);
+    console.log(`  \x1b[90mThere is no pattern to chase until that number grows again.\x1b[0m`);
   } else if (mixed / total < 0.2) {
-    console.log(`  \x1b[33mLas fallas se concentran por filing.\x1b[0m Un filing cierra o no cierra`);
-    console.log(`  entero: es un problema de formato del emisor, no de préstamos sueltos.`);
+    console.log(`  \x1b[33mThe failures concentrate by filing.\x1b[0m A filing either closes or does not`);
+    console.log(`  close as a whole: it is an issuer format problem, not individual loans.`);
   } else if (mixed / total > 0.6) {
-    console.log(`  \x1b[33mCasi todos los filings tienen préstamos buenos y malos mezclados.\x1b[0m`);
-    console.log(`  El problema es por préstamo: hay que encontrar qué comparten los que fallan.`);
+    console.log(`  \x1b[33mAlmost every filing has good and bad loans mixed together.\x1b[0m`);
+    console.log(`  The problem is per loan: we have to find what the failing ones share.`);
   } else {
     console.log(`  \x1b[33mHay de las dos cosas\x1b[0m: filings enteros rotos y filings mezclados.`);
   }
 }
 
 /**
- * Y qué tienen en común los préstamos que fallan.
+ * And what the failing loans have in common.
  *
- * La sospecha más económica ante un factor de ~280: son préstamos con varias
- * propiedades. Si el saldo se publica a nivel préstamo y el NOI a nivel
- * propiedad —o al revés— la relación entre ambos se rompe justamente en los
- * multipropiedad, y el factor sería el número de propiedades o algo proporcional.
+ * The most economical suspicion given a factor of ~280: they are loans with
+ * several properties. If the balance is published at loan level and the NOI at
+ * property level —or the other way round— the relationship between them breaks
+ * precisely on the multi-property ones, and the factor would be the number of
+ * properties or something proportional to it.
  */
 const { rows: profile } = await query<{
   grupo: string; n: string; props: number | null; amt: number | null; noi: number | null;
@@ -702,28 +702,28 @@ if (profile.length === 2) {
   if (Number.isFinite(ratio) && (ratio > 50 || ratio < 0.02)) {
     console.log(
       `  \x1b[31mEl saldo mediano difiere ${ratio > 1 ? ratio.toFixed(0) : (1 / ratio).toFixed(0)}x entre grupos.\x1b[0m ` +
-        `El problema está en loan_amount:`,
+        `The problem is in loan_amount:`,
     );
     console.log(`  o hay dos columnas distintas con el mismo nombre, o vienen en escalas distintas.`);
   } else if (Number(bad.props) > Number(ok.props)) {
     console.log(
-      `  \x1b[33mLos que fallan tienen más propiedades (${Number(bad.props).toFixed(1)} contra ${Number(ok.props).toFixed(1)}).\x1b[0m`,
+      `  \x1b[33mThe failing ones have more properties (${Number(bad.props).toFixed(1)} against ${Number(ok.props).toFixed(1)}).\x1b[0m`,
     );
-    console.log(`  Saldo y NOI estarían publicados a niveles distintos en los multipropiedad.`);
+    console.log(`  Balance and NOI would be published at different levels on the multi-property ones.`);
   } else {
     console.log(`  \x1b[90mNo hay una diferencia obvia de perfil. Hay que mirar casos a mano.\x1b[0m`);
   }
 }
 
 /**
- * Cobertura: de nada sirve que una identidad cierre sobre veinte préstamos.
+ * Coverage: an identity closing over twenty loans is worth nothing.
  */
 const { rows: coverage } = await query<{ total: string }>(
   `SELECT count(*) AS total FROM corpus.loans`,
 );
 const total = Number(coverage[0]?.total ?? 0);
 if (total > 0) {
-  console.log(`\n  \x1b[90mCobertura sobre ${total} préstamos del corpus:\x1b[0m`);
+  console.log(`\n  \x1b[90mCoverage over ${total} loans of the corpus:\x1b[0m`);
   for (const r of results) {
     console.log(
       `  \x1b[90m  ${r.label.padEnd(44)} ${pct(r.n / total, 0).padStart(5)}\x1b[0m`,
@@ -735,6 +735,6 @@ console.log(`\n${"─".repeat(78)}`);
 console.log(
   `\n  \x1b[90mNinguna de estas comprobaciones necesita una fuente externa: el documento\x1b[0m`,
 );
-console.log(`  \x1b[90mse verifica contra sí mismo.\x1b[0m\n`);
+console.log(`  \x1b[90mis verified against itself.\x1b[0m\n`);
 
 await closePool();

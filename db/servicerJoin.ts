@@ -134,7 +134,7 @@ const { rows: corpusLoans } = await query<{
 
 const reports = await findServicerReports(cikArg, { max: months });
 if (reports.length === 0) {
-  console.error(`\n✗ Sin 10-D con EX-99.1 identificable para este trust.\n`);
+  console.error(`\n✗ No 10-D with an identifiable EX-99.1 for this trust.\n`);
   await closePool();
   process.exit(1);
 }
@@ -191,11 +191,11 @@ console.log(`\n${"─".repeat(78)}`);
 console.log(`Correspondencia de identificadores`);
 console.log(`${"─".repeat(78)}\n`);
 
-console.log(`  corpus con Loan ID        ${String(corpusByInt.size).padStart(4)}`);
-if (corpusNoRef > 0) console.log(`  corpus sin Loan ID        ${String(corpusNoRef).padStart(4)}  \x1b[33m⚠\x1b[0m`);
-if (corpusDupes > 0) console.log(`  corpus con ID repetido    ${String(corpusDupes).padStart(4)}  \x1b[33m⚠ filas de propiedad sin filtrar\x1b[0m`);
-console.log(`  servicer utilizables      ${String(servicerByInt.size).padStart(4)}`);
-console.log(`  \x1b[1mcoinciden                 ${String(matched.length).padStart(4)}\x1b[0m`);
+console.log(`  corpus with Loan ID       ${String(corpusByInt.size).padStart(4)}`);
+if (corpusNoRef > 0) console.log(`  corpus without Loan ID    ${String(corpusNoRef).padStart(4)}  \x1b[33m⚠\x1b[0m`);
+if (corpusDupes > 0) console.log(`  corpus with repeated ID   ${String(corpusDupes).padStart(4)}  \x1b[33m⚠ unfiltered property rows\x1b[0m`);
+console.log(`  servicer usable           ${String(servicerByInt.size).padStart(4)}`);
+console.log(`  \x1b[1mmatched                   ${String(matched.length).padStart(4)}\x1b[0m`);
 if (servicerOnly.length > 0) {
   console.log(`  solo en servicer          ${String(servicerOnly.length).padStart(4)}  \x1b[90m(${servicerOnly.slice(0, 10).join(", ")})\x1b[0m`);
 }

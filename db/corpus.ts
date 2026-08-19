@@ -88,7 +88,7 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
     );
 
     /**
-     * Tres inserciones por lote, no una por fila.
+     * Three inserts per batch, not one per row.
      *
      * The first version did one round-trip per observation and another per
      * fact. A filing with 40 loans and 90 metrics each is ~7,000 round-trips to
@@ -155,7 +155,7 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
 }
 
 /**
- * Inserta las filas de propiedad de un filing.
+ * Inserts a filing's property rows.
  *
  * Each one carries the address, city and state of ONE property securing a loan.
  * The harvester used to discard them: across the three fixtures that is 138 rows,
@@ -527,7 +527,7 @@ interface ObservationRow {
   source_column: number | null;
 }
 
-/** Lee un filing en la misma forma que produce el harvester. */
+/** Reads a filing back in the same shape the harvester produces. */
 export async function loadHarvest(accession: string): Promise<HarvestResult | null> {
   const { rows: filings } = await query<FilingRow>(
     "SELECT * FROM corpus.filings WHERE accession = $1",
@@ -569,8 +569,8 @@ export async function loadHarvest(accession: string): Promise<HarvestResult | nu
   const properties: HarvestedProperty[] = loans.map((loan) => ({
     key: `${accession}:${loan.row_index}`,
     row_index: loan.row_index,
-    // Al releer del corpus no se reconstruyen: el reconciliador consulta
-    // corpus.unmapped_cells directamente, no pasa por esta forma.
+    // They are not rebuilt when reading back from the corpus: the reconciler
+    // queries corpus.unmapped_cells directly and does not go through this shape.
     unmappedCells: [],
     label: {
       property_name: loan.property_name,
@@ -606,7 +606,7 @@ export async function loadHarvest(accession: string): Promise<HarvestResult | nu
   };
 }
 
-/** Lee todo el corpus. */
+/** Reads the whole corpus. */
 export async function loadAllHarvests(): Promise<HarvestResult[]> {
   const { rows } = await query<{ accession: string }>(
     "SELECT accession FROM corpus.filings ORDER BY filed_at DESC NULLS LAST, accession",
