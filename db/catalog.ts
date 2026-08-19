@@ -1,64 +1,66 @@
 /**
- * El índice: las emisiones de una cohort, y cuál se aparta de verdad.
+ * The index: the issuances of a cohort, and which one genuinely departs.
  *
  *   npm run db:catalog
- *   npm run db:catalog -- --anada 2025
+ *   npm run db:catalog -- --vintage 2025
  *
- * QUÉ ORDENA ESTA PÁGINA, Y POR QUÉ ESO Y NO OTRA COSA
+ * WHAT THIS PAGE RANKS BY, AND WHY THAT AND NOT SOMETHING ELSE
  *
- * De todo lo que el proyecto midió, una sola cosa distingue emisiones por encima
- * del azar: la mezcla de propiedades. Sobre la cohort 2026 el catálogo cuenta
- * 8 de 25 contra 1,3 esperadas por azar, y el test se verificó generando emisiones
- * DESDE la nula antes de usarlo.
+ * Of everything the project measured, one single thing distinguishes issuances
+ * above chance: the property mix. Over the 2026 cohort the catalogue counts 8 of
+ * 25 against 1.3 expected by chance, and the test was verified by generating
+ * issuances FROM the null before being used.
  *
- * TRES NÚMEROS PARA LA MISMA PREGUNTA, Y NINGUNO ESTABA MAL
+ * THREE NUMBERS FOR THE SAME QUESTION, AND NONE OF THEM WAS WRONG
  *
- * "Cuántas emisiones de 2026 tienen mezcla distinta" tiene tres respuestas en este
- * repo: 10, 13 y 8. No es que dos estén equivocadas — son tres cantidades distintas
- * con el mismo nombre:
+ * "How many 2026 issuances have a different mix" has three answers in this repo:
+ * 10, 13 and 8. It is not that two are mistaken — they are three different
+ * quantities with the same name:
  *
- *   db:composition-signal usa como referencia TODAS las emisiones de la añada,
- *   incluidas las mono-tipo, y cuenta significativas al 5% con una ponderación.
+ *   db:composition-signal uses ALL the issuances of the vintage as its reference,
+ *   including single-type ones, and counts those significant at 5% under one
+ *   weighting.
  *
- *   db:catalog excluye las mono-tipo de la referencia —no son conduits, y meterlas
- *   corre la mezcla "de mercado" hacia su tipo— y además exige que las dos
- *   ponderaciones coincidan. Las que discrepan van a "al filo" en vez de contarse.
+ *   db:catalog excludes single-type deals from the reference —they are not
+ *   conduits, and including them shifts the "market" mix towards their type— and
+ *   additionally requires both weightings to agree. Those that disagree go to
+ *   "borderline" instead of being counted.
  *
- * Cada filtro saca emisiones, así que el conteo baja. El agregado no cambia de
- * signo: 8 o 13 contra 1,3 esperadas es abrumador en las dos versiones.
+ * Each filter removes issuances, so the count falls. The aggregate does not
+ * change sign: 8 or 13 against 1.3 expected is overwhelming in both versions.
  *
- * Lo que sí es un error es citar uno de los tres sin decir cuál, que es lo que
- * hacían estos comentarios. El número que vale para el producto es el que el
- * producto calcula, y por eso el HTML lo imprime en vez de tenerlo escrito.
+ * What IS an error is quoting one of the three without saying which, which is
+ * what these comments used to do. The number that counts for the product is the
+ * one the product computes, which is why the HTML prints it rather than having it
+ * written in.
  *
- * Las seis métricas de términos no se ordenan acá. Rastrean lo mismo más
- * débilmente (rho = 0,59 contra la distancia de composición) porque son su
- * consecuencia: los hoteles se suscriben distinto que los departamentos. Ordenar
- * por DSCR sería ordenar por una vista borrosa de la columna que ya está.
+ * The six term metrics are not ranked here. They track the same thing more weakly
+ * (rho = 0.59 against the composition distance) because they are its consequence:
+ * hotels are underwritten differently from apartments. Ranking by DSCR would be
+ * ranking by a blurred view of the column that is already there.
  *
- * LO QUE UN ÍNDICE HACE MAL POR DEFECTO
+ * WHAT AN INDEX GETS WRONG BY DEFAULT
  *
- * Una lista ordenada dice "el primero es el más X", y con estos tamaños de pool
- * eso es falso para las posiciones vecinas. Tres decisiones para no mentir con el
- * orden:
+ * A sorted list says "the first one is the most X", and at these pool sizes that
+ * is false for neighbouring positions. Three decisions so the order does not lie:
  *
- *   Se ordena por el EXCESO sobre el azar (distancia − nulo), no por la distancia
- *   cruda. Ordenar por distancia cruda pondría arriba a los pools chicos, que se
- *   apartan más por muestreo y no por composición.
+ *   It sorts by the EXCESS over chance (distance − null), not by raw distance.
+ *   Sorting by raw distance would put small pools at the top, since they depart
+ *   more by sampling and not by composition.
  *
- *   Las bandas son el mensaje, no la posición. "Distinta", "al filo" e
- *   "indistinguible" se leen; que una emisión esté 3ª y otra 6ª no se lee, porque
- *   no significa nada.
+ *   The bands are the message, not the position. "Different", "borderline" and
+ *   "indistinguishable" get read; that one issuance is 3rd and another 6th does
+ *   not, because it means nothing.
  *
- *   Se imprime cuánta distancia vale UN préstamo en el pool más chico. Dos
- *   emisiones separadas por menos que eso no están ordenadas: están empatadas y
- *   el orden lo puso el redondeo.
+ *   It prints how much distance ONE loan is worth in the smallest pool. Two
+ *   issuances separated by less than that are not ordered: they are tied and the
+ *   order was set by rounding.
  *
- * LAS MONO-TIPO VAN APARTE, NO ARRIBA
+ * SINGLE-TYPE DEALS GO SEPARATELY, NOT AT THE TOP
  *
- * Una emisión que es 100% hotelería se aparta de la cohort por definición, no
- * por cómo se armó. Si entrara al mismo ranking coparía los primeros puestos con
- * una tautología. Van en su propia sección, sin veredicto.
+ * An issuance that is 100% hospitality departs from the cohort by definition, not
+ * by how it was assembled. If it entered the same ranking it would take the top
+ * places with a tautology. They get their own section, with no verdict.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -75,113 +77,114 @@ if (!health.ok) {
 }
 
 const args = process.argv.slice(2);
-const iA = args.indexOf("--anada");
-const ANADA = iA === -1 ? String(new Date().getFullYear()) : args[iA + 1]!;
+const iV = args.indexOf("--vintage");
+const VINTAGE = iV === -1 ? String(new Date().getFullYear()) : args[iV + 1]!;
 
 const dir = new URL("../out/", import.meta.url).pathname;
-const slugDe = (nombre: string) =>
-  nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+const slugOf = (name: string) =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
-const candidatas = await loadCandidates();
-const cohort = candidatas.filter((c) => c.vintage === ANADA);
+const candidates = await loadCandidates();
+const cohort = candidates.filter((c) => c.vintage === VINTAGE);
 
 if (cohort.length === 0) {
-  console.log(`\n  Sin emisiones en ${ANADA}.\n`);
+  console.log(`\n  No issuances in ${VINTAGE}.\n`);
   await closePool();
   process.exit(0);
 }
 
 await mkdir(dir, { recursive: true });
 
-/** Se genera todo de una: el índice no puede enlazar páginas que no existen. */
-const fichas: Array<{ b: Benchmark; slug: string }> = [];
+/** Everything is generated at once: the index cannot link to pages that do not exist. */
+const cards: Array<{ b: Benchmark; slug: string }> = [];
 for (const c of cohort) {
-  const b = await computeBenchmark(c.name, candidatas);
+  const b = await computeBenchmark(c.name, candidates);
   if (!b) continue;
-  const slug = slugDe(c.name);
+  const slug = slugOf(c.name);
   await writeFile(`${dir}${slug}.html`, render(b), "utf8");
-  fichas.push({ b, slug });
+  cards.push({ b, slug });
 }
 
-const estado = await corpusState();
+const state = await corpusState();
 await closePool();
 
 /**
- * Tres grupos que no se pueden mezclar en una tabla.
+ * Three groups that cannot be mixed in one table.
  *
- * Mono-tipo: se apartan por definición. No evaluables: no hay pares suficientes y
- * la respuesta es "no se sabe", que es distinta de "no se aparta".
+ * Single-type: they depart by definition. Not evaluable: there are not enough
+ * pairs and the answer is "unknown", which is different from "does not depart".
  */
-const evaluables = fichas.filter((f) => f.b.evaluable && !f.b.targetSingleType);
-const monoTipo = fichas.filter((f) => f.b.targetSingleType);
-const sinEvaluar = fichas.filter((f) => !f.b.evaluable && !f.b.targetSingleType);
+const evaluable = cards.filter((f) => f.b.evaluable && !f.b.targetSingleType);
+const singleType = cards.filter((f) => f.b.targetSingleType);
+const notEvaluated = cards.filter((f) => !f.b.evaluable && !f.b.targetSingleType);
 
-const exceso = (b: Benchmark) => b.distance - b.nullDistance;
-evaluables.sort((x, y) => exceso(y.b) - exceso(x.b));
+const excess = (b: Benchmark) => b.distance - b.nullDistance;
+evaluable.sort((x, y) => excess(y.b) - excess(x.b));
 
-type Banda = "distinta" | "filo" | "igual";
-const bandaDe = (b: Benchmark): Banda =>
-  !b.robust ? "filo" : b.pValue < 0.05 ? "distinta" : "igual";
+type Band = "different" | "borderline" | "market";
+const bandOf = (b: Benchmark): Band =>
+  !b.robust ? "borderline" : b.pValue < 0.05 ? "different" : "market";
 
-const distintas = evaluables.filter((f) => bandaDe(f.b) === "distinta").length;
-const alFilo = evaluables.filter((f) => bandaDe(f.b) === "filo").length;
-const esperadasPorAzar = evaluables.length * 0.05;
+const different = evaluable.filter((f) => bandOf(f.b) === "different").length;
+const borderline = evaluable.filter((f) => bandOf(f.b) === "borderline").length;
+const expectedByChance = evaluable.length * 0.05;
 
 /**
- * La resolución del orden, en las unidades del propio ranking.
+ * The resolution of the ordering, in the ranking's own units.
  *
- * `puntoPorPrestamo` es cuánto de la composición vale un préstamo. El pool más
- * chico define el grano más grueso: dos emisiones separadas por menos que eso
- * están empatadas.
+ * `pointPerLoan` is how much of the composition one loan is worth. The smallest
+ * pool sets the coarsest grain: two issuances separated by less than that are
+ * tied.
  */
-const grano = Math.max(...evaluables.map((f) => f.b.pointPerLoan), 0);
+const grain = Math.max(...evaluable.map((f) => f.b.pointPerLoan), 0);
 
-const ETIQUETA: Record<Banda, string> = {
-  distinta: "distinta",
-  filo: "al filo",
-  igual: "de mercado",
+const LABEL: Record<Band, string> = {
+  different: "different",
+  borderline: "borderline",
+  market: "market",
 };
 
-const barraExceso = (b: Benchmark) => {
-  const maxExc = Math.max(...evaluables.map((f) => exceso(f.b)), 0.01);
-  const w = Math.max(0, (exceso(b) / maxExc) * 100);
+const excessBar = (b: Benchmark) => {
+  const maxExc = Math.max(...evaluable.map((f) => excess(f.b)), 0.01);
+  const w = Math.max(0, (excess(b) / maxExc) * 100);
   return `<div class="xb"><i style="width:${w.toFixed(1)}%"></i></div>`;
 };
 
-const fila = (f: { b: Benchmark; slug: string }) => {
+const row = (f: { b: Benchmark; slug: string }) => {
   const b = f.b;
   const o = b.target;
-  const banda = bandaDe(b);
+  const band = bandOf(b);
   /**
-   * El tipo que más se aparta, no el más grande.
+   * The type that departs most, not the largest one.
    *
-   * "Qué tiene de distinto" es la diferencia contra la cohort; el tipo dominante
-   * ya está en casi todas y no distingue. Se omite si la diferencia no llega a un
-   * préstamo: ahí no hay nada que nombrar.
+   * "What is different about it" is the difference against the cohort; the
+   * dominant type is already in almost all of them and does not distinguish. It
+   * is omitted when the difference does not reach one loan: there is nothing to
+   * name there.
    */
   const top = [...b.composition]
     .filter((c) => !c.belowResolution)
     .sort((x, y) => Math.abs(y.difference) - Math.abs(x.difference))[0];
-  return `<tr class="b-${banda}" data-exc="${exceso(b).toFixed(5)}" data-pool="${o.typedPool}" data-nombre="${esc(o.name)}">
+  return `<tr class="b-${band}" data-exc="${excess(b).toFixed(5)}" data-pool="${o.typedPool}" data-name="${esc(o.name)}">
     <th><a href="${f.slug}.html">${esc(o.name)}</a></th>
     <td class="n">${o.typedPool}${
       o.typedPool < o.pool ? `<span class="muted"> / ${o.pool}</span>` : ""
     }</td>
-    <td class="viz">${barraExceso(b)}</td>
+    <td class="viz">${excessBar(b)}</td>
     <td class="n">${pct(b.distance)}<span class="muted"> vs ${pct(b.nullDistance)}</span></td>
-    <td><span class="pill ${banda}">${ETIQUETA[banda]}</span></td>
+    <td><span class="pill ${band}">${LABEL[band]}</span></td>
     <td class="muted sm">${
       top
         ? `${top.difference > 0 ? "+" : "−"}${pct(Math.abs(top.difference))} ${esc(top.type)}` +
-          ` <span class="muted">(${top.loansOfDifference} préstamo${top.loansOfDifference === 1 ? "" : "s"})</span>`
-        : "nada por encima de un préstamo"
+          ` <span class="muted">(${top.loansOfDifference} loan${top.loansOfDifference === 1 ? "" : "s"})</span>`
+        : "nothing above one loan"
     }</td>
   </tr>`;
 };
 
 const html = `<!doctype html>
 <meta charset="utf-8">
-<title>Emisiones ${esc(ANADA)} — qué compró cada una</title>
+<title>${esc(VINTAGE)} issuances — what each one bought</title>
 <style>
   :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
           --dot:#2b5fa8; --agr:#b8791a; --ok:#2f7d43; }
@@ -210,13 +213,13 @@ const html = `<!doctype html>
   .viz { width:150px }
   .xb { height:8px; background:#f0f0f0; border-radius:4px; overflow:hidden }
   .xb i { display:block; height:100%; background:#c3ccda }
-  tr.b-distinta .xb i { background:var(--dot) }
-  tr.b-filo .xb i { background:var(--agr) }
+  tr.b-different .xb i { background:var(--dot) }
+  tr.b-borderline .xb i { background:var(--agr) }
   .pill { font-size:11.5px; text-transform:uppercase; letter-spacing:.04em;
           font-weight:600; padding:3px 8px; border-radius:20px;
           background:#f0f0f0; color:var(--muted); white-space:nowrap }
-  .pill.distinta { background:#e8f1e9; color:var(--ok) }
-  .pill.filo { background:#fdf3e3; color:#8a6410 }
+  .pill.different { background:#e8f1e9; color:var(--ok) }
+  .pill.borderline { background:#fdf3e3; color:#8a6410 }
   .muted { color:var(--muted) }
   .sm { font-size:13px }
   .note { font-size:13px; color:var(--muted); margin:14px 0 0; padding-left:10px;
@@ -226,35 +229,35 @@ const html = `<!doctype html>
   footer code { font-size:12px }
 </style>
 <main>
-  <h1>Emisiones de ${esc(ANADA)}</h1>
-  <p class="sub">${fichas.length} emisiones cosechadas · ${evaluables.length} conduits comparables entre sí</p>
+  <h1>${esc(VINTAGE)} issuances</h1>
+  <p class="sub">${cards.length} issuances harvested · ${evaluable.length} conduits comparable with each other</p>
 
-  <p class="verdict"><b>${distintas} de ${evaluables.length}</b> tienen una mezcla de propiedades
-  más distinta de lo que produce el azar, cuando por azar se esperarían
-  <b>${esperadasPorAzar.toFixed(1)}</b>${alFilo > 0 ? `, y ${alFilo} quedan al filo` : ""}.
-  Ese agregado es sólido; el veredicto de una emisión individual cerca del borde no lo es.</p>
+  <p class="verdict"><b>${different} of ${evaluable.length}</b> have a property mix
+  more different than chance produces, when by chance you would expect
+  <b>${expectedByChance.toFixed(1)}</b>${borderline > 0 ? `, and ${borderline} are borderline` : ""}.
+  That aggregate is solid; the verdict for a single issuance near the edge is not.</p>
 
   <table>
     <thead><tr>
-      <th class="s" data-k="nombre">emisión</th>
-      <th class="s n" data-k="pool">pool con tipo</th>
-      <th class="s" data-k="exc" colspan="2">cuánto se aparta · observado vs azar</th>
+      <th class="s" data-k="name">issuance</th>
+      <th class="s n" data-k="pool">pool with type</th>
+      <th class="s" data-k="exc" colspan="2">how far it departs · observed vs chance</th>
       <th></th>
-      <th>qué tiene de distinto</th>
+      <th>what is different about it</th>
     </tr></thead>
-    <tbody id="t">${evaluables.map(fila).join("")}</tbody>
+    <tbody id="t">${evaluable.map(row).join("")}</tbody>
   </table>
 
-  <p class="note">Se ordena por el <b>exceso sobre el azar</b>, no por la distancia cruda:
-  un pool chico se aparta más por muestreo, y ordenar por distancia pondría arriba a los
-  pools chicos por ser chicos. Un préstamo vale hasta <b>${pct(grano, 1)}</b> de composición
-  en el pool más chico de esta cohort, así que dos emisiones separadas por menos que eso
-  están empatadas y el orden lo puso el redondeo.</p>
+  <p class="note">Sorted by the <b>excess over chance</b>, not by raw distance:
+  a small pool departs more by sampling, and sorting by distance would put small
+  pools at the top for being small. One loan is worth up to <b>${pct(grain, 1)}</b> of
+  composition in the smallest pool of this cohort, so two issuances separated by less
+  than that are tied and the order was set by rounding.</p>
 
   ${
-    monoTipo.length > 0
-      ? `<h2>Mono-tipo — no entran a la comparación</h2>
-         <table><tbody>${monoTipo
+    singleType.length > 0
+      ? `<h2>Single-type — not part of the comparison</h2>
+         <table><tbody>${singleType
            .map(
              (f) => `<tr><th><a href="${f.slug}.html">${esc(f.b.target.name)}</a></th>
                <td class="n">${f.b.target.typedPool}${
@@ -265,56 +268,57 @@ const html = `<!doctype html>
                <td class="muted sm">${pct(f.b.target.dominantShare)} ${esc(f.b.target.dominantType ?? "")}</td></tr>`,
            )
            .join("")}</tbody></table>
-         <p class="note">Una emisión de un solo tipo de propiedad se aparta de la cohort
-         por definición, no por cómo se armó. Meterla al ranking sería coparlo con una
-         tautología.</p>`
+         <p class="note">An issuance of a single property type departs from the cohort
+         by definition, not by how it was assembled. Putting it in the ranking would
+         fill the top with a tautology.</p>`
       : ""
   }
 
   ${
-    sinEvaluar.length > 0
-      ? `<h2>Sin evaluar — no alcanzan los pares</h2>
-         <table><tbody>${sinEvaluar
+    notEvaluated.length > 0
+      ? `<h2>Not evaluated — not enough pairs</h2>
+         <table><tbody>${notEvaluated
            .map(
              (f) => `<tr><th><a href="${f.slug}.html">${esc(f.b.target.name)}</a></th>
                <td class="muted sm">${f.b.pairs.length} comparables</td></tr>`,
            )
            .join("")}</tbody></table>
-         <p class="note">"No se sabe" no es lo mismo que "no se aparta", así que van
-         separadas en vez de al fondo de la tabla con un guion.</p>`
+         <p class="note">"Unknown" is not the same as "does not depart", so these go
+         separately instead of at the bottom of the table with a dash.</p>`
       : ""
   }
 
   <footer>
-    El orden usa lo único que el corpus mostró que distingue emisiones por encima del
-    azar: la mezcla de propiedades. Los términos —DSCR, LTV, debt yield— rastrean lo
-    mismo más débilmente (rho = 0,59) porque son su consecuencia, y están en la página
-    de cada emisión.
+    The ordering uses the only thing the corpus showed distinguishes issuances above
+    chance: the property mix. The terms —DSCR, LTV, debt yield— track the same thing
+    more weakly (rho = 0.59) because they are its consequence, and they are on each
+    issuance's own page.
     <br><br>
-    "Al filo" significa que el veredicto cambia según se pondere la referencia por
-    préstamo o por emisión. Cuando las dos ponderaciones caen a distinto lado del 5%,
-    se dice eso en vez de elegir una.
+    "Borderline" means the verdict changes depending on whether the reference is
+    weighted by loan or by issuance. When the two weightings fall on opposite sides of
+    5%, we say that instead of picking one.
     <br><br>
-    Datos de los FWP / Annex A publicados en SEC EDGAR. Generado por
-    <code>npm run db:catalog</code>. ${esc(provenanceStamp(estado))}
+    Data from the FWP / Annex A filings published on SEC EDGAR. Generated by
+    <code>npm run db:catalog</code>. ${esc(provenanceStamp(state))}
   </footer>
 </main>
 <script>
-  // Ordenar sin dependencias. El default es por exceso, que es el que tiene sentido.
+  // Sorting with no dependencies. The default is by excess, which is the one that
+  // makes sense.
   const tb = document.getElementById("t");
-  let dir = -1, ult = "exc";
+  let dir = -1, last = "exc";
   document.querySelectorAll("thead th.s").forEach((th) => {
     th.addEventListener("click", () => {
       const k = th.dataset.k;
-      dir = k === ult ? -dir : -1;
-      ult = k;
-      const filas = [...tb.querySelectorAll("tr")];
-      filas.sort((a, b) => {
+      dir = k === last ? -dir : -1;
+      last = k;
+      const rows = [...tb.querySelectorAll("tr")];
+      rows.sort((a, b) => {
         const x = a.dataset[k], y = b.dataset[k];
-        const n = k !== "nombre";
-        return (n ? (+y - +x) : y.localeCompare(x)) * (dir === -1 ? 1 : -1);
+        const numeric = k !== "name";
+        return (numeric ? (+y - +x) : y.localeCompare(x)) * (dir === -1 ? 1 : -1);
       });
-      filas.forEach((f) => tb.appendChild(f));
+      rows.forEach((f) => tb.appendChild(f));
     });
   });
 </script>
@@ -323,19 +327,17 @@ const html = `<!doctype html>
 await writeFile(`${dir}index.html`, html, "utf8");
 
 console.log(`\n${"═".repeat(78)}`);
-console.log(`Índice de la cohort ${ANADA}`);
+console.log(`Index of the ${VINTAGE} cohort`);
 console.log(`${"═".repeat(78)}\n`);
+console.log(`  ${cards.length} pages + index in \x1b[1mout/index.html\x1b[0m`);
 console.log(
-  `  ${fichas.length} páginas + índice en \x1b[1mout/index.html\x1b[0m`,
+  `  ${evaluable.length} comparable conduits · ${singleType.length} single-type · ${notEvaluated.length} not evaluated\n`,
 );
-console.log(
-  `  ${evaluables.length} conduits comparables · ${monoTipo.length} mono-tipo · ${sinEvaluar.length} sin evaluar\n`,
-);
-console.log(`  emisión                              con tipo  exceso    veredicto`);
+console.log(`  issuance                             with type  excess    verdict`);
 console.log(`  ${"─".repeat(70)}`);
-for (const f of evaluables) {
-  const banda = bandaDe(f.b);
-  const color = banda === "distinta" ? "\x1b[32m" : banda === "filo" ? "\x1b[33m" : "\x1b[90m";
+for (const f of evaluable) {
+  const band = bandOf(f.b);
+  const color = band === "different" ? "\x1b[32m" : band === "borderline" ? "\x1b[33m" : "\x1b[90m";
   console.log(
     `  ${f.b.target.name.slice(0, 34).padEnd(36)} ` +
       `${String(f.b.target.typedPool).padStart(5)}${
@@ -343,15 +345,15 @@ for (const f of evaluables) {
           ? `\x1b[90m/${f.b.target.pool}\x1b[0m`
           : "   "
       } ` +
-      `${pct(exceso(f.b), 1).padStart(6)}    ${color}${ETIQUETA[banda]}\x1b[0m`,
+      `${pct(excess(f.b), 1).padStart(6)}    ${color}${LABEL[band]}\x1b[0m`,
   );
 }
 console.log(
-  `\n  \x1b[1m${distintas} de ${evaluables.length}\x1b[0m se apartan, contra ${esperadasPorAzar.toFixed(1)} esperadas por azar` +
-    (alFilo > 0 ? ` \x1b[33m(+${alFilo} al filo)\x1b[0m` : ""),
+  `\n  \x1b[1m${different} of ${evaluable.length}\x1b[0m depart, against ${expectedByChance.toFixed(1)} expected by chance` +
+    (borderline > 0 ? ` \x1b[33m(+${borderline} borderline)\x1b[0m` : ""),
 );
 console.log(
-  `  \x1b[90mUn préstamo vale hasta ${pct(grano, 1)} de composición: por debajo de eso el orden` +
-    ` es redondeo.\x1b[0m`,
+  `  \x1b[90mOne loan is worth up to ${pct(grain, 1)} of composition: below that the order` +
+    ` is rounding.\x1b[0m`,
 );
-console.log(`\n\x1b[90m  ${provenanceStamp(estado)}\x1b[0m\n`);
+console.log(`\n\x1b[90m  ${provenanceStamp(state)}\x1b[0m\n`);

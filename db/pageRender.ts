@@ -1,17 +1,17 @@
 /**
- * El HTML de una emisión: la plantilla, separada de quien la invoca.
+ * The HTML for one issuance: the template, separated from whoever invokes it.
  *
- * POR QUÉ SE SEPARÓ
+ * WHY IT WAS SPLIT OUT
  *
- * Vivía adentro de `page.ts`, que es un script con `await` en el nivel superior:
- * importarlo desde otro lado lo ejecuta. Cuando apareció el índice —que necesita
- * generar las mismas páginas— la alternativa era duplicar 280 líneas de plantilla
- * y CSS, y dos copias de un HTML divergen en la primera corrección que se hace en
- * una sola.
+ * It lived inside `page.ts`, which is a script with top-level `await`: importing
+ * it from anywhere else executes it. When the index appeared —which needs to
+ * generate the same pages— the alternative was duplicating 280 lines of template
+ * and CSS, and two copies of an HTML file diverge on the first correction made to
+ * only one of them.
  *
- * Es la misma razón por la que existe `cohortBenchmark.ts`: un cálculo o una
- * plantilla que dos comandos comparten vive en un módulo, no en el script que la
- * necesitó primero.
+ * It is the same reason `cohortBenchmark.ts` exists: a computation or a template
+ * shared by two commands lives in a module, not in the script that needed it
+ * first.
  */
 
 import {
@@ -23,17 +23,17 @@ export const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
- * La posición dentro del rango de la cohort, como una barra.
+ * The position within the cohort's range, as a bar.
  *
- * Se dibuja el rango p25–p75 y un punto donde cae esta emisión. Un punto adentro
- * de la caja dice "de mercado" mucho más rápido que "13ª de 25", y los dos
- * números están igual.
+ * It draws the p25–p75 range and a dot where this issuance falls. A dot inside
+ * the box says "market" far faster than "13th of 25", and both numbers are
+ * present anyway.
  *
- * El punto se recorta al 0–100% del ancho: una emisión más extrema que el p25 o
- * el p75 queda en el borde en vez de salirse del dibujo, y el "13ª de 25" al
- * lado dice cuán afuera está.
+ * The dot is clamped to 0–100% of the width: an issuance more extreme than p25 or
+ * p75 sits on the edge instead of falling outside the drawing, and the "13th of
+ * 25" beside it says how far outside it is.
  */
-function barra(m: CohortMetricResult): string {
+function bar(m: CohortMetricResult): string {
   if (m.value === null || m.p25 === null || m.p75 === null || m.p50 === null) return "";
   const lo = Math.min(m.p25, m.value);
   const hi = Math.max(m.p75, m.value);
@@ -46,15 +46,15 @@ function barra(m: CohortMetricResult): string {
     </div>`;
 }
 
-function filaMetrica(m: CohortMetricResult): string {
+function metricRow(m: CohortMetricResult): string {
   if (m.value === null) {
-    const motivo =
+    const reason =
       m.noData === "issuance"
-        ? "esta emisión no publica el dato"
-        : `solo ${m.pairsWithData} pares con dato — hacen falta ${MIN_PAIRS}`;
+        ? "this issuance does not publish the figure"
+        : `only ${m.pairsWithData} pairs with data — ${MIN_PAIRS} are needed`;
     return `<tr class="nd">
       <th>${esc(m.spec.label)}</th>
-      <td colspan="4"><span class="muted">Sin evaluar: ${esc(motivo)}</span></td>
+      <td colspan="4"><span class="muted">Not evaluated: ${esc(reason)}</span></td>
     </tr>`;
   }
   const f = m.spec.fmt;
@@ -62,119 +62,119 @@ function filaMetrica(m: CohortMetricResult): string {
     <th>${esc(m.spec.label)}</th>
     <td class="val">${esc(f(m.value))}</td>
     <td class="coh">${esc(f(m.p25!))} · <b>${esc(f(m.p50!))}</b> · ${esc(f(m.p75!))}</td>
-    <td class="viz">${barra(m)}</td>
-    <td class="pos${m.extreme ? (m.aggressive ? " agr" : " ext") : ""}">${m.rank}ª<span class="muted"> de ${m.total}</span>${
-      m.aggressive ? '<div class="tag">más agresivo</div>' : ""
+    <td class="viz">${bar(m)}</td>
+    <td class="pos${m.extreme ? (m.aggressive ? " agr" : " ext") : ""}">${m.rank}<span class="muted"> of ${m.total}</span>${
+      m.aggressive ? '<div class="tag">more aggressive</div>' : ""
     }</td>
   </tr>`;
 }
 
-function filaComposicion(c: Composition): string {
+function compositionRow(c: Composition): string {
   const notable = Math.abs(c.difference) > 0.1;
   const w = (v: number) => Math.min(100, v * 100 * 2.2).toFixed(1);
   /**
-   * Una diferencia menor a un préstamo se muestra como "—", no como "+0%".
+   * A difference smaller than one loan is shown as "—", not as "+0%".
    *
-   * El porcentaje redondeado hacía parecer un error de cálculo lo que en
-   * realidad era una diferencia por debajo de la resolución del pool: con 35
-   * préstamos, 0,4 puntos son 0,14 préstamos.
+   * The rounded percentage made what was really a difference below the pool's
+   * resolution look like an arithmetic error: with 35 loans, 0.4 points is 0.14
+   * loans.
    */
-  const dif = c.belowResolution
+  const diff = c.belowResolution
     ? `<span class="muted">—</span>`
     : `${c.difference > 0 ? "+" : ""}${pct(c.difference)}`;
   /**
-   * Y la columna de la derecha dice cuántos préstamos son LA DIFERENCIA, no
-   * cuántos tiene la emisión. La versión anterior mostraba "-13% · 5 préstamos"
-   * y esos 5 eran el multifamily de BANK5, no la brecha contra la cohort: dos
-   * números distintos leídos como uno.
+   * And the right-hand column says how many loans ARE THE DIFFERENCE, not how
+   * many the issuance has. The previous version showed "-13% · 5 loans" and those
+   * 5 were BANK5's multifamily, not the gap against the cohort: two different
+   * numbers read as one.
    */
-  const detalle = c.belowResolution
-    ? `menos de un préstamo de diferencia`
-    : `${c.loansOfDifference} préstamo${c.loansOfDifference === 1 ? "" : "s"} de diferencia` +
-      ` · esta emisión tiene ${c.loans}`;
+  const detail = c.belowResolution
+    ? `less than one loan of difference`
+    : `${c.loansOfDifference} loan${c.loansOfDifference === 1 ? "" : "s"} of difference` +
+      ` · this issuance has ${c.loans}`;
   return `<tr${notable ? ' class="notable"' : ""}>
     <th>${esc(c.type)}</th>
     <td class="mini"><div class="mb"><i style="width:${w(c.own)}%"></i></div>${pct(c.own)}</td>
     <td class="mini"><div class="mb coh"><i style="width:${w(c.cohort)}%"></i></div>${pct(c.cohort)}</td>
-    <td class="dif">${dif}</td>
-    <td class="muted sm">${esc(detalle)}</td>
+    <td class="dif">${diff}</td>
+    <td class="muted sm">${esc(detail)}</td>
   </tr>`;
 }
 
 export function render(b: Benchmark): string {
   const o = b.target;
-  const cuerpo = !b.evaluable
+  const body = !b.evaluable
     ? /**
-       * El rechazo es una respuesta, no una pantalla vacía.
+       * The refusal is an answer, not an empty screen.
        *
-       * Decir "no se sabe" con el motivo es más útil que un tablero en cero, y
-       * es la diferencia entre una herramienta que se puede creer y una que
-       * siempre contesta algo.
+       * Saying "unknown" with the reason is more useful than a dashboard of
+       * zeros, and it is the difference between a tool you can believe and one
+       * that always answers something.
        */
       `<section class="refuse">
-        <h2>No se puede evaluar</h2>
-        <p>Hacen falta ${MIN_PAIRS} emisiones comparables en la cohort ${esc(o.vintage)} y hay
-        ${b.pairs.length}. Con menos, decir que esta emisión "se aparta del mercado" sería
-        una afirmación sobre ${b.pairs.length} documentos.</p>
-        <p class="muted">La respuesta correcta acá es que no se sabe.</p>
+        <h2>Cannot be evaluated</h2>
+        <p>${MIN_PAIRS} comparable issuances are needed in the ${esc(o.vintage)} cohort and there
+        are ${b.pairs.length}. With fewer, saying this issuance "departs from the market" would be
+        a claim about ${b.pairs.length} documents.</p>
+        <p class="muted">The right answer here is that it is unknown.</p>
       </section>`
     : `${
         b.targetSingleType
-          ? `<section class="warn"><h2>Esta emisión es ${pct(o.dominantShare)} ${esc(o.dominantType ?? "")}</h2>
-             <p>No es un conduit diversificado, así que la comparación contra la cohort va a
-             mostrar diferencias garantizadas que no significan nada sobre cómo se suscribió.</p></section>`
+          ? `<section class="warn"><h2>This issuance is ${pct(o.dominantShare)} ${esc(o.dominantType ?? "")}</h2>
+             <p>It is not a diversified conduit, so the comparison against the cohort will show
+             guaranteed differences that mean nothing about how it was underwritten.</p></section>`
           : ""
       }
       <section>
-        <h2>Qué compró esta emisión</h2>
+        <h2>What this issuance bought</h2>
         <table class="c">
           <thead><tr>
-            <th></th><th>esta emisión</th><th>cohort</th><th>dif.</th><th></th>
+            <th></th><th>this issuance</th><th>cohort</th><th>diff.</th><th></th>
           </tr></thead>
-          <tbody>${b.composition.map(filaComposicion).join("")}</tbody>
+          <tbody>${b.composition.map(compositionRow).join("")}</tbody>
         </table>
-        <p class="note">Cada préstamo vale <b>${pct(b.pointPerLoan, 1)}</b> de este pool
-        (${o.typedPool} con tipo), así que una diferencia de 9 puntos son
-        ${Math.max(1, Math.round(0.09 / b.pointPerLoan))} préstamos.
-        Hay que mover el <b>${pct(b.distance)}</b> del pool para llegar a la mezcla de la
-        cohort; sacando ${o.typedPool} préstamos al azar del universo de los pares se esperaría
-        mover ${pct(b.nullDistance)}.</p>
+        <p class="note">Each loan is worth <b>${pct(b.pointPerLoan, 1)}</b> of this pool
+        (${o.typedPool} with a type), so a 9-point difference is
+        ${Math.max(1, Math.round(0.09 / b.pointPerLoan))} loans.
+        You have to move <b>${pct(b.distance)}</b> of the pool to reach the cohort's mix;
+        drawing ${o.typedPool} loans at random from the universe of pairs, you would expect
+        to move ${pct(b.nullDistance)}.</p>
       </section>
 
       <section>
-        <h2>Términos</h2>
+        <h2>Terms</h2>
         <p class="lead">${
           b.metrics.filter((m) => m.value !== null).length === 0
-            ? "Sin métricas evaluables."
-            : `En línea con la cohort: ` +
+            ? "No evaluable metrics."
+            : `In line with the cohort: ` +
               b.metrics
                 .filter((m) => m.value !== null)
                 .map((m) => `${esc(m.spec.label)} ${esc(m.spec.fmt(m.value!))}`)
                 .join(" · ")
         }</p>
-        <p class="note">Estos seis números rastrean lo mismo que la mezcla, más débilmente.
-        Sobre las 28 emisiones de la cohort, cuántas métricas se apartan del rango
-        intercuartil correlaciona con cuánto se aparta la composición (rho = 0,59, t = 3,7):
-        una emisión con mucha hotelería tiene DSCR y debt yield distintos <i>porque</i> los
-        hoteles se suscriben distinto. La causa es la mezcla; los términos son su
-        consecuencia. Van abajo porque cada métrica por separado es una prueba débil de lo
-        que la composición mide de una vez.</p>
+        <p class="note">These six numbers track the same thing as the mix, more weakly.
+        Across the cohort's 28 issuances, how many metrics fall outside the interquartile
+        range correlates with how far the composition departs (rho = 0.59, t = 3.7):
+        an issuance with a lot of hospitality has a different DSCR and debt yield <i>because</i>
+        hotels are underwritten differently. The cause is the mix; the terms are its
+        consequence. They go below because each metric on its own is a weak test of what
+        the composition measures in one go.</p>
         <details>
-          <summary>Ver la posición de cada métrica</summary>
+          <summary>See the position of each metric</summary>
           <table class="m">
             <thead><tr>
-              <th></th><th>esta emisión</th><th>cohort (p25 · mediana · p75)</th><th></th><th>posición</th>
+              <th></th><th>this issuance</th><th>cohort (p25 · median · p75)</th><th></th><th>position</th>
             </tr></thead>
-            <tbody>${b.metrics.map(filaMetrica).join("")}</tbody>
+            <tbody>${b.metrics.map(metricRow).join("")}</tbody>
           </table>
-          <p class="note">La posición es <b>ordinal, no percentil</b>: con ${b.pairs.length}
-          pares un percentil tendría resolución de ~${b.percentileResolution.toFixed(0)} puntos.</p>
+          <p class="note">The position is <b>ordinal, not a percentile</b>: with ${b.pairs.length}
+          pairs a percentile would have a resolution of ~${b.percentileResolution.toFixed(0)} points.</p>
         </details>
       </section>`;
 
   return `<!doctype html>
 <meta charset="utf-8">
-<title>${esc(o.name)} — benchmark de cohort</title>
+<title>${esc(o.name)} — cohort benchmark</title>
 <style>
   :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
           --box:#dfe7f3; --dot:#2b5fa8; --agr:#b8791a; --warn:#fff8e6; }
@@ -227,7 +227,7 @@ export function render(b: Benchmark): string {
   .verdict { font-size:15.5px; margin:0 0 18px; padding:12px 14px; border-radius:6px;
              background:#f4f6fa; border:1px solid #e2e8f2 }
   .verdict.sig { background:#f0f7f1; border-color:#d6e8d9 }
-  .verdict.filo { background:#fdf6ec; border-color:#f0e2bc }
+  .verdict.edge { background:#fdf6ec; border-color:#f0e2bc }
   .lead { font-size:15px; margin:0 0 10px; font-variant-numeric:tabular-nums }
   details { margin-top:14px }
   summary { cursor:pointer; font-size:13px; color:var(--muted); padding:6px 0 }
@@ -242,60 +242,61 @@ export function render(b: Benchmark): string {
 </style>
 <main>
   <h1>${esc(o.name)}</h1>
-  <p class="sub">${esc(o.filed.slice(0, 10))} · ${o.pool} préstamos${
+  <p class="sub">${esc(o.filed.slice(0, 10))} · ${o.pool} loans${
     o.typedPool < o.pool
-      ? `<span class="muted"> (${o.typedPool} con tipo de propiedad — la mezcla se mide sobre esos)</span>`
+      ? `<span class="muted"> (${o.typedPool} with a property type — the mix is measured over those)</span>`
       : ""
-  } · cohort ${esc(o.vintage)}</p>
+  } · ${esc(o.vintage)} cohort</p>
   ${
     b.evaluable
       ? !b.robust
         ? /**
-           * Las dos ponderaciones discrepan: se dice eso, no se elige una.
+           * The two weightings disagree: we say so rather than picking one.
            *
-           * Medido sobre 2026: por préstamo salen 13 emisiones con mezcla
-           * distinta y por emisión 15, coincidiendo en 13. El agregado es
-           * robusto pero dos emisiones cambian de lado, y una es BANK5
-           * 2026-5YR24 — que con una ponderación es "indistinguible" y con la
-           * otra "distinta".
+           * Measured over 2026: by loan there are 13 issuances with a different
+           * mix and by issuance 15, agreeing on 13. The aggregate is robust but
+           * two issuances change sides, and one is BANK5 2026-5YR24 — which under
+           * one weighting is "indistinguishable" and under the other
+           * "different".
            *
-           * Afirmar cualquiera de las dos sería afirmar más de lo que sabemos.
+           * Asserting either would be asserting more than we know.
            */
-          `<p class="verdict filo">Mezcla <b>al filo</b> — hay que mover el ${pct(b.distance)}
-           del pool para igualar la cohort, contra ${pct(b.nullDistance)} esperado por azar
-           con ${o.typedPool} préstamos. Que eso cuente como "distinta" depende de cómo se pondere
-           la referencia: contando todos los préstamos de los pares da p = ${b.pValue.toFixed(3)},
-           y dando el mismo peso a cada emisión da p = ${b.pValueByIssuance.toFixed(3)}.
-           Con las dos a distinto lado del 5%, la respuesta honesta es que está en el borde.</p>`
+          `<p class="verdict edge">Mix is <b>borderline</b> — you have to move ${pct(b.distance)}
+           of the pool to match the cohort, against ${pct(b.nullDistance)} expected by chance
+           with ${o.typedPool} loans. Whether that counts as "different" depends on how the
+           reference is weighted: counting every loan of the pairs gives p = ${b.pValue.toFixed(3)},
+           and giving each issuance equal weight gives p = ${b.pValueByIssuance.toFixed(3)}.
+           With the two on opposite sides of 5%, the honest answer is that it is on the edge.</p>`
         : `<p class="verdict ${b.pValue < 0.05 ? "sig" : ""}">${
             b.pValue < 0.05
-              ? `Mezcla de propiedades <b>distinta de su cohort</b> — hay que mover el
-                 ${pct(b.distance)} del pool para igualarla, contra ${pct(b.nullDistance)}
-                 que se esperaría por azar con ${o.typedPool} préstamos (p = ${b.pValue.toFixed(4)},
-                 y da lo mismo con las dos ponderaciones de la referencia).`
-              : `Mezcla de propiedades <b>indistinguible de su cohort</b> — la distancia de
-                 ${pct(b.distance)} está dentro de lo que produce el muestreo con ${o.typedPool}
-                 préstamos (${pct(b.nullDistance)} esperado, p = ${b.pValue.toFixed(2)}).`
+              ? `Property mix <b>different from its cohort</b> — you have to move
+                 ${pct(b.distance)} of the pool to match it, against ${pct(b.nullDistance)}
+                 that would be expected by chance with ${o.typedPool} loans (p = ${b.pValue.toFixed(4)},
+                 and the same under both weightings of the reference).`
+              : `Property mix <b>indistinguishable from its cohort</b> — the distance of
+                 ${pct(b.distance)} is within what sampling produces with ${o.typedPool}
+                 loans (${pct(b.nullDistance)} expected, p = ${b.pValue.toFixed(2)}).`
           }</p>`
       : ""
   }
-  <p class="peers">${b.pairs.length} emisiones comparables${
+  <p class="peers">${b.pairs.length} comparable issuances${
     b.excluded.length > 0
-      ? ` · ${b.excluded.length} excluida${b.excluded.length === 1 ? "" : "s"} por ser
-         mono-tipo: ${esc(b.excluded.map((e) => e.name.slice(0, 34)).join(", "))}`
+      ? ` · ${b.excluded.length} excluded for being
+         single-type: ${esc(b.excluded.map((e) => e.name.slice(0, 34)).join(", "))}`
       : ""
   }</p>
-  ${cuerpo}
+  ${body}
   <footer>
-    Comparación contra las otras emisiones del mismo año, no contra la historia:
-    entre 2020 y 2024 la tasa pasó de ~3,5% a ~7% y eso arrastra el DSCR y el debt
-    yield por construcción. Una referencia que junte añadas mide el ciclo, no la emisión.
+    Compared against the other issuances of the same year, not against history:
+    between 2020 and 2024 the rate went from ~3.5% to ~7% and that drags DSCR and debt
+    yield along by construction. A reference that pools vintages measures the cycle, not
+    the issuance.
     <br><br>
-    Se compara la <b>mediana del pool</b> contra la distribución de las medianas de los
-    pares. Las emisiones de un solo tipo de propiedad se excluyen del grupo de referencia:
-    no son conduits diversificados.
+    It compares the <b>pool median</b> against the distribution of the pairs' medians.
+    Issuances of a single property type are excluded from the reference group: they are
+    not diversified conduits.
     <br><br>
-    Datos de los FWP / Annex A publicados en SEC EDGAR. Generado por
+    Data from the FWP / Annex A filings published on SEC EDGAR. Generated by
     <code>npm run db:page</code>.
   </footer>
 </main>
