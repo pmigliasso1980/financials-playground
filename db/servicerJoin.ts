@@ -1,33 +1,31 @@
 /**
- * Une el desempeño del servicer con la suscripción del Annex A.
+ * Joins the servicer's performance with the Annex A's underwriting.
  *
  *   npm run db:join -- 2016841
  *   npm run db:join -- 2016841 --months 6
  *
- * POR QUÉ ESTE SCRIPT EXISTE ANTES QUE EL PIPELINE
+ * WHY THIS SCRIPT EXISTS BEFORE THE PIPELINE
  *
- * Todo lo construido en las últimas horas apoya sobre un supuesto que todavía no
- * verificamos: que el "Pros ID" del informe del servicer y el "Loan ID" del
- * Annex A numeran los mismos préstamos de la misma manera. Es plausible —los dos
- * salen del prospecto— pero plausible no es verificado, y si la numeración
- * difiere el parser entero no sirve para nada.
+ * Everything built in the last few hours rests on an assumption we have not
+ * verified: that the servicer report's "Pros ID" and the Annex A's "Loan ID"
+ * number the same loans the same way. It is plausible —both come from the
+ * prospectus— but plausible is not verified, and if the numbering differs the
+ * whole parser is worth nothing.
  *
- * Hay una razón concreta para dudar. En el Annex A los IDs vienen con parte
- * decimal, y esa parte significa algo: "3.00" es el préstamo y "3.01", "3.02"
- * son sus propiedades. Del lado del servicer el mismo préstamo es "3", y sus
- * tramos pari passu son "3A-1", "3A-2". Son dos esquemas distintos de sufijo
- * sobre el mismo entero. Normalizamos ambos al entero y verificamos que el
- * conjunto coincida.
+ * There is a concrete reason to doubt it. In the Annex A the IDs carry a decimal
+ * part, and that part means something: "3.00" is the loan and "3.01", "3.02" are
+ * its properties. On the servicer's side the same loan is "3", and its pari passu
+ * tranches are "3A-1", "3A-2". Two different suffix schemes over the same
+ * integer. We normalise both to the integer and check that the sets coincide.
  *
- * QUÉ MIRAR EN LA SALIDA
+ * WHAT TO LOOK AT IN THE OUTPUT
  *
- * El porcentaje de coincidencia es lo primero. Si es alto, el join sirve. Si es
- * bajo, hay que entender por qué antes de escalar a 31 trusts.
+ * The match percentage comes first. If it is high, the join works. If it is low,
+ * we need to understand why before scaling to 31 trusts.
  *
- * Después viene la primera medición al estilo Griffin sobre un deal: NOI
- * suscrito contra NOI real del primer año completo. Un solo trust no prueba
- * nada, pero si los números son absurdos se ve acá y no después de cosechar
- * treinta.
+ * Then comes the first Griffin-style measurement on one deal: underwritten NOI
+ * against actual NOI for the first full year. A single trust proves nothing, but
+ * if the numbers are absurd it shows here and not after harvesting thirty.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -60,14 +58,14 @@ if (!edgar.ok) {
 }
 
 /**
- * Normaliza un identificador de préstamo al entero que lo designa.
+ * Normalises a loan identifier to the integer that designates it.
  *
- *   Annex A:   "3.00" → 3   ·  "3.01" → 3 (propiedad del préstamo 3)
+ *   Annex A:   "3.00" → 3   ·  "3.01" → 3 (property of loan 3)
  *   Servicer:  "3A-1" → 3   ·  "3"    → 3
  *
- * Ojo: del lado del Annex A las filas de propiedad ya se filtran antes de
- * llegar acá, así que un "3.01" no debería aparecer. Si aparece, el conteo de
- * duplicados lo va a delatar.
+ * Note: on the Annex A side the property rows are already filtered out before
+ * reaching here, so a "3.01" should not appear. If it does, the duplicate count
+ * will give it away.
  */
 function loanInt(raw: string | null): number | null {
   if (!raw) return null;
@@ -99,8 +97,8 @@ const { rows: filings } = await query<{
 
 if (filings.length === 0) {
   console.error(
-    `\n✗ El CIK ${cikArg} no está en el corpus.\n` +
-      `  Cosechalo primero:  npm run harvest -- run ${cikArg}\n`,
+    `\n✗ CIK ${cikArg} is not in the corpus.\n` +
+      `  Harvest it first:  npm run harvest -- run ${cikArg}\n`,
   );
   await closePool();
   process.exit(1);
@@ -111,7 +109,7 @@ const filing = filings[0]!;
 console.log(`\n${"═".repeat(78)}`);
 console.log(`${filing.company_name}`);
 console.log(`${"═".repeat(78)}`);
-console.log(`\n  Annex A     ${filing.accession} · ${filing.filed_at ?? "?"} · ${filing.loans} préstamos`);
+console.log(`\n  Annex A     ${filing.accession} · ${filing.filed_at ?? "?"} · ${filing.loans} loans`);
 
 const { rows: corpusLoans } = await query<{
   loan_ref: string | null; property_type: string | null;
@@ -154,11 +152,11 @@ const merged = mergeServicerReports(collected);
 
 console.log(
   `  Servicer    ${reports[0]!.accession} · ${reports[0]!.periodOfReport} · ` +
-    `${merged.loans.length} préstamos con NOI de año completo`,
+    `${merged.loans.length} loans with full-year NOI`,
 );
 
 // ---------------------------------------------------------------------------
-// El control que decide todo
+// The check that decides everything
 // ---------------------------------------------------------------------------
 
 const corpusByInt = new Map<number, (typeof corpusLoans)[number]>();
@@ -202,23 +200,23 @@ if (servicerOnly.length > 0) {
   console.log(`  solo en servicer          ${String(servicerOnly.length).padStart(4)}  \x1b[90m(${servicerOnly.slice(0, 10).join(", ")})\x1b[0m`);
 }
 if (corpusOnly.length > 0) {
-  console.log(`  solo en corpus            ${String(corpusOnly.length).padStart(4)}  \x1b[90m(${corpusOnly.slice(0, 10).join(", ")})\x1b[0m`);
+  console.log(`  corpus only               ${String(corpusOnly.length).padStart(4)}  \x1b[90m(${corpusOnly.slice(0, 10).join(", ")})\x1b[0m`);
 }
 
 const matchRate = servicerByInt.size ? matched.length / servicerByInt.size : 0;
 console.log();
 if (matchRate >= 0.9) {
-  console.log(`  \x1b[32mLa numeración coincide (${pct(matchRate, 0)}). El join sirve.\x1b[0m`);
+  console.log(`  \x1b[32mThe numbering matches (${pct(matchRate, 0)}). The join works.\x1b[0m`);
 } else if (matchRate >= 0.6) {
-  console.log(`  \x1b[33mCoincide parcialmente (${pct(matchRate, 0)}). Revisá los que no pegan antes de escalar.\x1b[0m`);
+  console.log(`  \x1b[33mPartial match (${pct(matchRate, 0)}). Review the ones that do not join before scaling.\x1b[0m`);
 } else {
-  console.log(`  \x1b[31mLa numeración NO coincide (${pct(matchRate, 0)}).\x1b[0m`);
-  console.log(`  El supuesto de que Pros ID = Loan ID es falso para este emisor.`);
-  console.log(`  Habría que unir por otra clave —nombre de propiedad, saldo— antes de seguir.`);
+  console.log(`  \x1b[31mThe numbering does NOT match (${pct(matchRate, 0)}).\x1b[0m`);
+  console.log(`  The assumption that Pros ID = Loan ID is false for this issuer.`);
+  console.log(`  We would have to join on another key —property name, balance— before continuing.`);
 }
 
 // ---------------------------------------------------------------------------
-// Primera medición estilo Griffin
+// First Griffin-style measurement
 // ---------------------------------------------------------------------------
 
 interface Pair {
@@ -250,25 +248,26 @@ for (const key of matched) {
 }
 
 if (pairs.length === 0) {
-  console.log(`\n  \x1b[33mNingún préstamo tiene NOI suscrito y NOI real a la vez.\x1b[0m\n`);
+  console.log(`\n  \x1b[33mNo loan has both an underwritten NOI and an actual NOI.\x1b[0m\n`);
 } else {
   pairs.sort((a, b) => b.gap - a.gap);
 
   console.log(`\n${"─".repeat(78)}`);
-  console.log(`Suscrito contra real — primera medición estilo Griffin`);
+  console.log(`Underwritten against actual — first Griffin-style measurement`);
   console.log(`${"─".repeat(78)}\n`);
 
   /**
-   * La columna del histórico es la que distingue un hallazgo de un artefacto.
+   * The historical column is what separates a finding from an artefact.
    *
-   * Una brecha del 200% contra el resultado puede ser dos cosas muy distintas:
-   * una proyección agresiva que no se cumplió, o un problema de escala en el
-   * dato. Se separan mirando el trailing: si el suscrito también estaba muy por
-   * encima del histórico, era una apuesta a crecimiento y perdió. Si el suscrito
-   * estaba pegado al histórico y solo el real quedó lejos, la propiedad se
-   * derrumbó —o estamos comparando cosas distintas.
+   * A 200% gap against the outcome can be two very different things: an
+   * aggressive projection that did not materialise, or a scale problem in the
+   * data. They are told apart by looking at the trailing figure: if the
+   * underwritten number was also far above the historical one, it was a bet on
+   * growth and it lost. If the underwritten number hugged the historical one and
+   * only the actual came out far away, the property collapsed —or we are
+   * comparing different things.
    */
-  console.log(`  loan  tipo             NOI suscrito     histórico     NOI real 2025    brecha`);
+  console.log(`  loan  type             underwritten NOI  historical   actual NOI 2025     gap`);
   const show = [...pairs.slice(0, 5), ...(pairs.length > 10 ? pairs.slice(-5) : [])];
   const shown = new Set<number>();
   for (const p of show) {
@@ -281,27 +280,27 @@ if (pairs.length === 0) {
         `${money(p.actual).padStart(16)}   ${color}${pct(p.gap).padStart(7)}\x1b[0m`,
     );
   }
-  if (pairs.length > 10) console.log(`  \x1b[90m  ... ${pairs.length - 10} en el medio\x1b[0m`);
+  if (pairs.length > 10) console.log(`  \x1b[90m  ... ${pairs.length - 10} in between\x1b[0m`);
 
   /**
-   * Los extremos se separan del resto.
+   * The extremes are separated from the rest.
    *
-   * Con n de dos dígitos, dos préstamos con brecha de 200% mueven cualquier
-   * agregado. No los descartamos —pueden ser reales— pero se listan aparte con
-   * su trailing al lado para que alguien los mire uno por uno antes de que
-   * entren a una conclusión.
+   * With a two-digit n, two loans with a 200% gap move any aggregate. We do not
+   * discard them —they may be real— but they are listed separately with their
+   * trailing figure alongside, so someone can look at them one by one before they
+   * enter a conclusion.
    */
   const extreme = pairs.filter((p) => Math.abs(p.gap) >= 1);
   if (extreme.length > 0) {
     console.log(
-      `\n  \x1b[33m${extreme.length} préstamo(s) con brecha ≥100%: revisar a mano antes de creerles\x1b[0m`,
+      `\n  \x1b[33m${extreme.length} loan(s) with a gap ≥100%: check by hand before believing them\x1b[0m`,
     );
     for (const p of extreme) {
       const vsHist = p.trailing ? p.uw / p.trailing - 1 : null;
       const growth = p.trailing ? p.actual / p.trailing - 1 : null;
       console.log(
-        `    loan ${p.key} (${p.type}): suscrito ${pct(vsHist)} sobre el histórico, ` +
-          `y la propiedad ${growth === null ? "?" : growth >= 0 ? `creció ${pct(growth)}` : `cayó ${pct(Math.abs(growth))}`}`,
+        `    loan ${p.key} (${p.type}): underwritten ${pct(vsHist)} above the historical figure, ` +
+          `and the property ${growth === null ? "?" : growth >= 0 ? `grew ${pct(growth)}` : `fell ${pct(Math.abs(growth))}`}`,
       );
     }
     const medianExGap = (() => {
@@ -310,7 +309,7 @@ if (pairs.length === 0) {
     })();
     if (medianExGap !== null) {
       console.log(
-        `    \x1b[90mSin ellos la mediana queda en ${pct(medianExGap)} (n=${pairs.length - extreme.length}).\x1b[0m`,
+        `    \x1b[90mWithout them the median is ${pct(medianExGap)} (n=${pairs.length - extreme.length}).\x1b[0m`,
       );
     }
   }
@@ -320,19 +319,19 @@ if (pairs.length === 0) {
   const above5 = gaps.filter((g) => g >= 0.05).length;
 
   console.log(`\n  n                    ${String(pairs.length).padStart(6)}`);
-  console.log(`  brecha mediana       ${pct(median).padStart(6)}`);
+  console.log(`  median gap           ${pct(median).padStart(6)}`);
   console.log(
-    `  con brecha ≥5%       ${pct(above5 / pairs.length, 0).padStart(6)}  ` +
+    `  with a gap ≥5%       ${pct(above5 / pairs.length, 0).padStart(6)}  ` +
       `\x1b[90m(Griffin 2013-2019: 29%)\x1b[0m`,
   );
 
   /**
-   * El contraste que un solo trust sí permite.
+   * The contrast that one trust does allow.
    *
-   * Contra el trailing ya sabíamos que office se despega. Lo nuevo es contra el
-   * resultado: si la brecha vs. real es parecida a la brecha vs. histórico, el
-   * suscriptor acertó y solo estaba proyectando crecimiento contractual. Si es
-   * mucho mayor, la proyección no se cumplió.
+   * Against the trailing figure we already knew office pulls away. What is new is
+   * against the outcome: if the gap vs actual is similar to the gap vs
+   * historical, the underwriter was right and was only projecting contractual
+   * growth. If it is much larger, the projection did not materialise.
    */
   const withTrailing = pairs.filter((p) => p.trailing !== null);
   if (withTrailing.length >= 5) {
@@ -344,39 +343,40 @@ if (pairs.length === 0) {
     const mA = vsActual[Math.floor(vsActual.length / 2)]!;
 
     /**
-     * El número que las dos brechas implican, y que ninguna muestra sola.
+     * The number both gaps imply, and that neither shows on its own.
      *
-     * Si el suscriptor proyectó X% sobre el histórico y el resultado quedó Y%
-     * por debajo de lo suscrito, entonces la propiedad creció (1+X)/(1+Y) - 1.
-     * Ese es el dato de negocio: cuánto creció de verdad contra cuánto se
-     * esperaba que creciera. Las dos brechas por separado no lo dicen.
+     * If the underwriter projected X% over the historical figure and the outcome
+     * came in Y% below what was underwritten, then the property grew
+     * (1+X)/(1+Y) − 1. That is the business figure: how much it actually grew
+     * against how much it was expected to grow. The two gaps separately do not
+     * say it.
      */
     const realGrowth = (1 + mT) / (1 + mA) - 1;
 
-    console.log(`\n  Sobre los ${withTrailing.length} préstamos con las tres cifras:`);
-    console.log(`    suscrito vs. histórico   ${pct(mT).padStart(7)}   \x1b[90m(crecimiento proyectado)\x1b[0m`);
-    console.log(`    suscrito vs. real        ${pct(mA).padStart(7)}   \x1b[90m(lo que mide Griffin)\x1b[0m`);
-    console.log(`    \x1b[1mreal vs. histórico       ${pct(realGrowth).padStart(7)}\x1b[0m   \x1b[90m(crecimiento entregado)\x1b[0m`);
+    console.log(`\n  Over the ${withTrailing.length} loans with all three figures:`);
+    console.log(`    underwritten vs historical ${pct(mT).padStart(7)}   \x1b[90m(projected growth)\x1b[0m`);
+    console.log(`    underwritten vs actual     ${pct(mA).padStart(7)}   \x1b[90m(what Griffin measures)\x1b[0m`);
+    console.log(`    \x1b[1mactual vs historical       ${pct(realGrowth).padStart(7)}\x1b[0m   \x1b[90m(delivered growth)\x1b[0m`);
     console.log();
     if (mT > 0.02 && realGrowth < mT / 2) {
       console.log(
-        `    \x1b[33mSe proyectó ${pct(mT)} de crecimiento y se entregó ${pct(realGrowth)}.\x1b[0m`,
+        `    \x1b[33m${pct(mT)} of growth was projected and ${pct(realGrowth)} was delivered.\x1b[0m`,
       );
-      console.log(`    Las propiedades quedaron esencialmente donde estaban.`);
+      console.log(`    The properties ended up essentially where they started.`);
     } else if (realGrowth >= mT) {
-      console.log(`    \x1b[32mLas propiedades crecieron al menos lo proyectado.\x1b[0m`);
-      console.log(`    La brecha contra el histórico era una proyección correcta.`);
+      console.log(`    \x1b[32mThe properties grew at least as much as projected.\x1b[0m`);
+      console.log(`    The gap against the historical figure was a correct projection.`);
     } else {
       console.log(
-        `    \x1b[90mSe proyectó ${pct(mT)} y se entregó ${pct(realGrowth)}: parcialmente cumplido.\x1b[0m`,
+        `    \x1b[90m${pct(mT)} projected and ${pct(realGrowth)} delivered: partially met.\x1b[0m`,
       );
     }
   }
 
   console.log(
-    `\n  \x1b[90mUn trust no prueba nada. Sirve para ver si los números son plausibles\x1b[0m`,
+    `\n  \x1b[90mOne trust proves nothing. It is for checking the numbers are plausible\x1b[0m`,
   );
-  console.log(`  \x1b[90mantes de cosechar treinta.\x1b[0m\n`);
+  console.log(`  \x1b[90mbefore harvesting thirty.\x1b[0m\n`);
 }
 
 await closePool();
