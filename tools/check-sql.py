@@ -93,7 +93,12 @@ def check(path: pathlib.Path) -> int:
             # values cannot be checked this way: substituting a literal produces
             # a syntax error that says nothing about the real query. Reported as
             # unverified, not as a finding.
-            if "'x'" in str(e):
+            # Two unverifiable shapes, not findings:
+            #   'x'  — a ${...} carrying a SQL fragment, replaced by a literal
+            #   "$"  — a ${...} carrying a PARAMETER POSITION, as in
+            #          `$${params.length + 1}`, which the substitution turns into
+            #          `$'x'`. api/comps.ts builds its placeholders that way.
+            if "'x'" in str(e) or 'at or near "$"' in str(e):
                 print(f"  ? {path.name}: NOT VERIFIED — interpolates SQL fragments, not values")
                 return 0
             print(f"  ✗ {path.name} query {n}: {e}")

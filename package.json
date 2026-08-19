@@ -64,10 +64,10 @@
     "api:smoke": "tsx api/smoke.ts",
     "db:monitor": "tsx db/monitor.ts",
     "mcp": "tsx mcp/server.ts",
-    "api:casos": "tsx api/casos.ts",
     "db:fix-states": "tsx db/fixStates.ts",
     "db:missing-state": "tsx db/missingState.ts",
-    "db:provenance": "tsx db/provenanceCli.ts"
+    "db:provenance": "tsx db/provenanceCli.ts",
+    "api:scenarios": "tsx api/scenarios.ts"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",

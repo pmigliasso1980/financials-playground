@@ -38,7 +38,7 @@
 
 import { closePool, ping, query } from "../db/client.js";
 import { pct } from "../db/cohortBenchmark.js";
-import { aparte, SIMULACIONES, tv } from "../db/compositionDistance.js";
+import { apart, SIMULATIONS, totalVariation } from "../db/compositionDistance.js";
 
 const health = await ping();
 if (!health.ok) {
@@ -144,7 +144,7 @@ for (const [accession, e] of porEmision) {
 
   const q = tipos.map((t) => (resto.get(t) ?? 0) / Math.max(1, totalResto));
   const p = tipos.map((t) => (e.conteo.get(t) ?? 0) / Math.max(1, e.total));
-  const dObs = tv(p, q);
+  const dObs = totalVariation(p, q);
 
   /** La misma referencia, con cada emisión pesando igual en vez de por préstamo. */
   const otras = [...porEmision].filter(([acc]) => acc !== accession);
@@ -155,10 +155,10 @@ for (const [accession, e] of porEmision) {
     );
     return suma / Math.max(1, otras.length);
   });
-  const dEmision = tv(p, qEmision);
+  const dEmision = totalVariation(p, qEmision);
 
-  const porPrestamo = aparte(p, q, e.total);
-  const nuloP50 = porPrestamo.nulo;
+  const porPrestamo = apart(p, q, e.total);
+  const nuloP50 = porPrestamo.nullMedian;
   const pVal = porPrestamo.p;
   if (pVal < ALFA) {
     significativas++;
@@ -166,17 +166,17 @@ for (const [accession, e] of porEmision) {
   }
 
   /**
-   * El nulo se resimula adentro de `aparte`: cambiar la referencia cambia también
+   * El nulo se resimula adentro de `apart`: cambiar la referencia cambia también
    * qué distancias produce el azar.
    */
-  if (aparte(p, qEmision, e.total).p < ALFA) porEmisionSig.add(e.nombre);
+  if (apart(p, qEmision, e.total).p < ALFA) porEmisionSig.add(e.nombre);
   detalle.push({ nombre: e.nombre, d: dObs, p: pVal, pool: e.total });
 
   const marca = pVal < ALFA ? "\x1b[32m" : "\x1b[90m";
   console.log(
     `  ${e.nombre.slice(0, 32).padEnd(34)} ${String(e.total).padStart(4)}   ` +
       `${dObs.toFixed(3).padStart(9)}   ${nuloP50.toFixed(3).padStart(8)}   ` +
-      `${marca}${pVal < 1 / SIMULACIONES ? `<${(1 / SIMULACIONES).toFixed(4)}` : pVal.toFixed(4)}\x1b[0m`,
+      `${marca}${pVal < 1 / SIMULATIONS ? `<${(1 / SIMULATIONS).toFixed(4)}` : pVal.toFixed(4)}\x1b[0m`,
   );
 }
 

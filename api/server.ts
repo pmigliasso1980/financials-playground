@@ -1,31 +1,32 @@
 /**
- * El servidor. Transporte y nada más.
+ * The server. Transport and nothing else.
  *
  *   npm run api          → http://localhost:8787
  *
- * POR QUÉ SIN FRAMEWORK
+ * WHY NO FRAMEWORK
  *
- * Cuatro rutas y un envelope no justifican una dependencia. El proyecto ya tiene
- * la regla en otro lado —las páginas HTML no tienen dependencias y por eso se
- * abren con doble clic— y vale igual acá: `node:http` alcanza, y si algún día
- * hacen falta middlewares de verdad, migrar cuatro handlers es una tarde.
+ * Four routes and an envelope do not justify a dependency. The project already has
+ * the rule elsewhere —the HTML pages have no dependencies and that is why they open
+ * on a double click— and it holds here too: `node:http` is enough, and if real
+ * middleware is ever needed, migrating four handlers is an afternoon.
  *
- * QUÉ HACE Y QUÉ NO
+ * WHAT IT DOES AND WHAT IT DOES NOT
  *
- * No decide nada. Toda la lógica vive en `api/comps.ts` y en los módulos de `db/`,
- * así que el servidor se puede tirar y reescribir sin tocar una regla de negocio.
+ * It decides nothing. All the logic lives in `api/comps.ts` and in the `db/`
+ * modules, so the server can be thrown away and rewritten without touching a
+ * business rule.
  *
- * EL ENVELOPE, QUE CUESTA UNA LÍNEA
+ * THE ENVELOPE, WHICH COSTS ONE LINE
  *
- * `request_id` + `timestamp` + `data` en toda respuesta. Sale de la emulación
- * anterior (ver `docs/arquitectura-propia.md` §7) y resultó lo más útil de aquel
- * contrato: cuando alguien reporta "me dio mal", el request_id es lo único que
- * permite encontrar la corrida.
+ * `request_id` + `timestamp` + `data` on every response. It comes from the earlier
+ * emulation (see `docs/own-architecture.md` §7) and turned out to be the most
+ * useful part of that contract: when someone reports "it gave me the wrong
+ * answer", the request_id is the only thing that lets you find the run.
  *
- * LO QUE NO ESTÁ Y HAY QUE DECIR
+ * WHAT IS MISSING AND HAS TO BE SAID
  *
- * No hay auth. El corpus sale de documentos públicos de EDGAR, así que puede que
- * no haga falta nunca; pero mientras no se decida, esto NO se expone a internet.
+ * There is no auth. The corpus comes from public EDGAR documents, so it may never
+ * be needed; but until that is decided, this is NOT exposed to the internet.
  */
 
 import { createServer } from "node:http";
@@ -33,9 +34,9 @@ import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { closePool, ping } from "../db/client.js";
 import { corpusState, provenanceStamp } from "../db/provenance.js";
-import { buscarComparables, MIN_COMPARABLES, TIPOS, type Tipo } from "./comps.js";
+import { findComparables, MIN_COMPARABLES, PROPERTY_TYPES, type PropertyType } from "./comps.js";
 
-const PUERTO = Number(process.env.PORT ?? 8787);
+const PORT = Number(process.env.PORT ?? 8787);
 
 const health = await ping();
 if (!health.ok) {
@@ -44,97 +45,98 @@ if (!health.ok) {
   process.exit(1);
 }
 
-interface Fallo {
-  codigo: string;
-  mensaje: string;
-  /** Qué mandar para que ande. Un error sin esto obliga a leer el código. */
-  esperado?: string;
+interface Failure {
+  code: string;
+  message: string;
+  /** What to send so it works. An error without this forces you to read the code. */
+  expected?: string;
 }
 
 /**
- * La validación devuelve el error COMPLETO, no el primero.
+ * Validation returns the COMPLETE error, not the first one.
  *
- * Un cliente que manda tres parámetros mal y recibe un error por vez hace tres
- * viajes para descubrir lo que se podía decir de una.
+ * A client that sends three bad parameters and gets one error at a time makes
+ * three round trips to discover what could have been said in one.
  */
-function validarComps(q: URLSearchParams): { ok: true; v: Parametros } | { ok: false; fallos: Fallo[] } {
-  const fallos: Fallo[] = [];
+function validateComps(q: URLSearchParams): { ok: true; v: Params } | { ok: false; failures: Failure[] } {
+  const failures: Failure[] = [];
 
-  const estado = (q.get("state") ?? "").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(estado)) {
-    fallos.push({
-      codigo: "estado_invalido",
-      mensaje: `state="${q.get("state") ?? ""}" no es un código de dos letras`,
-      esperado: "state=GA",
+  const state = (q.get("state") ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(state)) {
+    failures.push({
+      code: "invalid_state",
+      message: `state="${q.get("state") ?? ""}" is not a two-letter code`,
+      expected: "state=GA",
     });
   }
 
-  const tipo = (q.get("type") ?? "").trim();
-  if (!TIPOS.includes(tipo as Tipo)) {
-    fallos.push({
-      codigo: "tipo_invalido",
-      mensaje: `type="${tipo}" no es un tipo del corpus`,
-      esperado: TIPOS.join(" | "),
+  const type = (q.get("type") ?? "").trim();
+  if (!PROPERTY_TYPES.includes(type as PropertyType)) {
+    failures.push({
+      code: "invalid_type",
+      message: `type="${type}" is not a type in the corpus`,
+      expected: PROPERTY_TYPES.join(" | "),
     });
   }
 
-  const monto = Number(q.get("amount"));
-  if (!Number.isFinite(monto) || monto <= 0) {
-    fallos.push({
-      codigo: "monto_invalido",
-      mensaje: `amount="${q.get("amount") ?? ""}" no es un número positivo`,
-      esperado: "amount=28000000 (en dólares)",
+  const amount = Number(q.get("amount"));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    failures.push({
+      code: "invalid_amount",
+      message: `amount="${q.get("amount") ?? ""}" is not a positive number`,
+      expected: "amount=28000000 (in dollars)",
     });
   }
 
-  const banda = q.has("band") ? Number(q.get("band")) : undefined;
-  if (banda != null && (!Number.isFinite(banda) || banda <= 0 || banda > 3)) {
-    fallos.push({ codigo: "banda_invalida", mensaje: "band fuera de (0, 3]", esperado: "band=0.5" });
+  const band = q.has("band") ? Number(q.get("band")) : undefined;
+  if (band != null && (!Number.isFinite(band) || band <= 0 || band > 3)) {
+    failures.push({ code: "invalid_band", message: "band outside (0, 3]", expected: "band=0.5" });
   }
 
-  const meses = q.has("months") ? Number(q.get("months")) : undefined;
-  if (meses != null && (!Number.isInteger(meses) || meses < 1 || meses > 240)) {
-    fallos.push({ codigo: "meses_invalidos", mensaje: "months fuera de [1, 240]", esperado: "months=18" });
+  const months = q.has("months") ? Number(q.get("months")) : undefined;
+  if (months != null && (!Number.isInteger(months) || months < 1 || months > 240)) {
+    failures.push({ code: "invalid_months", message: "months outside [1, 240]", expected: "months=18" });
   }
 
   /**
-   * El LTV se acepta como fracción (0,70) y como porcentaje (70) porque un broker
-   * escribe las dos, y adivinar mal cambia la respuesta sin avisar. Se normaliza
-   * y se devuelve normalizado en `criterios` para que se vea qué se entendió.
+   * The LTV is accepted as a fraction (0.70) and as a percentage (70) because a
+   * broker writes both, and guessing wrong changes the answer without warning. It
+   * is normalised and returned normalised in `criteria` so what was understood is
+   * visible.
    */
-  let ltvObjetivo: number | undefined;
+  let targetLtv: number | undefined;
   if (q.has("target_ltv")) {
     const raw = Number(q.get("target_ltv"));
     if (!Number.isFinite(raw) || raw <= 0 || raw > 100) {
-      fallos.push({ codigo: "ltv_invalido", mensaje: "target_ltv fuera de rango", esperado: "target_ltv=0.70 o 70" });
+      failures.push({ code: "invalid_ltv", message: "target_ltv out of range", expected: "target_ltv=0.70 or 70" });
     } else {
-      ltvObjetivo = raw > 2 ? raw / 100 : raw;
+      targetLtv = raw > 2 ? raw / 100 : raw;
     }
   }
 
-  if (fallos.length > 0) return { ok: false, fallos };
+  if (failures.length > 0) return { ok: false, failures };
   return {
     ok: true,
     v: {
-      estado, tipo: tipo as Tipo, monto, banda, meses, ltvObjetivo,
+      state, type: type as PropertyType, amount, band, months, targetLtv,
       /**
-       * El alcance nacional se pide, no se cae en él. Ver el comentario de
-       * `Alcance` en comps.ts: automatizarlo mató la negativa.
+       * National scope is asked for, not fallen into. See the comment on `Scope`
+       * in comps.ts: automating it killed the refusal.
        */
-      nacional: q.get("nacional") === "1" || q.get("nacional") === "true",
+      national: q.get("national") === "1" || q.get("national") === "true",
     },
   };
 }
 
-interface Parametros {
-  estado: string; tipo: Tipo; monto: number;
-  banda?: number; meses?: number; ltvObjetivo?: number; nacional?: boolean;
+interface Params {
+  state: string; type: PropertyType; amount: number;
+  band?: number; months?: number; targetLtv?: number; national?: boolean;
 }
 
 const server = createServer(async (req, res) => {
   const requestId = randomUUID();
-  const url = new URL(req.url ?? "/", `http://localhost:${PUERTO}`);
-  const responder = (status: number, data: unknown) => {
+  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+  const respond = (status: number, data: unknown) => {
     res.writeHead(status, {
       "content-type": "application/json; charset=utf-8",
       "x-request-id": requestId,
@@ -143,81 +145,81 @@ const server = createServer(async (req, res) => {
   };
 
   try {
-    if (req.method !== "GET") return responder(405, { error: { codigo: "metodo_no_permitido" } });
+    if (req.method !== "GET") return respond(405, { error: { code: "method_not_allowed" } });
 
     /**
-     * La pantalla se sirve desde el mismo proceso.
+     * The page is served from the same process.
      *
-     * Un archivo suelto que hay que abrir con file:// no puede llamar a la API por
-     * CORS, y montar un segundo servidor para un HTML es infraestructura sin
-     * motivo. Se lee del disco en cada request: son 8 KB y así se puede editar sin
-     * reiniciar.
+     * A loose file opened with file:// cannot call the API because of CORS, and
+     * standing up a second server for one HTML file is infrastructure without a
+     * reason. It is read from disk on every request: it is 8 KB, and that way it
+     * can be edited without restarting.
      */
     /**
-     * Dos pantallas, dos públicos.
+     * Two pages, two audiences.
      *
-     * `/` es para alguien con un deal concreto. `/casos` corre los doce escenarios
-     * de una y es para nosotros: sirve para ver de un vistazo qué puede y qué no
-     * puede contestar el corpus. Mezclarlas obligaría a un broker a mirar once
-     * filas que no le importan.
+     * `/` is for someone with a concrete deal. `/scenarios` runs the twelve
+     * scenarios at once and is for us: it shows at a glance what the corpus can
+     * and cannot answer. Mixing them would force a broker to look at eleven rows
+     * they do not care about.
      */
-    const PANTALLAS: Record<string, string> = {
+    const PAGES: Record<string, string> = {
       "/": "ui.html",
       "/index.html": "ui.html",
-      "/casos": "casos.html",
+      "/scenarios": "scenarios.html",
     };
-    const pantalla = PANTALLAS[url.pathname];
-    if (pantalla) {
-      const html = await readFile(new URL(`./${pantalla}`, import.meta.url), "utf8");
+    const page = PAGES[url.pathname];
+    if (page) {
+      const html = await readFile(new URL(`./${page}`, import.meta.url), "utf8");
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-request-id": requestId });
       return res.end(html);
     }
 
     if (url.pathname === "/health") {
-      return responder(200, { ok: true });
+      return respond(200, { ok: true });
     }
 
     if (url.pathname === "/corpus") {
       const e = await corpusState();
-      return responder(200, { ...e, provenanceStamp: provenanceStamp(e), tipos: TIPOS });
+      return respond(200, { ...e, provenanceStamp: provenanceStamp(e), types: PROPERTY_TYPES });
     }
 
     if (url.pathname === "/comps") {
-      const p = validarComps(url.searchParams);
-      if (!p.ok) return responder(422, { error: { codigo: "parametros_invalidos", fallos: p.fallos } });
-      const r = await buscarComparables(p.v);
+      const p = validateComps(url.searchParams);
+      if (!p.ok) return respond(422, { error: { code: "invalid_parameters", failures: p.failures } });
+      const r = await findComparables(p.v);
       /**
-       * "No hay suficientes comparables" es 200, no 404 ni 422.
+       * "Not enough comparables" is 200, not 404 or 422.
        *
-       * Es el estado del conocimiento, no una falla: el cliente tiene que poder
-       * distinguirlo de un servidor caído o de una consulta mal armada, porque la
-       * acción que sigue es distinta —ampliar el criterio, no reintentar—.
+       * It is the state of the knowledge, not a failure: the client has to be able
+       * to distinguish it from a downed server or a malformed query, because the
+       * action that follows is different —widen the criteria, not retry.
        */
-      return responder(200, r);
+      return respond(200, r);
     }
 
-    return responder(404, {
+    return respond(404, {
       error: {
-        codigo: "no_encontrado",
-        rutas: ["/", "/casos", "/health", "/corpus", "/comps?state=GA&type=Multifamily&amount=28000000"],
+        code: "not_found",
+        routes: ["/", "/scenarios", "/health", "/corpus", "/comps?state=GA&type=Multifamily&amount=28000000"],
       },
     });
   } catch (err) {
     console.error(`[${requestId}]`, err);
-    return responder(500, { error: { codigo: "error_interno", request_id: requestId } });
+    return respond(500, { error: { code: "internal_error", request_id: requestId } });
   }
 });
 
-server.listen(PUERTO, () => {
-  const e = `http://localhost:${PUERTO}`;
-  console.log(`\n  API escuchando en \x1b[1m${e}\x1b[0m\n`);
-  console.log(`  \x1b[90m${e}/casos  → los doce escenarios de una\x1b[0m\n`);
-  console.log(`  \x1b[90mO por consola:\x1b[0m`);
+server.listen(PORT, () => {
+  const e = `http://localhost:${PORT}`;
+  console.log(`\n  API listening on \x1b[1m${e}\x1b[0m\n`);
+  console.log(`  \x1b[90m${e}/scenarios  → the twelve scenarios at once\x1b[0m\n`);
+  console.log(`  \x1b[90mOr from the console:\x1b[0m`);
   console.log(`    curl "${e}/corpus"`);
   console.log(`    curl "${e}/comps?state=GA&type=Multifamily&amount=28000000&target_ltv=0.70"`);
   console.log(
-    `\n  \x1b[90mSin auth: no exponer a internet hasta decidirlo. Mínimo ${MIN_COMPARABLES} comparables` +
-      ` para dar un rango.\x1b[0m\n`,
+    `\n  \x1b[90mNo auth: do not expose to the internet until that is decided. Minimum ${MIN_COMPARABLES}` +
+      ` comparables to give a range.\x1b[0m\n`,
   );
 });
 

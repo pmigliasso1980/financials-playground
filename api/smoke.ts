@@ -1,212 +1,250 @@
 /**
- * Smoke de la API: corre contra el servidor levantado, no contra mocks.
+ * API smoke test: runs against the live server, not against mocks.
  *
  *   npm run api        # terminal 1
  *   npm run api:smoke  # terminal 2
  *
- * POR QUÉ EXISTE, Y CUÁL ES EL CHEQUEO QUE LO MOTIVÓ
+ * WHY IT EXISTS, AND WHICH CHECK MOTIVATED IT
  *
- * La primera versión de la pantalla mostraba cada comparable con un link "a la
- * SEC" que era una URL de búsqueda escrita de memoria: parámetros vacíos y
- * `action` repetido dos veces. No llevaba a ninguna parte, y el dato correcto
- * —`file_url`— estaba en la base desde el principio.
+ * The first version of the screen showed each comparable with a "to SEC" link that
+ * was a search URL written from memory: empty parameters and `action` repeated
+ * twice. It led nowhere, and the correct datum —`file_url`— was in the database
+ * from the start.
  *
- * Eso pasó el typecheck, pasó la revisión y se commiteó describiéndolo como
- * "lleva cada comparable a su documento en la SEC". Un string no tiene tipo que
- * lo desmienta.
+ * That passed the typecheck, passed review and was committed described as "takes
+ * each comparable to its document on SEC". A string has no type to contradict it.
  *
- * Así que el chequeo central de este archivo es ese: **toda URL que la API
- * devuelve tiene que apuntar al archivo de EDGAR**, y la forma se verifica contra
- * el patrón real. Es el único test acá que atrapa una alucinación en vez de un
- * error de programación.
+ * So this file's central check is exactly that: **every URL the API returns has to
+ * point at the real EDGAR file**, and the shape is verified against the real
+ * pattern. It is the only test here that catches a hallucination rather than a
+ * programming error.
  *
- * LO QUE ESTE SMOKE NO HACE
+ * WHAT THIS SMOKE TEST DOES NOT DO
  *
- * No abre las URLs. Verificar que respondan 200 obligaría a pegarle a sec.gov en
- * cada corrida, y eso convierte un test rápido en uno que falla por red. Verifica
- * la FORMA; que el archivo exista lo garantiza el harvester, que lo descargó.
+ * It does not open the URLs. Verifying they return 200 would mean hitting sec.gov
+ * on every run, and that turns a fast test into one that fails on the network. It
+ * verifies the SHAPE; that the file exists is guaranteed by the harvester, which
+ * downloaded it.
+ *
+ * WHY THE EMPTY EXPORT AT THE BOTTOM
+ *
+ * This file uses top-level `await`, which TypeScript only allows in a module. It
+ * had no imports or exports, so it was not one — and it never compiled. That went
+ * unnoticed because tsconfig's `include` did not cover `api/` at all, so `npm run
+ * typecheck` never looked at this file. Both are fixed now.
  */
 
 const BASE = process.env.API ?? "http://localhost:8787";
 
 let ok = 0;
-let fallidos = 0;
+let failed = 0;
 
-function check(nombre: string, condicion: boolean, detalle?: string) {
-  if (condicion) {
+function check(name: string, condition: boolean, detail?: string) {
+  if (condition) {
     ok++;
-    console.log(`  \x1b[32m✓\x1b[0m ${nombre}`);
+    console.log(`  \x1b[32m✓\x1b[0m ${name}`);
   } else {
-    fallidos++;
-    console.log(`  \x1b[31m✗\x1b[0m ${nombre}${detalle ? `\n      \x1b[90m${detalle}\x1b[0m` : ""}`);
+    failed++;
+    console.log(`  \x1b[31m✗\x1b[0m ${name}${detail ? `\n      \x1b[90m${detail}\x1b[0m` : ""}`);
   }
 }
 
-async function get(ruta: string) {
-  const res = await fetch(`${BASE}${ruta}`);
-  const cuerpo = await res.json();
-  return { status: res.status, ...cuerpo };
+/**
+ * The response body, loosely typed on purpose.
+ *
+ * The previous version spread `await res.json()` —typed `unknown`— into an object
+ * literal, which does not compile. It ran under tsx because tsx strips types
+ * without checking them.
+ */
+interface Envelope {
+  status: number;
+  request_id?: string;
+  data?: Record<string, unknown> & { error?: Record<string, unknown> };
 }
 
-console.log(`\n  Smoke de la API — ${BASE}\n`);
+async function get(path: string): Promise<Envelope> {
+  const res = await fetch(`${BASE}${path}`);
+  const body = (await res.json()) as Record<string, unknown>;
+  return { status: res.status, ...body } as Envelope;
+}
+
+console.log(`\n  API smoke test — ${BASE}\n`);
 
 try {
-  const salud = await get("/health");
-  check("/health responde 200", salud.status === 200);
-  check("toda respuesta trae request_id", typeof salud.request_id === "string");
+  const health = await get("/health");
+  check("/health returns 200", health.status === 200);
+  check("every response carries a request_id", typeof health.request_id === "string");
 } catch {
   console.error(
-    `\n  \x1b[31mNo se pudo conectar a ${BASE}.\x1b[0m Levantá el servidor con \x1b[1mnpm run api\x1b[0m\n`,
+    `\n  \x1b[31mCould not connect to ${BASE}.\x1b[0m Start the server with \x1b[1mnpm run api\x1b[0m\n`,
   );
   process.exit(1);
 }
 
 const corpus = await get("/corpus");
-check("/corpus trae la provenanceStamp de procedencia", typeof corpus.data?.provenanceStamp === "string");
-check("/corpus lista los tipos", Array.isArray(corpus.data?.tipos) && corpus.data.tipos.length > 0);
-
-// ---------------------------------------------------------------------------
-// Parámetros inválidos: todos los errores juntos, no el primero
-// ---------------------------------------------------------------------------
-
-const malos = await get("/comps?state=GEORGIA&type=Casas&amount=cero");
-check("parámetros inválidos → 422", malos.status === 422);
+check("/corpus carries the provenance stamp", typeof corpus.data?.provenanceStamp === "string");
 check(
-  "devuelve los TRES errores, no solo el primero",
-  malos.data?.error?.fallos?.length === 3,
-  `devolvió ${malos.data?.error?.fallos?.length}`,
-);
-check(
-  "cada error dice qué mandar",
-  (malos.data?.error?.fallos ?? []).every((f: { esperado?: string }) => typeof f.esperado === "string"),
+  "/corpus lists the types",
+  Array.isArray(corpus.data?.types) && (corpus.data.types as unknown[]).length > 0,
 );
 
 // ---------------------------------------------------------------------------
-// Que la negativa siga siendo POSIBLE, con una consulta realista
+// Invalid parameters: all the errors at once, not the first one
+// ---------------------------------------------------------------------------
+
+const bad = await get("/comps?state=GEORGIA&type=Houses&amount=zero");
+const badFailures = (bad.data?.error?.failures ?? []) as Array<{ expected?: string }>;
+check("invalid parameters → 422", bad.status === 422);
+check(
+  "returns all THREE errors, not just the first",
+  badFailures.length === 3,
+  `returned ${badFailures.length}`,
+);
+check(
+  "every error says what to send",
+  badFailures.every((f) => typeof f.expected === "string"),
+);
+
+// ---------------------------------------------------------------------------
+// That the refusal remains POSSIBLE, with a realistic query
 // ---------------------------------------------------------------------------
 
 /**
- * ESTE BLOQUE EXISTE PORQUE EL ANTERIOR NO SERVÍA.
+ * THIS BLOCK EXISTS BECAUSE THE PREVIOUS ONE WAS USELESS.
  *
- * La primera versión probaba la negativa con self storage en Wyoming por 999
- * MILLONES de dólares. Tan absurdo que ni el corpus nacional lo cubre, así que
- * pasaba en verde incluso cuando la negativa estaba rota para toda consulta
- * realista — que fue exactamente lo que pasó al agregar el escalón nacional
- * automático: `suficiente: false` se volvió inalcanzable y el smoke no dijo nada.
+ * The first version tested the refusal with self storage in Wyoming at 999 MILLION
+ * dollars. So absurd that not even the national corpus covers it, so it passed
+ * green even when the refusal was broken for every realistic query — which is
+ * exactly what happened when the automatic national rung was added: `sufficient:
+ * false` became unreachable and the smoke test said nothing.
  *
- * Un test cuyo caso está tan afuera de la distribución que no puede fallar en la
- * región interesante no es un test. Ahora se usa una consulta que un broker podría
- * escribir de verdad: manufactured de 6M en Wyoming. Hay 58 en el país, así que si
- * el alcance nacional volviera a ser automático, esto se pone en rojo.
+ * A test whose case is so far outside the distribution that it cannot fail in the
+ * interesting region is not a test. Now it uses a query a broker could really
+ * write: manufactured at 6M in Wyoming. There are 58 nationally, so if national
+ * scope ever became automatic again, this goes red.
  */
-const realista = await get("/comps?state=WY&type=Manufactured&amount=6000000");
+const realistic = await get("/comps?state=WY&type=Manufactured&amount=6000000");
 check(
-  "una consulta realista sin mercado local se NIEGA",
-  realista.data?.suficiente === false,
-  `contestó con ${realista.data?.encontrados} comparables en "${realista.data?.alcanceEtiqueta}"`,
+  "a realistic query with no local market REFUSES",
+  realistic.data?.sufficient === false,
+  `answered with ${realistic.data?.found} comparables in "${realistic.data?.scopeLabel}"`,
 );
 check(
-  "y ofrece el alcance nacional como opción explícita",
-  (realista.data?.escalera ?? []).some(
-    (p: { alcance: string; encontrados: number }) => p.alcance === "pais" && p.encontrados > 0,
+  "and offers national scope as an explicit option",
+  ((realistic.data?.ladder ?? []) as Array<{ scope: string; found: number }>).some(
+    (p) => p.scope === "country" && p.found > 0,
   ),
 );
 
-/** Y con `nacional=1` sí contesta: la puerta existe, hay que abrirla a propósito. */
-const conNacional = await get("/comps?state=WY&type=Manufactured&amount=6000000&nacional=1");
+/** And with `national=1` it does answer: the door exists, it has to be opened deliberately. */
+const withNational = await get("/comps?state=WY&type=Manufactured&amount=6000000&national=1");
 check(
-  "pidiendo el alcance nacional explícitamente, contesta",
-  conNacional.data?.suficiente === true && conNacional.data?.alcance === "pais",
-  `suficiente=${conNacional.data?.suficiente} alcance=${conNacional.data?.alcance}`,
+  "asking for national scope explicitly, it answers",
+  withNational.data?.sufficient === true && withNational.data?.scope === "country",
+  `sufficient=${withNational.data?.sufficient} scope=${withNational.data?.scope}`,
 );
 
-const vacia = await get("/comps?state=WY&type=Self+Storage&amount=999000000");
-check("consulta sin comparables → 200, NO 404", vacia.status === 200);
-check("y se declara insuficiente", vacia.data?.suficiente === false);
+const empty = await get("/comps?state=WY&type=Self+Storage&amount=999000000");
+const emptyLadder = (empty.data?.ladder ?? []) as Array<{ label: string }>;
+check("query with no comparables → 200, NOT 404", empty.status === 200);
+check("and declares itself insufficient", empty.data?.sufficient === false);
 check(
-  "muestra la escalera geográfica completa",
-  Array.isArray(vacia.data?.escalera) && vacia.data.escalera.length >= 2,
-  `escalera: ${JSON.stringify(vacia.data?.escalera?.map((p: { etiqueta: string }) => p.etiqueta))}`,
+  "shows the full geographic ladder",
+  Array.isArray(empty.data?.ladder) && emptyLadder.length >= 2,
+  `ladder: ${JSON.stringify(emptyLadder.map((p) => p.label))}`,
 );
 check(
-  "y además ofrece aflojar tamaño y ventana",
-  Array.isArray(vacia.data?.siAmplias) && vacia.data.siAmplias.length === 2,
+  "and also offers loosening size and window",
+  Array.isArray(empty.data?.ifWidened) && (empty.data.ifWidened as unknown[]).length === 2,
 );
 
 // ---------------------------------------------------------------------------
-// La consulta real: acá vive el chequeo que motivó el archivo
+// The real query: this is where the check that motivated the file lives
 // ---------------------------------------------------------------------------
 
 const r = await get("/comps?state=NY&type=Multifamily&amount=25000000&months=60&target_ltv=70");
-check("consulta válida → 200", r.status === 200);
-check("trae el límite del canal en la respuesta", typeof r.data?.corpus?.canal === "string");
-check("trae la provenanceStamp del corpus", typeof r.data?.corpus?.provenanceStamp === "string");
+const criteria = r.data?.criteria as { targetLtv?: number } | undefined;
+check("valid query → 200", r.status === 200);
 check(
-  "el LTV se normalizó de 70 a 0,70",
-  r.data?.criterios?.ltvObjetivo === 0.7,
-  `quedó en ${r.data?.criterios?.ltvObjetivo}`,
+  "carries the channel's limit in the response",
+  typeof (r.data?.corpus as { channel?: string } | undefined)?.channel === "string",
+);
+check(
+  "carries the corpus provenance stamp",
+  typeof (r.data?.corpus as { provenanceStamp?: string } | undefined)?.provenanceStamp === "string",
+);
+check(
+  "the LTV was normalised from 70 to 0.70",
+  criteria?.targetLtv === 0.7,
+  `ended up as ${criteria?.targetLtv}`,
 );
 
-if (r.data?.suficiente) {
-  const m = r.data.muestra as Array<{ documento: string; indice: string; emision: string }>;
-  check("devuelve comparables", m.length > 0);
+if (r.data?.sufficient) {
+  const m = r.data.sample as Array<{ document: string; index: string; issuance: string }>;
+  check("returns comparables", m.length > 0);
 
   /**
-   * El alcance tiene que estar y ser coherente con la escalera: si dice "estado",
-   * el primer peldaño tiene que llegar al mínimo por sí solo.
+   * The scope has to be present and consistent with the ladder: if it says
+   * "state", the first rung has to reach the minimum on its own.
    */
   check(
-    "declara hasta dónde abrió el radio",
-    ["estado", "region", "pais"].includes(r.data.alcance),
-    `alcance: ${r.data.alcance}`,
+    "declares how far it widened the radius",
+    ["state", "region", "country"].includes(r.data.scope as string),
+    `scope: ${r.data.scope}`,
   );
-  const primerPeldano = r.data.escalera?.[0];
+  const firstRung = (r.data.ladder as Array<{ label: string; found: number }>)[0];
   check(
-    "el alcance es coherente con la escalera",
-    r.data.alcance !== "estado" || primerPeldano.encontrados >= 10,
-    `dice "${r.data.alcance}" pero ${primerPeldano?.etiqueta} tiene ${primerPeldano?.encontrados}`,
-  );
-
-  /** EL CHEQUEO. Una URL inventada muere acá y en ningún otro lado. */
-  const malDocumento = m.filter((c) => !/^https:\/\/www\.sec\.gov\/Archives\/edgar\//.test(c.documento));
-  check(
-    "TODO documento apunta al archivo real de EDGAR",
-    malDocumento.length === 0,
-    malDocumento[0] ? `ej: ${malDocumento[0].documento}` : undefined,
+    "the scope is consistent with the ladder",
+    r.data.scope !== "state" || (firstRung?.found ?? 0) >= 10,
+    `says "${r.data.scope}" but ${firstRung?.label} has ${firstRung?.found}`,
   );
 
-  const PATRON = /^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/\d+\/\d{18}\/\d{10}-\d{2}-\d{6}-index\.htm$/;
-  const malIndice = m.filter((c) => !PATRON.test(c.indice));
+  /** THE CHECK. An invented URL dies here and nowhere else. */
+  const badDocument = m.filter((c) => !/^https:\/\/www\.sec\.gov\/Archives\/edgar\//.test(c.document));
   check(
-    "TODO índice tiene la forma cik/accession/accession-index.htm",
-    malIndice.length === 0,
-    malIndice[0] ? `ej: ${malIndice[0].indice}` : undefined,
+    "EVERY document points at the real EDGAR file",
+    badDocument.length === 0,
+    badDocument[0] ? `e.g. ${badDocument[0].document}` : undefined,
+  );
+
+  const PATTERN = /^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/\d+\/\d{18}\/\d{10}-\d{2}-\d{6}-index\.htm$/;
+  const badIndex = m.filter((c) => !PATTERN.test(c.index));
+  check(
+    "EVERY index has the form cik/accession/accession-index.htm",
+    badIndex.length === 0,
+    badIndex[0] ? `e.g. ${badIndex[0].index}` : undefined,
   );
 
   check(
-    "ninguna URL quedó con parámetros vacíos",
-    !m.some((c) => /[?&][a-z_]+=(&|$)/i.test(c.documento) || /[?&][a-z_]+=(&|$)/i.test(c.indice)),
+    "no URL was left with empty parameters",
+    !m.some((c) => /[?&][a-z_]+=(&|$)/i.test(c.document) || /[?&][a-z_]+=(&|$)/i.test(c.index)),
   );
 
   /**
-   * Cada distribución declara su propia base y esa base no puede superar al total:
-   * si lo hiciera, estaría contando préstamos que no son comparables.
+   * Each distribution declares its own base and that base cannot exceed the total:
+   * if it did, it would be counting loans that are not comparables.
    */
-  const dists = r.data.distribuciones as Array<{ base: number; etiqueta: string }>;
-  check("cada métrica declara su base", dists.every((d) => Number.isInteger(d.base) && d.base > 0));
+  const dists = r.data.distributions as Array<{ base: number; label: string }>;
+  const found = r.data.found as number;
+  check("every metric declares its base", dists.every((d) => Number.isInteger(d.base) && d.base > 0));
   check(
-    "ninguna base supera al total de comparables",
-    dists.every((d) => d.base <= r.data.encontrados),
-    dists.map((d) => `${d.etiqueta}=${d.base}`).join(" · ") + ` vs ${r.data.encontrados}`,
+    "no base exceeds the total number of comparables",
+    dists.every((d) => d.base <= found),
+    dists.map((d) => `${d.label}=${d.base}`).join(" · ") + ` vs ${found}`,
   );
 } else {
   console.log(
-    `  \x1b[33m·\x1b[0m la consulta de prueba no tuvo comparables (${r.data?.encontrados}); ` +
-      `no se pudo verificar la forma de las URLs`,
+    `  \x1b[33m·\x1b[0m the test query had no comparables (${r.data?.found}); ` +
+      `the URL shapes could not be verified`,
   );
 }
 
-console.log(
-  `\n  ${fallidos === 0 ? "\x1b[32m" : "\x1b[31m"}${ok} ok · ${fallidos} fallidos\x1b[0m\n`,
-);
-process.exit(fallidos === 0 ? 0 : 1);
+console.log(`\n  ${failed === 0 ? "\x1b[32m" : "\x1b[31m"}${ok} ok · ${failed} failed\x1b[0m\n`);
+process.exit(failed === 0 ? 0 : 1);
+
+/**
+ * Makes this file a module so top-level `await` is legal. Without it TypeScript
+ * treats the file as a script and rejects every `await` above — which it had been
+ * doing silently, because `api/` was outside tsconfig's `include`.
+ */
+export {};
