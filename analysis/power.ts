@@ -1,54 +1,54 @@
 /**
- * ¿Qué efecto puede detectar esta muestra, y cuál nunca pudo?
+ * What effect can this sample detect, and which one could it never have?
  *
  *   npm run db:power
  *
- * POR QUÉ EXISTE ESTE ARCHIVO
+ * WHY THIS FILE EXISTS
  *
- * Cinco hipótesis murieron en este proyecto: "la oficina se suscribe más
- * agresivo", "multifamily rompe la banda de LTV", "el crecimiento del NOI
- * entregado se derrumbó entre 2021 y 2024", "BANK suscribe cuatro veces mejor que
- * BBCMS" y "LMF origina peor". Cero sobrevivieron.
+ * Five hypotheses died in this project: "office is underwritten more
+ * aggressively", "multifamily breaks the LTV band", "delivered NOI growth
+ * collapsed between 2021 and 2024", "BANK underwrites four times better than
+ * BBCMS" and "LMF originates worse". Zero survived.
  *
- * Cinco de cinco no es mala suerte, y la sospecha con la que se escribió este
- * archivo era que le pedíamos al dato una precisión que no tiene.
+ * Five out of five is not bad luck, and the suspicion this file was written with
+ * was that we were asking the data for a precision it does not have.
  *
- * LA SOSPECHA RESULTÓ FALSA, Y ESO ES EL RESULTADO
+ * THE SUSPICION TURNED OUT FALSE, AND THAT IS THE RESULT
  *
- * El MDE es 6,7% y el efecto afirmado era 10,5%: la muestra podía detectarlo. Las
- * hipótesis no murieron por falta de potencia sino porque los efectos no están —
- * conclusión más fuerte y menos cómoda que "no se podía ver".
+ * The MDE is 6.7% and the claimed effect was 10.5%: the sample could detect it. The
+ * hypotheses did not die for lack of power but because the effects are not there —
+ * a stronger and less comfortable conclusion than "it could not be seen".
  *
- * Este encabezado decía lo contrario ("las tres hipótesis estaban muertas antes de
- * formularse") mientras el script imprimía el resultado opuesto tres pantallas
- * abajo. Duró así hasta que alguien leyó las dos cosas juntas.
+ * This header used to say the opposite ("the three hypotheses were dead before
+ * being formulated") while the script printed the opposite result three screens
+ * below. It stayed that way until someone read both together.
  *
- * La mediana del crecimiento de NOI de una añada se calcula sobre 89 a 157
- * préstamos y la dispersión individual es enorme —un inquilino que se va mueve el
- * número treinta puntos—, así que la sospecha era razonable. Simplemente no era
- * cierta, y el bootstrap de abajo es lo que lo decide.
+ * The median NOI growth of a vintage is computed over 89 to 157 loans and the
+ * individual dispersion is enormous —one tenant leaving moves the number thirty
+ * points— so the suspicion was reasonable. It simply was not true, and the
+ * bootstrap below is what decides it.
  *
- * QUÉ HACE
+ * WHAT IT DOES
  *
- * Bootstrap: remuestrea con reemplazo cada añada 2.000 veces y mide cómo se
- * mueve la mediana. El ancho de esa distribución es el ruido de muestreo, y no
- * depende de ningún supuesto sobre la forma de la distribución —que es
- * exactamente lo que necesitamos, porque estas colas no son normales—.
+ * Bootstrap: resamples each vintage with replacement 2,000 times and measures how
+ * the median moves. The width of that distribution is the sampling noise, and it
+ * depends on no assumption about the shape of the distribution — which is exactly
+ * what we need, because these tails are not normal.
  *
- * De ahí salen dos números que valen más que cualquier hallazgo:
+ * Two numbers come out of it that are worth more than any finding:
  *
- *   IC 95%   el rango donde está la mediana verdadera de esa añada
- *   MDE      la diferencia mínima entre dos añadas que podríamos detectar
+ *   95% CI   the range where that vintage's true median lies
+ *   MDE      the minimum difference between two vintages we could detect
  *
- * El MDE es el que decide el futuro del proyecto. Si es mayor que los efectos
- * que buscamos, no hay que buscar más fuerte: hay que cambiar de variable de
- * resultado o de pregunta.
+ * The MDE is the one that decides the project's future. If it is larger than the
+ * effects we are looking for, we should not look harder: we should change the
+ * outcome variable or the question.
  *
- * POR QUÉ LA SEMILLA ES FIJA
+ * WHY THE SEED IS FIXED
  *
- * Un verificador que devuelve un número distinto en cada corrida no sirve para
- * verificar. Con semilla fija, dos corridas sobre el mismo corpus dan lo mismo y
- * cualquier cambio en el resultado viene del dato, no del azar.
+ * A verifier that returns a different number on every run is no use for verifying.
+ * With a fixed seed, two runs over the same corpus give the same result and any
+ * change comes from the data, not from chance.
  */
 
 import { closePool, ping, query } from "../db/client.js";
@@ -61,25 +61,25 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Mismo estrato que `db:bias`, por la misma razón: neutraliza el sesgo de tamaño. */
-const BANDA_MIN = 10_000_000;
-const BANDA_MAX = 30_000_000;
+/** Same stratum as `analysis/bias.ts`, for the same reason: it neutralises the size bias. */
+const BAND_MIN = 10_000_000;
+const BAND_MAX = 30_000_000;
 const RESAMPLES = 2000;
 const MIN_N = 30;
 const SEED = 20260815;
 
 /**
- * El efecto que el hallazgo muerto afirmaba, para tenerlo como vara.
+ * The effect the dead finding claimed, to have as a yardstick.
  *
- * El titular decía que el crecimiento entregado cayó de 11,5% a 1,0%: 10,5
- * puntos. Si el MDE resulta mayor que eso, la muestra nunca pudo sostener esa
- * afirmación —ni siquiera si hubiera sido cierta—.
+ * The headline said delivered growth fell from 11.5% to 1.0%: 10.5 points. If the
+ * MDE turns out larger than that, the sample could never have supported that claim
+ * — not even if it had been true.
  */
-const EFECTO_AFIRMADO = 0.105;
+const CLAIMED_EFFECT = 0.105;
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
-/** Generador con semilla: mismo corpus, mismo resultado, siempre. */
+/** Seeded generator: same corpus, same result, always. */
 function makeRng(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
@@ -96,11 +96,11 @@ function median(sorted: number[]): number {
 }
 
 /**
- * Distribución de la mediana bajo remuestreo.
+ * Distribution of the median under resampling.
  *
- * Cada réplica toma n valores CON REEMPLAZO de la misma muestra y calcula su
- * mediana. La dispersión de esas 2.000 medianas es cuánto se movería el número
- * si hubiéramos sorteado otros préstamos — que es justo lo que queremos saber.
+ * Each replicate takes n values WITH REPLACEMENT from the same sample and computes
+ * its median. The spread of those 2,000 medians is how much the number would move
+ * if we had drawn different loans — which is exactly what we want to know.
  */
 function bootstrapMedian(
   values: number[],
@@ -128,23 +128,23 @@ function bootstrapMedian(
 }
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Piso de ruido — qué efecto puede detectar esta muestra");
+console.log("Noise floor — what effect this sample can detect");
 console.log(`${"═".repeat(78)}`);
 console.log(
-  `\n\x1b[90m  Bootstrap de ${RESAMPLES.toLocaleString("en-US")} réplicas, semilla fija, banda ${BANDA_MIN / 1e6}M-${BANDA_MAX / 1e6}M.\x1b[0m`,
+  `\n\x1b[90m  Bootstrap of ${RESAMPLES.toLocaleString("en-US")} replicates, fixed seed, band ${BAND_MIN / 1e6}M-${BAND_MAX / 1e6}M.\x1b[0m`,
 );
 console.log(
-  `\x1b[90m  La banda es la misma que db:bias: neutraliza el sesgo de tamaño.\x1b[0m\n`,
+  `\x1b[90m  The band is the same as analysis/bias.ts: it neutralises the size bias.\x1b[0m\n`,
 );
 
-const { rows } = await query<{ anada: string; valores: number[] }>(
-  `SELECT extract(year FROM originated_at)::int::text AS anada,
+const { rows } = await query<{ vintage: string; valores: number[] }>(
+  `SELECT extract(year FROM originated_at)::int::text AS vintage,
           array_agg(growth_delivered) AS valores
      FROM corpus.underwriting_outcomes
     WHERE days_after_origination >= 0
       AND is_full_year
       AND growth_delivered IS NOT NULL
-      AND loan_amount_senior BETWEEN ${BANDA_MIN} AND ${BANDA_MAX}
+      AND loan_amount_senior BETWEEN ${BAND_MIN} AND ${BAND_MAX}
     GROUP BY 1
    HAVING count(*) >= ${MIN_N}
     ORDER BY 1`,
@@ -152,7 +152,7 @@ const { rows } = await query<{ anada: string; valores: number[] }>(
 
 if (rows.length < 2) {
   console.log(
-    `  \x1b[33mMenos de dos añadas con n ≥ ${MIN_N}. Corré db:performance primero.\x1b[0m\n`,
+    `  \x1b[33mFewer than two vintages with n ≥ ${MIN_N}. Run db:performance first.\x1b[0m\n`,
   );
   await closePool();
   process.exit(0);
@@ -161,17 +161,17 @@ if (rows.length < 2) {
 const rng = makeRng(SEED);
 
 interface Anada {
-  anada: string;
+  vintage: string;
   n: number;
-  mediana: number;
+  median: number;
   lo: number;
   hi: number;
   se: number;
 }
 
-const anadas: Anada[] = [];
+const vintages: Anada[] = [];
 
-console.log(`  añada    n    mediana        IC 95%              ancho`);
+console.log(`  vintage   n    median         95% CI              width`);
 console.log(`  ${"─".repeat(62)}`);
 
 for (const r of rows) {
@@ -182,190 +182,191 @@ for (const r of rows) {
   const sorted = [...values].sort((a, b) => a - b);
   const med = median(sorted);
 
-  anadas.push({ anada: r.anada, n: values.length, mediana: med, lo, hi, se });
+  vintages.push({ vintage: r.vintage, n: values.length, median: med, lo, hi, se });
   console.log(
-    `  ${r.anada}   ${String(values.length).padStart(3)}    ${pct(med).padStart(6)}    ` +
+    `  ${r.vintage}   ${String(values.length).padStart(3)}    ${pct(med).padStart(6)}    ` +
       `[${pct(lo).padStart(6)} , ${pct(hi).padStart(6)}]      ${pct(hi - lo).padStart(6)}`,
   );
 }
 
 /**
- * La diferencia mínima detectable entre dos añadas.
+ * The minimum detectable difference between two vintages.
  *
- * El error estándar de una DIFERENCIA de dos medianas independientes es la raíz
- * de la suma de sus varianzas. Con 95% de confianza hace falta que la diferencia
- * supere 1,96 de esos errores para no ser atribuible al azar.
+ * The standard error of a DIFFERENCE of two independent medians is the square root
+ * of the sum of their variances. At 95% confidence the difference has to exceed
+ * 1.96 of those errors not to be attributable to chance.
  *
- * Se usa el error estándar mediano entre añadas, no el mejor ni el peor: el
- * mejor sería vender la muestra más favorable y el peor sería castigarla por su
- * añada más pobre.
+ * The median standard error across vintages is used, not the best or the worst: the
+ * best would be selling the most favourable sample and the worst would be punishing
+ * it for its poorest vintage.
  */
-const ses = anadas.map((a) => a.se).sort((a, b) => a - b);
-const seTipico = median(ses);
-const mde = 1.96 * Math.sqrt(2) * seTipico;
+const ses = vintages.map((a) => a.se).sort((a, b) => a - b);
+const typicalSe = median(ses);
+const mde = 1.96 * Math.sqrt(2) * typicalSe;
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Qué se puede detectar");
+console.log("What can be detected");
 console.log(`${"─".repeat(78)}\n`);
 
-console.log(`  Error estándar típico de una mediana anual:  ${pct(seTipico, 2)}`);
-console.log(`  Diferencia mínima detectable entre dos añadas: \x1b[1m${pct(mde)}\x1b[0m`);
-console.log(`  Efecto que afirmaba el hallazgo muerto:        ${pct(EFECTO_AFIRMADO)}\n`);
+console.log(`  Typical standard error of an annual median:      ${pct(typicalSe, 2)}`);
+console.log(`  Minimum detectable difference between vintages: \x1b[1m${pct(mde)}\x1b[0m`);
+console.log(`  Effect the dead finding claimed:                 ${pct(CLAIMED_EFFECT)}\n`);
 
 /**
- * Cuántos préstamos harían falta.
+ * How many loans would be needed.
  *
- * El error estándar cae con la raíz de n, así que para detectar un efecto k
- * veces más chico hace falta k² veces más muestra. Es el número que decide si
- * "buscar más fuentes" es una estrategia o una ilusión.
+ * The standard error falls with the square root of n, so detecting an effect k
+ * times smaller needs k² times more sample. It is the number that decides whether
+ * "harvest more sources" is a strategy or an illusion.
  */
-const nTipico = median(anadas.map((a) => a.n).sort((a, b) => a - b));
+const typicalN = median(vintages.map((a) => a.n).sort((a, b) => a - b));
 /**
- * La SUMA, no la mediana por la cantidad de añadas.
+ * The SUM, not the median times the number of vintages.
  *
- * La primera versión imprimía `nTipico * anadas.length` y dio 600 — que es
- * exactamente la suma real de 89+157+145+89+120. Coincidió por casualidad con
- * estos cinco números y no va a coincidir en la próxima corrida. Una fórmula
- * equivocada que devuelve el valor correcto es peor que una que falla.
+ * The first version printed `typicalN * vintages.length` and gave 600 — which is
+ * exactly the real sum of 89+157+145+89+120. It coincided by accident with these
+ * five numbers and will not coincide on the next run. A wrong formula that returns
+ * the right value is worse than one that fails.
  */
-const totalMedido = anadas.reduce((x, a) => x + a.n, 0);
-const objetivo = 0.05;
-const factor = (mde / objetivo) ** 2;
+const totalMeasured = vintages.reduce((x, a) => x + a.n, 0);
+const target = 0.05;
+const factor = (mde / target) ** 2;
 
-if (mde >= EFECTO_AFIRMADO) {
+if (mde >= CLAIMED_EFFECT) {
   console.log(`  \x1b[31mLA MUESTRA NUNCA PUDO SOSTENER EL HALLAZGO.\x1b[0m`);
   console.log(
-    `  \x1b[90mEl efecto afirmado es más chico que el ruido de muestreo. Aunque el\x1b[0m`,
+    `  \x1b[90mThe claimed effect is smaller than the sampling noise. Even if the\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mderrumbe hubiera sido real, no habríamos podido distinguirlo del azar.\x1b[0m\n`,
+    `  \x1b[90mcollapse had been real, we could not have told it from chance.\x1b[0m\n`,
   );
 } else {
-  console.log(`  \x1b[33mEl efecto afirmado supera el piso de ruido.\x1b[0m`);
+  console.log(`  \x1b[33mThe claimed effect exceeds the noise floor.\x1b[0m`);
   console.log(
-    `  \x1b[90mLa muestra podía detectarlo en principio; que no aparezca al\x1b[0m`,
+    `  \x1b[90mThe sample could detect it in principle; that it does not appear on\x1b[0m`,
   );
-  console.log(`  \x1b[90mestratificar es evidencia de que no está.\x1b[0m\n`);
+  console.log(`  \x1b[90mstratifying is evidence that it is not there.\x1b[0m\n`);
 }
 
 /**
- * Pares cuyos intervalos NO se pisan — un criterio MÁS ESTRICTO que el MDE.
+ * Pairs whose intervals do NOT overlap — a criterion STRICTER than the MDE.
  *
- * Que dos IC del 95% no se solapen equivale a un test de la diferencia a un nivel
- * cercano al 0,5%, no al 5%: cada intervalo ya carga sus propios 1,96 SE, así que
- * exigir separación total pide ~2,8 SE de distancia cuando el MDE pide 1,96·√2 =
- * 2,77 SE... para la diferencia, que tiene un SE mayor.
+ * Two 95% CIs not overlapping is equivalent to testing the difference at a level
+ * close to 0.5%, not 5%: each interval already carries its own 1.96 SE, so
+ * demanding total separation asks for ~2.8 SE of distance when the MDE asks for
+ * 1.96·√2 = 2.77 SE... of the difference, which has a larger SE.
  *
- * La versión anterior de este comentario decía "las únicas diferencias reales", que
- * le da a este criterio una autoridad que no tiene: es el más conservador de los
- * dos que imprime este script, y presentarlo como definitivo hace parecer más
- * indistinguibles a las añadas de lo que el MDE dice.
+ * The previous version of this comment called them "the only real differences",
+ * which gives this criterion an authority it does not have: it is the more
+ * conservative of the two this script prints, and presenting it as definitive makes
+ * the vintages look more indistinguishable than the MDE says.
  *
- * Se deja porque es fácil de leer, pero etiquetado como lo que es.
+ * It is kept because it is easy to read, but labelled as what it is.
  */
-const distinguibles: string[] = [];
-for (let i = 0; i < anadas.length; i++) {
-  for (let j = i + 1; j < anadas.length; j++) {
-    const a = anadas[i]!;
-    const b = anadas[j]!;
+const distinguishable: string[] = [];
+for (let i = 0; i < vintages.length; i++) {
+  for (let j = i + 1; j < vintages.length; j++) {
+    const a = vintages[i]!;
+    const b = vintages[j]!;
     if (a.hi < b.lo || b.hi < a.lo) {
-      distinguibles.push(`${a.anada} vs ${b.anada}`);
+      distinguishable.push(`${a.vintage} vs ${b.vintage}`);
     }
   }
 }
 
-const pares = (anadas.length * (anadas.length - 1)) / 2;
+const pairs = (vintages.length * (vintages.length - 1)) / 2;
 console.log(
-  `  Pares con intervalos que NO se pisan: ${distinguibles.length} de ${pares}` +
+  `  Pairs with non-overlapping intervals: ${distinguishable.length} of ${pairs}` +
     `  \x1b[90m(criterio conservador)\x1b[0m`,
 );
-if (distinguibles.length > 0) {
-  console.log(`  \x1b[90m${distinguibles.join(" · ")}\x1b[0m`);
+if (distinguishable.length > 0) {
+  console.log(`  \x1b[90m${distinguishable.join(" · ")}\x1b[0m`);
 } else {
   console.log(
-    `  \x1b[90mNinguno bajo este criterio, que es el más exigente de los dos: pide más\x1b[0m`,
+    `  \x1b[90mNone under this criterion, which is the stricter of the two: it asks for\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mseparación que el MDE de arriba. La conclusión que vale es el MDE.\x1b[0m`,
+    `  \x1b[90mmore separation than the MDE above. The conclusion that counts is the MDE.\x1b[0m`,
   );
 }
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Qué haría falta");
+console.log("What it would take");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
-  `  Para detectar un efecto de ${pct(objetivo, 0)} harían falta ~${Math.round(factor)}x más préstamos`,
+  `  To detect an effect of ${pct(target, 0)} would need ~${Math.round(factor)}x more loans`,
 );
 console.log(
-  `  por añada: de ${Math.round(nTipico)} a ~${Math.round(nTipico * factor).toLocaleString("en-US")}.\n`,
+  `  per vintage: from ${Math.round(typicalN)} to ~${Math.round(typicalN * factor).toLocaleString("en-US")}.\n`,
 );
 console.log(
-  `  \x1b[90mEl corpus tiene ${totalMedido.toLocaleString("en-US")} préstamos en las añadas medidas.\x1b[0m\n`,
+  `  \x1b[90mThe corpus has ${totalMeasured.toLocaleString("en-US")} loans in the measured vintages.\x1b[0m\n`,
 );
 /**
- * Acá terminaban dos líneas que decían "ese número por añada no es cuestión de
- * cosechar más trusts: no existen tantas emisiones CMBS por año".
+ * Two lines used to end here saying "that number per vintage is not a matter of
+ * harvesting more trusts: there are not that many CMBS issuances per year".
  *
- * Al reemplazar la primera línea del párrafo corté la oración y dejé la cola
- * apuntando a la conclusión anterior, así que la salida afirmaba eso y dos
- * líneas después "a 2x, cosechar más sí puede alcanzar". Dos veredictos opuestos
- * en la misma pantalla, uno vivo y otro fósil.
+ * When I replaced the paragraph's first line I cut the sentence and left the tail
+ * pointing at the previous conclusion, so the output asserted that and then two
+ * lines later "at 2x, harvesting more can be enough". Two opposite verdicts on the
+ * same screen, one alive and one fossil.
  *
- * Es el mismo patrón del día en su forma más simple: la frase sobrevive al
- * hallazgo que la refuta porque nadie relee lo que quedó alrededor del cambio.
+ * It is the same pattern as the rest of the day in its simplest form: the sentence
+ * outlives the finding that refutes it because nobody rereads what was left around
+ * the change.
  */
 /**
- * LA RECOMENDACIÓN SE CALCULA, NO SE AFIRMA.
+ * THE RECOMMENDATION IS COMPUTED, NOT ASSERTED.
  *
- * Este bloque decía que "la salida no es más muestra" y que llegar al n necesario
- * "no es cuestión de cosechar más trusts". El factor real es 2x, y
- * `docs/hallazgo-suscripcion.md` ya decía que 2x es alcanzable —enumerando de
- * dónde saldría: cobertura del 10-D del 26-48%, 176 préstamos sin pegar, seis
- * emisiones BANK sin años completos, y las añadas 2025-2026 sin madurar—.
+ * This block used to say that "the way out is not more sample" and that reaching
+ * the needed n "is not a matter of harvesting more trusts". The real factor is 2x,
+ * and `docs/underwriting-finding.md` already said 2x is achievable —enumerating
+ * where it would come from: 10-D coverage of 26-48%, 176 unmatched loans, six BANK
+ * issuances with no full years, and the 2025-2026 vintages not yet matured.
  *
- * O sea que el script y el documento se contradecían, y el documento tenía razón.
- * Ahora la recomendación se deriva del factor en vez de estar escrita a mano, que
- * es lo que evita que vuelvan a divergir.
+ * So the script and the document contradicted each other, and the document was
+ * right. The recommendation is now derived from the factor rather than written by
+ * hand, which is what stops them diverging again.
  *
- * (Una versión anterior de este comentario decía que el factor "era mucho mayor"
- * cuando se escribió el texto viejo. Eso no está verificado: el documento registra
- * un MDE de 6,6% y un factor de 2x desde el principio. La contradicción era entre
- * dos textos, no entre dos épocas.)
+ * (An earlier version of this comment said the factor "was much larger" when the
+ * old text was written. That is not verified: the document records an MDE of 6.6%
+ * and a factor of 2x from the beginning. The contradiction was between two texts,
+ * not between two eras.)
  */
 if (factor <= 3) {
   console.log(
-    `  \x1b[33mA ${Math.round(factor)}x, cosechar más sí puede alcanzar.\x1b[0m Con ${anadas.length} añadas medidas y`,
+    `  \x1b[33mAt ${Math.round(factor)}x, harvesting more can be enough.\x1b[0m With ${vintages.length} measured vintages and`,
   );
   console.log(
-    `  \x1b[90m~${Math.round(nTipico)} préstamos por añada, duplicar es plausible: hay más emisiones\x1b[0m`,
+    `  \x1b[90m~${Math.round(typicalN)} loans per vintage, doubling is plausible: there are more issuances\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mpor año de las que tenemos cosechadas. Esta conclusión era la contraria\x1b[0m`,
+    `  \x1b[90mper year than we have harvested. This conclusion was the opposite when\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mcuando el corpus era más chico, y conviene releerla cada vez que crece.\x1b[0m\n`,
+    `  \x1b[90mthe corpus was smaller, and it is worth rereading every time it grows.\x1b[0m\n`,
   );
 } else {
   console.log(
-    `  \x1b[90mA ${Math.round(factor)}x no alcanza con cosechar: no existen tantas emisiones CMBS por\x1b[0m`,
+    `  \x1b[90mAt ${Math.round(factor)}x harvesting is not enough: there are not that many CMBS issuances\x1b[0m`,
   );
   console.log(
-    `  \x1b[90maño. La salida es una variable de resultado menos ruidosa —la morosidad es\x1b[0m`,
+    `  \x1b[90mper year. The way out is a less noisy outcome variable —delinquency is\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mbinaria y está en los mismos 10-D— o preguntas transversales.\x1b[0m\n`,
+    `  \x1b[90mbinary and is in the same 10-D filings— or cross-sectional questions.\x1b[0m\n`,
   );
 }
 
-if (mde < EFECTO_AFIRMADO) {
+if (mde < CLAIMED_EFFECT) {
   console.log(
-    `  \x1b[33mOjo con el resumen del proyecto:\x1b[0m con esta muestra el efecto afirmado está`,
+    `  \x1b[33mCareful with the project summary:\x1b[0m with this sample the claimed effect is`,
   );
   console.log(
-    `  \x1b[90mpor encima del piso de ruido, así que esa hipótesis no murió por falta de\x1b[0m`,
+    `  \x1b[90mabove the noise floor, so that hypothesis did not die for lack of power —\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mpotencia — murió porque el efecto no está. Son dos cosas distintas y el\x1b[0m`,
+    `  \x1b[90mit died because the effect is not there. They are two different things and the\x1b[0m`,
   );
   console.log(
     `  \x1b[90mproyecto viene diciendo la primera.\x1b[0m\n`,
@@ -373,18 +374,18 @@ if (mde < EFECTO_AFIRMADO) {
 }
 
 /**
- * La provenanceStamp al pie, porque este veredicto depende del tamaño de la muestra.
+ * The provenance stamp at the foot, because this verdict depends on the sample size.
  *
- * El MDE de este script ya se dio vuelta una vez cuando el corpus creció, y la
- * versión vieja quedó citada en un documento durante semanas. Un número que
- * depende de la muestra y no dice contra qué muestra se midió no se puede citar
+ * This script's MDE already flipped once when the corpus grew, and the old version
+ * stayed quoted in a document for weeks. A number that depends on the sample and
+ * does not say which sample it was measured against cannot be quoted
  * sin riesgo.
  */
 const estado = await corpusState();
 console.log(`${"─".repeat(78)}`);
 console.log(`  \x1b[90m${provenanceStamp(estado)}\x1b[0m`);
 console.log(
-  `  \x1b[90mSi este número se cita en algún lado, va con esta línea. Ver npm run db:procedencia.\x1b[0m\n`,
+  `  \x1b[90mIf this number is quoted anywhere, it goes with this line. See npm run db:provenance.\x1b[0m\n`,
 );
 
 await closePool();

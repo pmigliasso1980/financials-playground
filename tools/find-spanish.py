@@ -24,13 +24,20 @@ essentially do not.
 import re, subprocess, sys, pathlib
 
 ACCENT = re.compile(r'[áéíóúüñÁÉÍÓÚÜÑ¿¡]')
-WORDS = r"""de la el los las del que para con por una uno un es son se no al lo su sus
+WORDS = r"""de la el los las del que para con por una uno un es son no al su sus
 como pero si ya hay este esta esto estos estas cuando donde porque entre sobre sin desde
 hasta cada todo toda todos todas otro otra otros otras mismo misma ser esta estan hace
 tiene tienen puede pueden emision emisiones prestamo prestamos saldo cosecha cosechar
 cosechado encabezado encabezados consulta consultas veredicto mapeo archivo columna
 columnas fila filas dato datos numero numeros nada algo solo tambien asi aunque
 mientras entonces ademas cual cuales quien cuanto cuantos"""
+# `lo` and `se` were removed from this list on purpose. They are common Spanish
+# words, but they are also `lo`/`hi` bounds and `se` (standard error) in English
+# statistics code, and together they were enough to trip the two-word threshold.
+# analysis/power.ts reported 3 suspect lines with none of them Spanish. Removing
+# them costs almost nothing on the files that really are Spanish (sellerEffect
+# 311->309, columnMap 376->375, test.ts 173->171): those lines carry other words
+# too, and any line with an accent is caught regardless.
 WORD_RE = re.compile(r'\b(' + '|'.join(WORDS.split()) + r')\b', re.I)
 
 def scan(path: pathlib.Path):

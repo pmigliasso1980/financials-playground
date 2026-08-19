@@ -17,7 +17,7 @@ import re, sys, pathlib
 # character, so the block arrives truncated and half of it stays untranslated.
 # That happened on db/benchmark.ts.
 ACCENT = re.compile(r'[áéíóúüñÁÉÍÓÚÜÑ¿¡]')
-_W = """de la el los las del que para con por una uno un es son se no al lo su sus
+_W = """de la el los las del que para con por una uno un es son no al su sus
 como pero si ya hay este esta esto estos estas cuando donde porque entre sobre sin desde
 hasta cada todo toda todos todas otro otra otros otras mismo misma ser esta estan hace
 tiene tienen puede pueden emision emisiones prestamo prestamos saldo cosecha cosechar
