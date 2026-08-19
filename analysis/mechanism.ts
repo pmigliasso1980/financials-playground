@@ -212,8 +212,8 @@ for (const [label, group] of [[SELLER, sellerLoans], ["resto", restLoans]] as co
 }
 
 /** Fixed seed: a p-value that changes between runs cannot be quoted. */
-function rng(semilla: number) {
-  let s = semilla >>> 0;
+function rng(seed: number) {
+  let s = seed >>> 0;
   return () => {
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
@@ -324,7 +324,7 @@ const METRICS: Array<{
  */
 const STRATA = 6;
 
-function permutarEstratificado(
+function permuteStratified(
   extract: (d: Loan) => number | null,
 ): {
   obs: number | null; nullVal: number | null; p: number;
@@ -418,7 +418,7 @@ for (const m of METRICS) {
       `${(mB === null ? "—" : m.fmt(mB)).padStart(9)} ` +
       `${(r.obs === null ? "—" : m.fmt(r.obs)).padStart(8)} ` +
       `${(r.nullVal === null ? "—" : m.fmt(r.nullVal)).padStart(7)} ` +
-      `${sig ? "\x1b[32m" : "\x1b[90m"}${r.nullVal === null ? "sin muestra" : r.p.toFixed(4)}\x1b[0m` +
+      `${sig ? "\x1b[32m" : "\x1b[90m"}${r.nullVal === null ? "no sample" : r.p.toFixed(4)}\x1b[0m` +
       `  \x1b[90m${r.nA}/${r.nB}\x1b[0m`,
   );
 }
@@ -447,13 +447,13 @@ console.log(`  ${"─".repeat(70)}`);
 let sigStrat = 0;
 for (const m of METRICS) {
   if (m.label.startsWith("Balance")) continue; // stratifying by balance nullifies it
-  const r = permutarEstratificado(m.extract);
+  const r = permuteStratified(m.extract);
   const sig = r.nullVal !== null && r.p < 0.05;
   if (sig) sigStrat++;
   console.log(
     `  ${m.label.padEnd(32)} ${(r.obs === null ? "—" : m.fmt(r.obs)).padStart(8)} ` +
       `${(r.nullVal === null ? "—" : m.fmt(r.nullVal)).padStart(7)} ` +
-      `${sig ? "\x1b[32m" : "\x1b[90m"}${(r.nullVal === null ? "sin muestra" : r.p.toFixed(4)).padStart(9)}\x1b[0m` +
+      `${sig ? "\x1b[32m" : "\x1b[90m"}${(r.nullVal === null ? "no sample" : r.p.toFixed(4)).padStart(9)}\x1b[0m` +
       `  \x1b[90m${r.nA}/${r.nB}   -${r.trimmed}\x1b[0m`,
   );
 }
