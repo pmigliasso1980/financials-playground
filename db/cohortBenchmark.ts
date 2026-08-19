@@ -1,279 +1,282 @@
 /**
- * El cálculo del benchmark contra la cohorte, sin formato.
+ * The cohort benchmark computation, without formatting.
  *
- * POR QUÉ ES UN MÓDULO Y NO PARTE DEL SCRIPT
+ * WHY IT IS A MODULE AND NOT PART OF THE SCRIPT
  *
- * `db:benchmark` imprime en la terminal y `db:page` genera un HTML. Si cada uno
- * consultara la base por su cuenta habría dos implementaciones de la misma
- * comparación, y esta sesión ya mostró cómo termina eso: la ocupación tuvo dos
- * definiciones conviviendo —una exigía diez préstamos, la otra uno— y se
- * contradecían en la misma pantalla sin que nadie lo notara.
+ * `db:benchmark` prints to the terminal and `db:page` generates HTML. If each
+ * queried the database on its own there would be two implementations of the same
+ * comparison, and this session has already shown how that ends: occupancy had
+ * two definitions coexisting —one required ten loans, the other one— and they
+ * contradicted each other on the same screen without anyone noticing.
  *
- * Acá viven los números. Los consumidores solo eligen cómo mostrarlos.
+ * The numbers live here. Consumers only choose how to display them.
  *
- * LAS DECISIONES METODOLÓGICAS VIVEN ACÁ TAMBIÉN
+ * THE METHODOLOGICAL DECISIONS LIVE HERE TOO
  *
- * Umbral de pares, exclusión de mono-tipo, mínimo de préstamos por métrica: son
- * decisiones sobre qué se puede afirmar, no sobre presentación. Si estuvieran
- * duplicadas en cada consumidor, dos vistas del mismo deal podrían dar
- * respuestas distintas.
+ * Pair threshold, single-type exclusion, minimum loans per metric: these are
+ * decisions about what can be asserted, not about presentation. If they were
+ * duplicated in each consumer, two views of the same deal could give different
+ * answers.
  */
 
 import { query } from "./client.js";
-import { aparte } from "./compositionDistance.js";
+import { apart } from "./compositionDistance.js";
 
-/** Fijados antes de ver ningún dato. */
-export const MIN_PARES = 15;
-export const CONCENTRACION_TIPO = 0.8;
-export const MIN_PARA_METRICA = 10;
+/** Fixed before looking at any data. */
+export const MIN_PAIRS = 15;
+export const TYPE_CONCENTRATION = 0.8;
+export const MIN_PER_METRIC = 10;
 
 export const pct = (v: number, d = 0) => `${(v * 100).toFixed(d)}%`;
 
-export interface MetricaSpec {
+export interface CohortMetric {
   key: string;
-  etiqueta: string;
+  label: string;
   min: number;
   max: number;
   fmt: (v: number) => string;
-  /** Hacia dónde es "más agresivo": informa cómo leer la posición. */
-  agresivo: "alto" | "bajo";
+  /** Which direction is "more aggressive": tells you how to read the position. */
+  aggressive: "high" | "low";
 }
 
-export const METRICAS: MetricaSpec[] = [
-  { key: "ltv", etiqueta: "LTV", min: 0.01, max: 2, fmt: (v) => pct(v, 1), agresivo: "alto" },
-  { key: "dscr", etiqueta: "DSCR", min: 0.1, max: 20, fmt: (v) => v.toFixed(2), agresivo: "bajo" },
-  { key: "debt_yield", etiqueta: "Debt yield", min: 0.01, max: 1, fmt: (v) => pct(v, 1), agresivo: "bajo" },
-  { key: "interest_rate", etiqueta: "Tasa", min: 0.001, max: 0.2, fmt: (v) => pct(v, 2), agresivo: "alto" },
-  { key: "loan_amount", etiqueta: "Saldo", min: 1e5, max: 1e10, fmt: (v) => `${(v / 1e6).toFixed(1)}M`, agresivo: "alto" },
-  { key: "occupancy", etiqueta: "Ocupación", min: 0.1, max: 1.01, fmt: (v) => pct(v, 1), agresivo: "bajo" },
+export const COHORT_METRICS: CohortMetric[] = [
+  { key: "ltv", label: "LTV", min: 0.01, max: 2, fmt: (v) => pct(v, 1), aggressive: "high" },
+  { key: "dscr", label: "DSCR", min: 0.1, max: 20, fmt: (v) => v.toFixed(2), aggressive: "low" },
+  { key: "debt_yield", label: "Debt yield", min: 0.01, max: 1, fmt: (v) => pct(v, 1), aggressive: "low" },
+  { key: "interest_rate", label: "Rate", min: 0.001, max: 0.2, fmt: (v) => pct(v, 2), aggressive: "high" },
+  { key: "loan_amount", label: "Balance", min: 1e5, max: 1e10, fmt: (v) => `${(v / 1e6).toFixed(1)}M`, aggressive: "high" },
+  { key: "occupancy", label: "Occupancy", min: 0.1, max: 1.01, fmt: (v) => pct(v, 1), aggressive: "low" },
 ];
 
-export interface Emision {
+export interface Issuance {
   accession: string;
-  nombre: string;
-  anada: string;
+  name: string;
+  vintage: string;
   filed: string;
   pool: number;
-  tipoDominante: string | null;
-  shareDominante: number;
+  dominantType: string | null;
+  dominantShare: number;
   /**
-   * Cuántos de esos préstamos tienen tipo de propiedad.
+   * How many of those loans have a property type.
    *
-   * `pool` cuenta todos los préstamos de la emisión y la composición se calcula
-   * solo sobre los que tienen tipo, así que los dos números no son el mismo. La
-   * diferencia se veía impresa —BMO 2026-C15 sale con pool 14 en
-   * `db:composition-signal` y 15 acá— y nadie la había mirado.
+   * `pool` counts every loan in the issuance and the composition is computed
+   * only over those that have a type, so the two numbers are not the same. The
+   * difference was visible in print —BMO 2026-C15 comes out with pool 14 in
+   * `db:composition-signal` and 15 here— and nobody had looked at it.
    *
-   * Importa porque el nulo se simula sacando n préstamos al azar: hacerlo con 15
-   * cuando la mezcla se midió sobre 14 le da al nulo menos dispersión de la que
-   * corresponde, y eso corre el p-valor HACIA "distinta". Un sesgo chico —el ruido
-   * escala con 1/√n, así que 15 contra 14 son ~1,5%— pero en la dirección de
-   * encontrar señal, y en el estadístico que encabeza el producto.
+   * It matters because the null is simulated by drawing n loans at random: doing
+   * it with 15 when the mix was measured over 14 gives the null less dispersion
+   * than it should have, and that shifts the p-value TOWARDS "different". A small
+   * bias —noise scales with 1/√n, so 15 against 14 is ~1.5%— but in the direction
+   * of finding signal, and in the statistic that headlines the product.
    */
-  poolTipado: number;
+  typedPool: number;
 }
 
-export interface MetricaResultado {
-  spec: MetricaSpec;
-  /** null cuando la emisión no tiene suficientes préstamos con el dato. */
-  valor: number | null;
+export interface CohortMetricResult {
+  spec: CohortMetric;
+  /** null when the issuance does not have enough loans carrying the figure. */
+  value: number | null;
   p25: number | null;
   p50: number | null;
   p75: number | null;
   rank: number | null;
   total: number | null;
-  /** true si está entre las tres primeras o últimas de la cohorte. */
-  extremo: boolean;
-  /** true si el extremo apunta hacia el lado más agresivo. */
-  agresivo: boolean;
-  /** Por qué no hay número, cuando no hay. */
-  sinDato: "emision" | "pares" | null;
-  paresConDato: number;
+  /** true if it is among the first or last three of the cohort. */
+  extreme: boolean;
+  /** true if the extreme points towards the more aggressive side. */
+  aggressive: boolean;
+  /** Why there is no number, when there is none. */
+  noData: "issuance" | "pairs" | null;
+  pairsWithData: number;
 }
 
-export interface Composicion {
-  tipo: string;
-  propio: number;
-  cohorte: number;
-  diferencia: number;
-  /** true si la diferencia es menor a un préstamo: no es una diferencia. */
-  bajoResolucion: boolean;
-  /** Cuántos préstamos de esta emisión son de este tipo. */
-  prestamos: number;
-  /** Cuántos préstamos explican la DIFERENCIA contra la cohorte. */
-  prestamosDif: number;
+export interface Composition {
+  type: string;
+  own: number;
+  cohort: number;
+  difference: number;
+  /** true if the difference is smaller than one loan: it is not a difference. */
+  belowResolution: boolean;
+  /** How many loans of this issuance are of this type. */
+  loans: number;
+  /** How many loans account for the DIFFERENCE against the cohort. */
+  loansOfDifference: number;
 }
 
 export interface Benchmark {
-  objetivo: Emision;
-  pares: Emision[];
-  excluidas: Emision[];
-  /** false cuando no alcanzan los pares: la respuesta correcta es "no se sabe". */
+  target: Issuance;
+  pairs: Issuance[];
+  excluded: Issuance[];
+  /** false when there are not enough pairs: the right answer is "unknown". */
   evaluable: boolean;
-  /** true si la propia emisión es mono-tipo y la comparación no aplica. */
-  objetivoMonoTipo: boolean;
-  metricas: MetricaResultado[];
-  composicion: Composicion[];
-  /** Cuánto del pool vale un préstamo: la resolución real de la composición. */
-  puntoPorPrestamo: number;
-  /** Resolución en puntos que tendría un percentil con estos pares. */
-  resolucionPercentil: number;
+  /** true if the issuance itself is single-type and the comparison does not apply. */
+  targetSingleType: boolean;
+  metrics: CohortMetricResult[];
+  composition: Composition[];
+  /** How much of the pool one loan is worth: the real resolution of the composition. */
+  pointPerLoan: number;
+  /** Resolution in points a percentile would have with these pairs. */
+  percentileResolution: number;
   /**
-   * Cuánto se aparta la mezcla de propiedades, y si eso supera al azar.
+   * How far the property mix departs, and whether that beats chance.
    *
-   * Medido con `db:composition-signal` sobre la cohorte 2026: 13 de 25 conduits
-   * se apartan más que el azar, contra 1,25 esperadas. El test se verificó antes
-   * de usarlo generando emisiones DESDE la nula: encontró 2 de 28, contra 1,4
-   * esperadas.
+   * Measured with `db:composition-signal` over the 2026 cohort: 13 of 25
+   * conduits depart more than chance, against 1.25 expected. The test was
+   * verified before being used by generating issuances FROM the null: it found 2
+   * of 28, against 1.4 expected.
    *
-   * Ese 13 NO es el que muestra `db:catalog`, que da 8. Son referencias distintas
-   * —el catálogo excluye las mono-tipo del pool y exige que las dos ponderaciones
-   * coincidan— y el detalle está en el encabezado de `catalog.ts`. Una versión
-   * anterior de este comentario decía "10", que no es ninguno de los dos.
+   * That 13 is NOT the one `db:catalog` shows, which gives 8. They are different
+   * references —the catalogue excludes single-type deals from the pool and
+   * requires both weightings to agree— and the detail is in the header of
+   * `catalog.ts`. An earlier version of this comment said "10", which is neither.
    *
-   * Las seis métricas rastrean lo mismo más débilmente —rho = 0,59 entre cuántas
-   * se apartan y cuánto se aparta la mezcla— porque la composición causa el
-   * desvío: los hoteles se suscriben distinto que los departamentos.
+   * The six metrics track the same thing more weakly —rho = 0.59 between how
+   * many depart and how far the mix departs— because composition causes the
+   * deviation: hotels are underwritten differently from apartments.
    *
-   * (Una versión anterior de este comentario decía que las métricas eran
-   * "indistinguibles de la nula, z = 0,00". Ese test comparaba cada emisión
-   * contra el rango intercuartil de las otras del mismo conjunto, donde la tasa
-   * marginal es 50% por intercambiabilidad exista o no señal: no tenía potencia.)
+   * (An earlier version of this comment said the metrics were "indistinguishable
+   * from the null, z = 0.00". That test compared each issuance against the
+   * interquartile range of the others in the same set, where the marginal rate is
+   * 50% by exchangeability whether or not there is signal: it had no power.)
    */
-  distancia: number;
-  distanciaNulo: number;
-  pValor: number;
+  distance: number;
+  nullDistance: number;
+  pValue: number;
   /**
-   * El mismo cálculo con la referencia ponderada por EMISIÓN en vez de por
-   * préstamo, y si las dos coinciden.
+   * The same computation with the reference weighted by ISSUANCE instead of by
+   * loan, and whether the two agree.
    *
-   * Medido: sobre 2026, por préstamo salen 13 emisiones significativas y por
-   * emisión 15, coincidiendo en 13. El agregado es robusto —las dos cifras son
-   * abrumadoras contra 1,4 esperadas— pero dos emisiones cambian de lado, y una
-   * es BANK5 2026-5YR24.
+   * Measured: over 2026, by loan there are 13 significant issuances and by
+   * issuance 15, agreeing on 13. The aggregate is robust —both figures are
+   * overwhelming against 1.4 expected— but two issuances change sides, and one is
+   * BANK5 2026-5YR24.
    *
-   * O sea que el veredicto por emisión NO es robusto en los casos al filo. Una
-   * página que dice "distinta" o "indistinguible" según una ponderación elegida
-   * sin pensarla afirma más de lo que sabe, así que cuando las dos discrepan se
-   * dice eso en vez de elegir una.
+   * So the per-issuance verdict is NOT robust in the borderline cases. A page
+   * that says "different" or "indistinguishable" depending on a weighting chosen
+   * without thinking asserts more than it knows, so when the two disagree we say
+   * that instead of picking one.
    */
-  pValorPorEmision: number;
-  /** true si las dos ponderaciones dan el mismo veredicto al 5%. */
-  robusto: boolean;
+  pValueByIssuance: number;
+  /** true if both weightings give the same verdict at 5%. */
+  robust: boolean;
 }
 
 /**
- * Las emisiones disponibles, con lo necesario para decidir quién entra a la
- * cohorte de referencia.
+ * The available issuances, with what is needed to decide who enters the
+ * reference cohort.
  *
- * El pool se cuenta APARTE de los tipos. La primera versión unía `corpus.loans`
- * con el CTE de tipos —una fila por (emisión, tipo)— y cada préstamo se contaba
- * una vez por tipo presente: BANK5 2026-5YR24 salió con 315 préstamos en vez de
- * 35. Un fan-out de join no rompe nada visiblemente, así que se evita por
- * construcción y no por atención.
+ * The pool is counted SEPARATELY from the types. The first version joined
+ * `corpus.loans` with the types CTE —one row per (issuance, type)— and each loan
+ * was counted once per type present: BANK5 2026-5YR24 came out with 315 loans
+ * instead of 35. A join fan-out breaks nothing visibly, so it is avoided by
+ * construction and not by attention.
  */
-export async function cargarCandidatas(): Promise<Emision[]> {
+export async function loadCandidates(): Promise<Issuance[]> {
   const { rows } = await query<{
-    accession: string; nombre: string; anada: string; filed: string;
-    pool: string; pool_tipado: string; tipo_dominante: string | null;
-    share_dominante: string | null;
+    accession: string; name: string; vintage: string; filed: string;
+    pool: string; typed_pool: string; dominant_type: string | null;
+    dominant_share: string | null;
   }>(
     `WITH pools AS (
        SELECT accession, count(*) AS pool,
-              count(*) FILTER (WHERE property_type IS NOT NULL) AS pool_tipado
+              count(*) FILTER (WHERE property_type IS NOT NULL) AS typed_pool
          FROM corpus.loans GROUP BY accession
      ),
-     tipos AS (
-       SELECT l.accession, l.property_type AS tipo, count(*) AS n,
+     types AS (
+       SELECT l.accession, l.property_type AS type, count(*) AS n,
               row_number() OVER (PARTITION BY l.accession ORDER BY count(*) DESC) AS rn,
               sum(count(*)) OVER (PARTITION BY l.accession) AS total
          FROM corpus.loans l
         WHERE l.property_type IS NOT NULL
         GROUP BY l.accession, l.property_type
      ),
-     dominante AS (
-       SELECT accession, tipo, (n::numeric / nullif(total, 0)) AS share
-         FROM tipos WHERE rn = 1
+     dominant AS (
+       SELECT accession, type, (n::numeric / nullif(total, 0)) AS share
+         FROM types WHERE rn = 1
      )
-     SELECT f.accession, f.company_name AS nombre,
-            extract(year FROM f.filed_at)::int::text AS anada,
+     SELECT f.accession, f.company_name AS name,
+            extract(year FROM f.filed_at)::int::text AS vintage,
             f.filed_at::text AS filed,
             p.pool::text,
-            p.pool_tipado::text,
-            d.tipo AS tipo_dominante,
-            d.share::text AS share_dominante
+            p.typed_pool::text,
+            d.type AS dominant_type,
+            d.share::text AS dominant_share
        FROM corpus.filings f
        JOIN pools p ON p.accession = f.accession
-       LEFT JOIN dominante d ON d.accession = f.accession
+       LEFT JOIN dominant d ON d.accession = f.accession
       WHERE f.filed_at IS NOT NULL
       ORDER BY f.filed_at DESC`,
   );
 
   return rows.map((r) => ({
     accession: r.accession,
-    nombre: r.nombre,
-    anada: r.anada,
+    name: r.name,
+    vintage: r.vintage,
     filed: r.filed,
     pool: Number(r.pool),
-    poolTipado: Number(r.pool_tipado),
-    tipoDominante: r.tipo_dominante,
-    shareDominante: Number(r.share_dominante ?? 0),
+    typedPool: Number(r.typed_pool),
+    dominantType: r.dominant_type,
+    dominantShare: Number(r.dominant_share ?? 0),
   }));
 }
 
 /**
- * Calcula el benchmark de una emisión contra su cohorte.
+ * Computes an issuance's benchmark against its cohort.
  *
- * Devuelve `null` solo si no se encuentra la emisión. Que no haya pares
- * suficientes NO es un error: es una respuesta, y viaja en `evaluable`.
+ * Returns `null` only if the issuance is not found. Not having enough pairs is
+ * NOT an error: it is an answer, and it travels in `evaluable`.
  */
-export async function calcularBenchmark(
-  busqueda: string | null,
-  candidatas?: Emision[],
+export async function computeBenchmark(
+  search: string | null,
+  candidates?: Issuance[],
 ): Promise<Benchmark | null> {
-  const todas = candidatas ?? (await cargarCandidatas());
-  const objetivo = busqueda
-    ? todas.find((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()))
-    : todas[0];
-  if (!objetivo) return null;
+  const all = candidates ?? (await loadCandidates());
+  const target = search
+    ? all.find((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+    : all[0];
+  if (!target) return null;
 
   /**
-   * El grupo de referencia: las OTRAS emisiones del mismo año, sin las
-   * mono-tipo.
+   * The reference group: the OTHER issuances of the same year, without the
+   * single-type ones.
    *
-   * Excluirse a sí misma es obvio y fácil de olvidar: con 28 emisiones,
-   * incluirse corre la posición casi cuatro puntos.
+   * Excluding itself is obvious and easy to forget: with 28 issuances, including
+   * itself shifts the position by almost four points.
    */
-  const mismaAnada = todas.filter(
-    (c) => c.anada === objetivo.anada && c.accession !== objetivo.accession,
+  const sameVintage = all.filter(
+    (c) => c.vintage === target.vintage && c.accession !== target.accession,
   );
-  const pares = mismaAnada.filter((c) => c.shareDominante <= CONCENTRACION_TIPO);
-  const excluidas = mismaAnada.filter((c) => c.shareDominante > CONCENTRACION_TIPO);
+  const pairs = sameVintage.filter((c) => c.dominantShare <= TYPE_CONCENTRATION);
+  const excluded = sameVintage.filter((c) => c.dominantShare > TYPE_CONCENTRATION);
 
-  const base: Omit<Benchmark, "metricas" | "composicion" | "distancia" | "distanciaNulo" | "pValor" | "pValorPorEmision" | "robusto"> = {
-    objetivo,
-    pares,
-    excluidas,
-    evaluable: pares.length >= MIN_PARES,
-    objetivoMonoTipo: objetivo.shareDominante > CONCENTRACION_TIPO,
-    puntoPorPrestamo: 1 / Math.max(1, objetivo.poolTipado),
-    resolucionPercentil: 100 / (pares.length + 1),
+  const base: Omit<
+    Benchmark,
+    "metrics" | "composition" | "distance" | "nullDistance" | "pValue" | "pValueByIssuance" | "robust"
+  > = {
+    target,
+    pairs,
+    excluded,
+    evaluable: pairs.length >= MIN_PAIRS,
+    targetSingleType: target.dominantShare > TYPE_CONCENTRATION,
+    pointPerLoan: 1 / Math.max(1, target.typedPool),
+    percentileResolution: 100 / (pairs.length + 1),
   };
 
   if (!base.evaluable) {
     return {
-      ...base, metricas: [], composicion: [],
-      distancia: 0, distanciaNulo: 0, pValor: 1, pValorPorEmision: 1, robusto: true,
+      ...base, metrics: [], composition: [],
+      distance: 0, nullDistance: 0, pValue: 1, pValueByIssuance: 1, robust: true,
     };
   }
 
-  const accessions = [objetivo.accession, ...pares.map((p) => p.accession)];
-  const metricas: MetricaResultado[] = [];
+  const accessions = [target.accession, ...pairs.map((p) => p.accession)];
+  const metrics: CohortMetricResult[] = [];
 
-  for (const spec of METRICAS) {
-    const { rows } = await query<{ accession: string; mediana: string }>(
+  for (const spec of COHORT_METRICS) {
+    const { rows } = await query<{ accession: string; median: string }>(
       `SELECT l.accession,
-              percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS mediana
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS median
          FROM corpus.facts fa
          JOIN corpus.loans l ON l.id = fa.loan_id
         WHERE fa.metric_key = $1
@@ -281,59 +284,59 @@ export async function calcularBenchmark(
           AND fa.value::numeric BETWEEN ${spec.min} AND ${spec.max}
           AND l.accession = ANY($2)
         GROUP BY l.accession
-       HAVING count(*) >= ${MIN_PARA_METRICA}`,
+       HAVING count(*) >= ${MIN_PER_METRIC}`,
       [spec.key, accessions],
     );
 
-    const propio = rows.find((r) => r.accession === objetivo.accession);
-    const otros = rows
-      .filter((r) => r.accession !== objetivo.accession)
-      .map((r) => Number(r.mediana))
+    const own = rows.find((r) => r.accession === target.accession);
+    const others = rows
+      .filter((r) => r.accession !== target.accession)
+      .map((r) => Number(r.median))
       .sort((a, b) => a - b);
 
-    if (!propio || otros.length < MIN_PARES) {
-      metricas.push({
-        spec, valor: null, p25: null, p50: null, p75: null, rank: null, total: null,
-        extremo: false, agresivo: false,
-        sinDato: !propio ? "emision" : "pares",
-        paresConDato: otros.length,
+    if (!own || others.length < MIN_PAIRS) {
+      metrics.push({
+        spec, value: null, p25: null, p50: null, p75: null, rank: null, total: null,
+        extreme: false, aggressive: false,
+        noData: !own ? "issuance" : "pairs",
+        pairsWithData: others.length,
       });
       continue;
     }
 
-    const v = Number(propio.mediana);
-    const q = (p: number) => otros[Math.min(otros.length - 1, Math.floor(p * otros.length))]!;
-    const rank = otros.filter((x) => x < v).length + 1;
-    const total = otros.length + 1;
-    const extremo = rank <= 3 || rank >= total - 2;
+    const v = Number(own.median);
+    const q = (p: number) => others[Math.min(others.length - 1, Math.floor(p * others.length))]!;
+    const rank = others.filter((x) => x < v).length + 1;
+    const total = others.length + 1;
+    const extreme = rank <= 3 || rank >= total - 2;
 
-    metricas.push({
-      spec, valor: v,
+    metrics.push({
+      spec, value: v,
       p25: q(0.25), p50: q(0.5), p75: q(0.75),
-      rank, total, extremo,
-      agresivo:
-        (spec.agresivo === "alto" && rank >= total - 2) ||
-        (spec.agresivo === "bajo" && rank <= 3),
-      sinDato: null,
-      paresConDato: otros.length,
+      rank, total, extreme,
+      aggressive:
+        (spec.aggressive === "high" && rank >= total - 2) ||
+        (spec.aggressive === "low" && rank <= 3),
+      noData: null,
+      pairsWithData: others.length,
     });
   }
 
   /**
-   * La composición, con las categorías canonizadas.
+   * The composition, with the categories canonicalised.
    *
-   * El Annex A publica tanto la taxonomía general como la detallada. Se
-   * normaliza a las categorías gruesas porque son las que tienen suficientes
-   * préstamos por celda para que un porcentaje signifique algo.
+   * The Annex A publishes both the general and the detailed taxonomy. It is
+   * normalised to the coarse categories because those are the ones with enough
+   * loans per cell for a percentage to mean anything.
    */
   /**
-   * La composición de CADA par, para poder ponderar por emisión.
+   * The composition of EACH pair, so it can be weighted by issuance.
    *
-   * La query de abajo devuelve el agregado ponderado por préstamo; esta devuelve
-   * el vector de cada emisión por separado, que es lo que hace falta para
-   * promediarlos con peso igual.
+   * The query below returns the loan-weighted aggregate; this one returns each
+   * issuance's vector separately, which is what is needed to average them with
+   * equal weight.
    */
-  const { rows: porPar } = await query<{ accession: string; tipo: string; share: string }>(
+  const { rows: perPair } = await query<{ accession: string; type: string; share: string }>(
     `WITH canon AS (
        SELECT l.accession,
               CASE
@@ -345,26 +348,26 @@ export async function calcularBenchmark(
                 WHEN l.property_type ~* 'hospitality|hotel|service|extended stay' THEN 'Hospitality'
                 WHEN l.property_type ~* 'mixed' THEN 'Mixed Use'
                 WHEN l.property_type ~* 'manufactured' THEN 'Manufactured'
-                ELSE 'Sin clasificar'
-              END AS tipo
+                ELSE 'Unclassified'
+              END AS type
          FROM corpus.loans l
         WHERE l.property_type IS NOT NULL AND l.accession = ANY($1)
      ),
      tot AS (SELECT accession, count(*) AS n FROM canon GROUP BY accession)
-     SELECT c.accession, c.tipo,
+     SELECT c.accession, c.type,
             (count(*)::numeric / nullif(t.n, 0))::text AS share
        FROM canon c JOIN tot t ON t.accession = c.accession
-      GROUP BY c.accession, c.tipo, t.n`,
+      GROUP BY c.accession, c.type, t.n`,
     [accessions],
   );
-  const composicionDe = new Map<string, Map<string, number>>();
-  for (const r of porPar) {
-    const m = composicionDe.get(r.accession) ?? new Map<string, number>();
-    m.set(r.tipo, Number(r.share));
-    composicionDe.set(r.accession, m);
+  const compositionOf = new Map<string, Map<string, number>>();
+  for (const r of perPair) {
+    const m = compositionOf.get(r.accession) ?? new Map<string, number>();
+    m.set(r.type, Number(r.share));
+    compositionOf.set(r.accession, m);
   }
 
-  const { rows: mezcla } = await query<{ tipo: string; propio: string; cohorte: string }>(
+  const { rows: mix } = await query<{ type: string; own: string; cohort: string }>(
     `WITH canon AS (
        SELECT l.accession,
               CASE
@@ -376,119 +379,119 @@ export async function calcularBenchmark(
                 WHEN l.property_type ~* 'hospitality|hotel|service|extended stay' THEN 'Hospitality'
                 WHEN l.property_type ~* 'mixed' THEN 'Mixed Use'
                 WHEN l.property_type ~* 'manufactured' THEN 'Manufactured'
-                ELSE 'Sin clasificar'
-              END AS tipo
+                ELSE 'Unclassified'
+              END AS type
          FROM corpus.loans l
         WHERE l.property_type IS NOT NULL AND l.accession = ANY($1)
      ),
-     totales AS (
-       SELECT count(*) FILTER (WHERE accession = $2) AS n_propio,
-              count(*) FILTER (WHERE accession <> $2) AS n_cohorte
+     totals AS (
+       SELECT count(*) FILTER (WHERE accession = $2) AS n_own,
+              count(*) FILTER (WHERE accession <> $2) AS n_cohort
          FROM canon
      )
-     SELECT c.tipo,
+     SELECT c.type,
             (count(*) FILTER (WHERE c.accession = $2)::numeric
-              / nullif(t.n_propio, 0))::text AS propio,
+              / nullif(t.n_own, 0))::text AS own,
             (count(*) FILTER (WHERE c.accession <> $2)::numeric
-              / nullif(t.n_cohorte, 0))::text AS cohorte
-       FROM canon c CROSS JOIN totales t
-      GROUP BY c.tipo, t.n_propio, t.n_cohorte
+              / nullif(t.n_cohort, 0))::text AS cohort
+       FROM canon c CROSS JOIN totals t
+      GROUP BY c.type, t.n_own, t.n_cohort
       ORDER BY count(*) FILTER (WHERE c.accession = $2) DESC`,
-    [accessions, objetivo.accession],
+    [accessions, target.accession],
   );
 
-  const filaComp = (r: { tipo: string; propio: string | null; cohorte: string | null }) => {
-      const propio = Number(r.propio ?? 0);
-      const cohorte = Number(r.cohorte ?? 0);
-      const diferencia = propio - cohorte;
-      /**
-       * Una diferencia menor a un préstamo no es una diferencia.
-       *
-       * Con 35 préstamos cada uno vale 2,9 puntos, así que 0,4 puntos son 0,14
-       * préstamos: no existe una emisión que difiera en eso. Se mostraba como
-       * "+0%", que parece un error de cálculo y en realidad era una diferencia
-       * por debajo de la resolución del pool.
-       */
-      const punto = 1 / Math.max(1, objetivo.poolTipado);
-      return {
-        tipo: r.tipo,
-        propio,
-        cohorte,
-        diferencia,
-        bajoResolucion: Math.abs(diferencia) < punto,
-        prestamos: Math.round(propio * objetivo.poolTipado),
-        /** Cuántos préstamos explican la diferencia, que no es lo mismo que `prestamos`. */
-        prestamosDif: Math.round(Math.abs(diferencia) / punto),
-      };
+  const compositionRow = (r: { type: string; own: string | null; cohort: string | null }) => {
+    const own = Number(r.own ?? 0);
+    const cohort = Number(r.cohort ?? 0);
+    const difference = own - cohort;
+    /**
+     * A difference smaller than one loan is not a difference.
+     *
+     * With 35 loans each is worth 2.9 points, so 0.4 points is 0.14 loans: there
+     * is no issuance that differs by that. It was shown as "+0%", which looks
+     * like an arithmetic error and was in fact a difference below the pool's
+     * resolution.
+     */
+    const point = 1 / Math.max(1, target.typedPool);
+    return {
+      type: r.type,
+      own,
+      cohort,
+      difference,
+      belowResolution: Math.abs(difference) < point,
+      loans: Math.round(own * target.typedPool),
+      /** How many loans account for the difference, which is not the same as `loans`. */
+      loansOfDifference: Math.round(Math.abs(difference) / point),
+    };
   };
 
   /**
-   * EL FILTRO DE PRESENTACIÓN NO PUEDE TOCAR EL VECTOR DEL ESTADÍSTICO.
+   * THE PRESENTATION FILTER CANNOT TOUCH THE STATISTIC'S VECTOR.
    *
-   * Había una sola lista: se filtraban los tipos ausentes y marginales, y esa
-   * misma lista filtrada alimentaba la distancia. Con eso, un tipo con 0% en la
-   * emisión y 1,5% en la cohorte desaparecía del vector, y pasaban dos cosas.
+   * There used to be a single list: absent and marginal types were filtered out,
+   * and that same filtered list fed the distance. With that, a type at 0% in the
+   * issuance and 1.5% in the cohort disappeared from the vector, and two things
+   * happened.
    *
-   * La distancia quedaba SUBESTIMADA, porque esa diferencia de 1,5 puntos era
-   * real y dejaba de sumarse.
+   * The distance was UNDERSTATED, because that 1.5-point difference was real and
+   * stopped being summed.
    *
-   * Y el nulo quedaba mal de una forma peor: la acumulada de q terminaba en 0,985
-   * en vez de 1, así que el 1,5% de los sorteos caía fuera de rango y el
-   * `if (i < 0) i = q.length - 1` se lo asignaba a la ÚLTIMA categoría del orden.
-   * Una masa de probabilidad que pertenecía a un tipo terminaba en otro, elegido
-   * por cómo ordenaba el SQL.
+   * And the null was wrong in a worse way: the cumulative of q ended at 0.985
+   * instead of 1, so 1.5% of the draws fell out of range and the
+   * `if (i < 0) i = q.length - 1` assigned them to the LAST category in the
+   * order. A mass of probability belonging to one type ended up in another,
+   * chosen by however the SQL happened to sort.
    *
-   * Ninguna de las dos cosas se nota mirando el resultado: la distancia sigue
-   * pareciendo razonable y el p-valor sigue saliendo. Apareció reconciliando por
-   * qué este archivo cuenta 8 emisiones distintas y `db:composition-signal`
-   * cuenta 13.
+   * Neither is visible from looking at the result: the distance still looks
+   * reasonable and the p-value still comes out. It surfaced while reconciling why
+   * this file counts 8 different issuances and `db:composition-signal` counts 13.
    *
-   * Ahora son dos listas: `paraMostrar` se filtra, `composicionCompleta` no.
+   * Now there are two lists: `composition` is filtered, `fullComposition` is not.
    */
-  const composicionCompleta: Composicion[] = mezcla.map(filaComp);
-  const composicion = composicionCompleta.filter((r) => r.propio > 0 || r.cohorte >= 0.02);
+  const fullComposition: Composition[] = mix.map(compositionRow);
+  const composition = fullComposition.filter((r) => r.own > 0 || r.cohort >= 0.02);
 
   /**
-   * ¿Se aparta la mezcla más de lo que produce el azar?
+   * Does the mix depart more than chance produces?
    *
-   * El nulo descuenta el tamaño del pool, que es la parte que importa: 15
-   * préstamos se desvían de la mezcla promedio por muestreo mucho más que 70.
-   * Sin eso, las emisiones chicas parecerían siempre las más distintas.
+   * The null discounts pool size, which is the part that matters: 15 loans
+   * deviate from the average mix by sampling far more than 70. Without that,
+   * small issuances would always look the most different.
    *
-   * La referencia son los `pares` —las mismas que usa todo lo demás en esta
-   * página— y no la cohorte entera. Incluir las mono-tipo correría la mezcla de
-   * referencia hacia multifamily y haría que todos los conduits parecieran
-   * apartarse en la misma dirección.
+   * The reference is the `pairs` —the same ones everything else on this page
+   * uses— and not the whole cohort. Including the single-type deals would shift
+   * the reference mix towards multifamily and make every conduit look like it
+   * departs in the same direction.
    */
-  const conMezcla = composicionCompleta;
-  const pVec = conMezcla.map((c) => c.propio);
-  const qVec = conMezcla.map((c) => c.cohorte);
-  const porPrestamo = aparte(pVec, qVec, objetivo.poolTipado);
+  const withMix = fullComposition;
+  const pVec = withMix.map((c) => c.own);
+  const qVec = withMix.map((c) => c.cohort);
+  const perLoan = apart(pVec, qVec, target.typedPool);
 
   /**
-   * La misma medición con la referencia ponderada por emisión.
+   * The same measurement with the reference weighted by issuance.
    *
-   * El nulo se resimula adentro de `aparte`: cambiar la referencia cambia también
-   * qué distancias produce el azar, así que reusar el anterior compararía contra
-   * el nulo equivocado.
+   * The null is re-simulated inside `apart`: changing the reference also changes
+   * which distances chance produces, so reusing the previous one would compare
+   * against the wrong null.
    */
-  const qEmision = conMezcla.map((c) => {
-    const suma = pares.reduce(
-      (x, par) => x + (composicionDe.get(par.accession)?.get(c.tipo) ?? 0),
+  const qByIssuance = withMix.map((c) => {
+    const sum = pairs.reduce(
+      (x, pair) => x + (compositionOf.get(pair.accession)?.get(c.type) ?? 0),
       0,
     );
-    return suma / Math.max(1, pares.length);
+    return sum / Math.max(1, pairs.length);
   });
-  const porEmision = aparte(pVec, qEmision, objetivo.poolTipado);
+  const perIssuance = apart(pVec, qByIssuance, target.typedPool);
 
   return {
     ...base,
-    metricas,
-    composicion,
-    distancia: porPrestamo.distancia,
-    distanciaNulo: porPrestamo.nulo,
-    pValor: porPrestamo.p,
-    pValorPorEmision: porEmision.p,
-    robusto: porPrestamo.p < 0.05 === porEmision.p < 0.05,
+    metrics,
+    composition,
+    distance: perLoan.distance,
+    nullDistance: perLoan.nullMedian,
+    pValue: perLoan.p,
+    pValueByIssuance: perIssuance.p,
+    robust: perLoan.p < 0.05 === perIssuance.p < 0.05,
   };
 }

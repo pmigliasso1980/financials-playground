@@ -1,5 +1,5 @@
 /**
- * El índice: las emisiones de una cohorte, y cuál se aparta de verdad.
+ * El índice: las emisiones de una cohort, y cuál se aparta de verdad.
  *
  *   npm run db:catalog
  *   npm run db:catalog -- --anada 2025
@@ -7,7 +7,7 @@
  * QUÉ ORDENA ESTA PÁGINA, Y POR QUÉ ESO Y NO OTRA COSA
  *
  * De todo lo que el proyecto midió, una sola cosa distingue emisiones por encima
- * del azar: la mezcla de propiedades. Sobre la cohorte 2026 el catálogo cuenta
+ * del azar: la mezcla de propiedades. Sobre la cohort 2026 el catálogo cuenta
  * 8 de 25 contra 1,3 esperadas por azar, y el test se verificó generando emisiones
  * DESDE la nula antes de usarlo.
  *
@@ -56,14 +56,14 @@
  *
  * LAS MONO-TIPO VAN APARTE, NO ARRIBA
  *
- * Una emisión que es 100% hotelería se aparta de la cohorte por definición, no
+ * Una emisión que es 100% hotelería se aparta de la cohort por definición, no
  * por cómo se armó. Si entrara al mismo ranking coparía los primeros puestos con
  * una tautología. Van en su propia sección, sin veredicto.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { closePool, ping } from "./client.js";
-import { calcularBenchmark, cargarCandidatas, pct, type Benchmark } from "./cohortBenchmark.js";
+import { computeBenchmark, loadCandidates, pct, type Benchmark } from "./cohortBenchmark.js";
 import { esc, render } from "./pageRender.js";
 import { corpusState, provenanceStamp } from "./provenance.js";
 
@@ -82,10 +82,10 @@ const dir = new URL("../out/", import.meta.url).pathname;
 const slugDe = (nombre: string) =>
   nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
-const candidatas = await cargarCandidatas();
-const cohorte = candidatas.filter((c) => c.anada === ANADA);
+const candidatas = await loadCandidates();
+const cohort = candidatas.filter((c) => c.vintage === ANADA);
 
-if (cohorte.length === 0) {
+if (cohort.length === 0) {
   console.log(`\n  Sin emisiones en ${ANADA}.\n`);
   await closePool();
   process.exit(0);
@@ -95,10 +95,10 @@ await mkdir(dir, { recursive: true });
 
 /** Se genera todo de una: el índice no puede enlazar páginas que no existen. */
 const fichas: Array<{ b: Benchmark; slug: string }> = [];
-for (const c of cohorte) {
-  const b = await calcularBenchmark(c.nombre, candidatas);
+for (const c of cohort) {
+  const b = await computeBenchmark(c.name, candidatas);
   if (!b) continue;
-  const slug = slugDe(c.nombre);
+  const slug = slugDe(c.name);
   await writeFile(`${dir}${slug}.html`, render(b), "utf8");
   fichas.push({ b, slug });
 }
@@ -112,16 +112,16 @@ await closePool();
  * Mono-tipo: se apartan por definición. No evaluables: no hay pares suficientes y
  * la respuesta es "no se sabe", que es distinta de "no se aparta".
  */
-const evaluables = fichas.filter((f) => f.b.evaluable && !f.b.objetivoMonoTipo);
-const monoTipo = fichas.filter((f) => f.b.objetivoMonoTipo);
-const sinEvaluar = fichas.filter((f) => !f.b.evaluable && !f.b.objetivoMonoTipo);
+const evaluables = fichas.filter((f) => f.b.evaluable && !f.b.targetSingleType);
+const monoTipo = fichas.filter((f) => f.b.targetSingleType);
+const sinEvaluar = fichas.filter((f) => !f.b.evaluable && !f.b.targetSingleType);
 
-const exceso = (b: Benchmark) => b.distancia - b.distanciaNulo;
+const exceso = (b: Benchmark) => b.distance - b.nullDistance;
 evaluables.sort((x, y) => exceso(y.b) - exceso(x.b));
 
 type Banda = "distinta" | "filo" | "igual";
 const bandaDe = (b: Benchmark): Banda =>
-  !b.robusto ? "filo" : b.pValor < 0.05 ? "distinta" : "igual";
+  !b.robust ? "filo" : b.pValue < 0.05 ? "distinta" : "igual";
 
 const distintas = evaluables.filter((f) => bandaDe(f.b) === "distinta").length;
 const alFilo = evaluables.filter((f) => bandaDe(f.b) === "filo").length;
@@ -134,7 +134,7 @@ const esperadasPorAzar = evaluables.length * 0.05;
  * chico define el grano más grueso: dos emisiones separadas por menos que eso
  * están empatadas.
  */
-const grano = Math.max(...evaluables.map((f) => f.b.puntoPorPrestamo), 0);
+const grano = Math.max(...evaluables.map((f) => f.b.pointPerLoan), 0);
 
 const ETIQUETA: Record<Banda, string> = {
   distinta: "distinta",
@@ -150,30 +150,30 @@ const barraExceso = (b: Benchmark) => {
 
 const fila = (f: { b: Benchmark; slug: string }) => {
   const b = f.b;
-  const o = b.objetivo;
+  const o = b.target;
   const banda = bandaDe(b);
   /**
    * El tipo que más se aparta, no el más grande.
    *
-   * "Qué tiene de distinto" es la diferencia contra la cohorte; el tipo dominante
+   * "Qué tiene de distinto" es la diferencia contra la cohort; el tipo dominante
    * ya está en casi todas y no distingue. Se omite si la diferencia no llega a un
    * préstamo: ahí no hay nada que nombrar.
    */
-  const top = [...b.composicion]
-    .filter((c) => !c.bajoResolucion)
-    .sort((x, y) => Math.abs(y.diferencia) - Math.abs(x.diferencia))[0];
-  return `<tr class="b-${banda}" data-exc="${exceso(b).toFixed(5)}" data-pool="${o.poolTipado}" data-nombre="${esc(o.nombre)}">
-    <th><a href="${f.slug}.html">${esc(o.nombre)}</a></th>
-    <td class="n">${o.poolTipado}${
-      o.poolTipado < o.pool ? `<span class="muted"> / ${o.pool}</span>` : ""
+  const top = [...b.composition]
+    .filter((c) => !c.belowResolution)
+    .sort((x, y) => Math.abs(y.difference) - Math.abs(x.difference))[0];
+  return `<tr class="b-${banda}" data-exc="${exceso(b).toFixed(5)}" data-pool="${o.typedPool}" data-nombre="${esc(o.name)}">
+    <th><a href="${f.slug}.html">${esc(o.name)}</a></th>
+    <td class="n">${o.typedPool}${
+      o.typedPool < o.pool ? `<span class="muted"> / ${o.pool}</span>` : ""
     }</td>
     <td class="viz">${barraExceso(b)}</td>
-    <td class="n">${pct(b.distancia)}<span class="muted"> vs ${pct(b.distanciaNulo)}</span></td>
+    <td class="n">${pct(b.distance)}<span class="muted"> vs ${pct(b.nullDistance)}</span></td>
     <td><span class="pill ${banda}">${ETIQUETA[banda]}</span></td>
     <td class="muted sm">${
       top
-        ? `${top.diferencia > 0 ? "+" : "−"}${pct(Math.abs(top.diferencia))} ${esc(top.tipo)}` +
-          ` <span class="muted">(${top.prestamosDif} préstamo${top.prestamosDif === 1 ? "" : "s"})</span>`
+        ? `${top.difference > 0 ? "+" : "−"}${pct(Math.abs(top.difference))} ${esc(top.type)}` +
+          ` <span class="muted">(${top.loansOfDifference} préstamo${top.loansOfDifference === 1 ? "" : "s"})</span>`
         : "nada por encima de un préstamo"
     }</td>
   </tr>`;
@@ -248,7 +248,7 @@ const html = `<!doctype html>
   <p class="note">Se ordena por el <b>exceso sobre el azar</b>, no por la distancia cruda:
   un pool chico se aparta más por muestreo, y ordenar por distancia pondría arriba a los
   pools chicos por ser chicos. Un préstamo vale hasta <b>${pct(grano, 1)}</b> de composición
-  en el pool más chico de esta cohorte, así que dos emisiones separadas por menos que eso
+  en el pool más chico de esta cohort, así que dos emisiones separadas por menos que eso
   están empatadas y el orden lo puso el redondeo.</p>
 
   ${
@@ -256,16 +256,16 @@ const html = `<!doctype html>
       ? `<h2>Mono-tipo — no entran a la comparación</h2>
          <table><tbody>${monoTipo
            .map(
-             (f) => `<tr><th><a href="${f.slug}.html">${esc(f.b.objetivo.nombre)}</a></th>
-               <td class="n">${f.b.objetivo.poolTipado}${
-                 f.b.objetivo.poolTipado < f.b.objetivo.pool
-                   ? `<span class="muted"> / ${f.b.objetivo.pool}</span>`
+             (f) => `<tr><th><a href="${f.slug}.html">${esc(f.b.target.name)}</a></th>
+               <td class="n">${f.b.target.typedPool}${
+                 f.b.target.typedPool < f.b.target.pool
+                   ? `<span class="muted"> / ${f.b.target.pool}</span>`
                    : ""
                }</td>
-               <td class="muted sm">${pct(f.b.objetivo.shareDominante)} ${esc(f.b.objetivo.tipoDominante ?? "")}</td></tr>`,
+               <td class="muted sm">${pct(f.b.target.dominantShare)} ${esc(f.b.target.dominantType ?? "")}</td></tr>`,
            )
            .join("")}</tbody></table>
-         <p class="note">Una emisión de un solo tipo de propiedad se aparta de la cohorte
+         <p class="note">Una emisión de un solo tipo de propiedad se aparta de la cohort
          por definición, no por cómo se armó. Meterla al ranking sería coparlo con una
          tautología.</p>`
       : ""
@@ -276,8 +276,8 @@ const html = `<!doctype html>
       ? `<h2>Sin evaluar — no alcanzan los pares</h2>
          <table><tbody>${sinEvaluar
            .map(
-             (f) => `<tr><th><a href="${f.slug}.html">${esc(f.b.objetivo.nombre)}</a></th>
-               <td class="muted sm">${f.b.pares.length} comparables</td></tr>`,
+             (f) => `<tr><th><a href="${f.slug}.html">${esc(f.b.target.name)}</a></th>
+               <td class="muted sm">${f.b.pairs.length} comparables</td></tr>`,
            )
            .join("")}</tbody></table>
          <p class="note">"No se sabe" no es lo mismo que "no se aparta", así que van
@@ -323,7 +323,7 @@ const html = `<!doctype html>
 await writeFile(`${dir}index.html`, html, "utf8");
 
 console.log(`\n${"═".repeat(78)}`);
-console.log(`Índice de la cohorte ${ANADA}`);
+console.log(`Índice de la cohort ${ANADA}`);
 console.log(`${"═".repeat(78)}\n`);
 console.log(
   `  ${fichas.length} páginas + índice en \x1b[1mout/index.html\x1b[0m`,
@@ -337,10 +337,10 @@ for (const f of evaluables) {
   const banda = bandaDe(f.b);
   const color = banda === "distinta" ? "\x1b[32m" : banda === "filo" ? "\x1b[33m" : "\x1b[90m";
   console.log(
-    `  ${f.b.objetivo.nombre.slice(0, 34).padEnd(36)} ` +
-      `${String(f.b.objetivo.poolTipado).padStart(5)}${
-        f.b.objetivo.poolTipado < f.b.objetivo.pool
-          ? `\x1b[90m/${f.b.objetivo.pool}\x1b[0m`
+    `  ${f.b.target.name.slice(0, 34).padEnd(36)} ` +
+      `${String(f.b.target.typedPool).padStart(5)}${
+        f.b.target.typedPool < f.b.target.pool
+          ? `\x1b[90m/${f.b.target.pool}\x1b[0m`
           : "   "
       } ` +
       `${pct(exceso(f.b), 1).padStart(6)}    ${color}${ETIQUETA[banda]}\x1b[0m`,

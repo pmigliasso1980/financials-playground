@@ -1,13 +1,19 @@
 /**
- * Runner de migraciones.
+ * Migration runner.
  *
- *   npm run db:migrate          aplica las pendientes
- *   npm run db:migrate -- --status   solo muestra el estado
- *   npm run db:migrate -- --reset    borra el schema corpus y reaplica todo
+ *   npm run db:migrate               applies the pending ones
+ *   npm run db:migrate -- --status   only shows the state
+ *   npm run db:migrate -- --reset    drops the corpus schema and reapplies all
  *
- * Deliberadamente simple: archivos .sql numerados en db/migrations/, una tabla
- * que registra cuáles se aplicaron, y cada una corre dentro de una transacción.
- * No hay rollback: para revertir se escribe una migración nueva.
+ * Deliberately simple: numbered .sql files in db/migrations/, one table
+ * recording which ones were applied, and each runs inside a transaction. There
+ * is no rollback: to revert, you write a new migration.
+ *
+ * Migrations are tracked BY FILENAME, with no checksum. That is what makes it
+ * safe to edit the comments of an already-applied migration —as the translation
+ * to English did across twelve files— without them re-running or looking like
+ * tampering. It also means an edit to the SQL itself of an applied migration
+ * does nothing, which is why 003 and 004 exist as separate files.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -49,7 +55,7 @@ async function main() {
   `);
 
   if (reset) {
-    console.log("  \x1b[33mReset: borrando el schema corpus\x1b[0m");
+    console.log("  \x1b[33mReset: dropping the corpus schema\x1b[0m");
     await query("DROP SCHEMA IF EXISTS corpus CASCADE");
     await query("DELETE FROM schema_migrations");
   }
@@ -62,20 +68,20 @@ async function main() {
   const applied = new Set(rows.map((r) => r.name));
 
   if (statusOnly) {
-    console.log("Migraciones:");
+    console.log("Migrations:");
     for (const file of files) {
       const mark = applied.has(file) ? "\x1b[32m✓\x1b[0m" : "\x1b[90m·\x1b[0m";
       console.log(`  ${mark} ${file}`);
     }
     const pending = files.filter((f) => !applied.has(f)).length;
-    console.log(`\n  ${files.length - pending} aplicadas, ${pending} pendientes\n`);
+    console.log(`\n  ${files.length - pending} applied, ${pending} pending\n`);
     return;
   }
 
   const pending = files.filter((f) => !applied.has(f));
 
   if (pending.length === 0) {
-    console.log(`  Sin migraciones pendientes (${files.length} aplicadas)\n`);
+    console.log(`  No pending migrations (${files.length} applied)\n`);
     return;
   }
 
@@ -91,6 +97,6 @@ async function main() {
     console.log(`  \x1b[32m✓\x1b[0m ${file} \x1b[90m(${Date.now() - started} ms)\x1b[0m`);
   }
 
-  console.log(`\n  ${pending.length} migración(es) aplicada(s)\n`);
-  console.log(`  Base: ${connectionString().replace(/:\/\/([^:]+):[^@]+@/, "://$1:***@")}\n`);
+  console.log(`\n  ${pending.length} migration(s) applied\n`);
+  console.log(`  Database: ${connectionString().replace(/:\/\/([^:]+):[^@]+@/, "://$1:***@")}\n`);
 }

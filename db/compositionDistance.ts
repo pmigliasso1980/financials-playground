@@ -1,100 +1,107 @@
 /**
- * Cuánto se aparta una mezcla de su referencia, y cuánto se apartaría por azar.
+ * How far a mix departs from its reference, and how far it would depart by
+ * chance.
  *
- * POR QUÉ ESTE MÓDULO EXISTE
+ * WHY THIS MODULE EXISTS
  *
- * El mismo cálculo estaba escrito dos veces —en `compositionSignal.ts` y en
- * `cohortBenchmark.ts`— con la misma distancia, la misma semilla y el mismo
- * número de simulaciones. Copias idénticas, no variantes.
+ * The same computation was written twice —in `compositionSignal.ts` and in
+ * `cohortBenchmark.ts`— with the same distance, the same seed and the same
+ * number of simulations. Identical copies, not variants.
  *
- * Y produjeron números distintos para la misma pregunta: 13 emisiones con mezcla
- * distinta en un lado y 8 en el otro. La diferencia no estaba en el cálculo sino
- * en QUÉ SE LE PASA —qué emisiones forman la referencia y cuáles se cuentan— pero
- * con dos implementaciones eso no se podía ver: había que leer las dos y
- * compararlas a mano, que es lo que nadie hace.
+ * And they produced different numbers for the same question: 13 issuances with a
+ * different mix on one side and 8 on the other. The difference was not in the
+ * computation but in WHAT IS PASSED TO IT —which issuances form the reference
+ * and which are counted— but with two implementations that was invisible: you
+ * had to read both and compare them by hand, which is what nobody does.
  *
- * Con una sola función, la diferencia entre los dos conteos queda donde tiene que
- * estar: en los argumentos de la llamada, visible en una línea.
+ * With a single function, the difference between the two counts ends up where it
+ * belongs: in the call arguments, visible on one line.
  *
- * QUÉ MIDE, EN CRIOLLO
+ * WHAT IT MEASURES, IN PLAIN TERMS
  *
- * La distancia es variación total —la mitad de la suma de las diferencias
- * absolutas— y se lee directo: 0,20 significa que hay que mover el 20% del pool
- * para llegar a la mezcla de referencia.
+ * The distance is total variation —half the sum of the absolute differences—
+ * and it reads directly: 0.20 means you would have to move 20% of the pool to
+ * reach the reference mix.
  *
- * EL NULO DESCUENTA EL TAMAÑO DEL POOL, QUE ES LA PARTE QUE IMPORTA
+ * THE NULL DISCOUNTS POOL SIZE, WHICH IS THE PART THAT MATTERS
  *
- * Un pool de 15 préstamos se aparta de la mezcla promedio por puro muestreo mucho
- * más que uno de 70. Comparar distancias crudas premiaría a las emisiones chicas
- * por ser chicas. Así que el nulo es explícito: si estos n préstamos se hubieran
- * sacado al azar de la referencia, ¿qué distancia esperaríamos?
+ * A pool of 15 loans departs from the average mix by pure sampling far more than
+ * one of 70. Comparing raw distances would reward small issuances for being
+ * small. So the null is explicit: if these n loans had been drawn at random from
+ * the reference, what distance would we expect?
  */
 
-/** Variación total entre dos vectores de proporciones. */
-export const tv = (a: number[], b: number[]) =>
+/** Total variation between two vectors of proportions. */
+export const totalVariation = (a: number[], b: number[]) =>
   0.5 * a.reduce((s, x, i) => s + Math.abs(x - b[i]!), 0);
 
 /**
- * Generador con semilla, para que la misma corrida dé el mismo resultado.
+ * Seeded generator, so the same run gives the same result.
  *
- * Un p-valor que cambia entre corridas no se puede citar, y el proyecto ya usa
- * semilla fija en los bootstrap por la misma razón.
+ * A p-value that changes between runs cannot be quoted, and the project already
+ * uses a fixed seed in the bootstraps for the same reason.
  */
-export function rng(semilla: number) {
-  let s = semilla >>> 0;
+export function rng(seed: number) {
+  let s = seed >>> 0;
   return () => {
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
   };
 }
 
-export const SIMULACIONES = 4000;
-export const SEMILLA = 0xc0ffee;
+export const SIMULATIONS = 4000;
+export const SEED = 0xc0ffee;
 
-export interface Aparte {
-  /** Cuánto hay que mover del pool para llegar a la referencia. */
-  distancia: number;
-  /** La mediana de lo que produce el azar con este tamaño de pool. */
-  nulo: number;
+export interface Apart {
+  /** How much of the pool has to move to reach the reference. */
+  distance: number;
   /**
-   * Cola derecha empírica, sin corrección.
+   * The median of what chance produces at this pool size.
    *
-   * Puede dar exactamente 0 cuando ninguna de las 4.000 réplicas alcanza la
-   * observada. Eso NO significa "imposible por azar": significa "menos de 1 en
-   * 4.000", y quien lo imprima debería decir `< 0,0003` en vez de `0,0000`.
+   * Named `nullMedian` and not `null`: the latter is legal as a property name
+   * and reads like a mistake every time.
+   */
+  nullMedian: number;
+  /**
+   * Empirical right tail, uncorrected.
+   *
+   * It can come out as exactly 0 when none of the 4,000 replicates reaches the
+   * observed value. That does NOT mean "impossible by chance": it means "fewer
+   * than 1 in 4,000", and whoever prints it should say `< 0.0003` rather than
+   * `0.0000`.
    */
   p: number;
 }
 
 /**
- * @param p      composición de la emisión, como proporciones que suman 1
- * @param q      composición de la referencia, en el mismo orden de categorías
- * @param pool   cuántos préstamos tiene la emisión — define el ruido del nulo
+ * @param p     composition of the issuance, as proportions summing to 1
+ * @param q     composition of the reference, in the same category order
+ * @param pool  how many loans the issuance has — this sets the null's noise
  */
-export function aparte(p: number[], q: number[], pool: number): Aparte {
-  const distancia = tv(p, q);
+export function apart(p: number[], q: number[], pool: number): Apart {
+  const distance = totalVariation(p, q);
 
-  // Acumulada de q, para muestrear la multinomial.
-  const acum: number[] = [];
-  q.reduce((x, v) => (acum.push(x + v), x + v), 0);
+  // Cumulative of q, for sampling the multinomial.
+  const cumulative: number[] = [];
+  q.reduce((x, v) => (cumulative.push(x + v), x + v), 0);
 
-  const rand = rng(SEMILLA);
+  const rand = rng(SEED);
   const sim: number[] = [];
-  for (let b = 0; b < SIMULACIONES; b++) {
+  for (let b = 0; b < SIMULATIONS; b++) {
     const c = new Array(q.length).fill(0);
     for (let k = 0; k < pool; k++) {
       const u = rand();
-      let i = acum.findIndex((a) => u < a);
+      let i = cumulative.findIndex((a) => u < a);
       if (i < 0) i = q.length - 1;
       c[i]++;
     }
-    sim.push(tv(c.map((x) => x / Math.max(1, pool)), q));
+    sim.push(totalVariation(c.map((x) => x / Math.max(1, pool)), q));
   }
   sim.sort((a, b) => a - b);
 
   return {
-    distancia,
-    nulo: sim[Math.floor(sim.length / 2)]!,
-    p: sim.filter((x) => x >= distancia).length / sim.length,
+    distance,
+    nullMedian: sim[Math.floor(sim.length / 2)]!,
+    p: sim.filter((x) => x >= distance).length / sim.length,
   };
 }

@@ -15,15 +15,15 @@
  */
 
 import {
-  MIN_PARES, pct,
-  type Benchmark, type Composicion, type MetricaResultado,
+  MIN_PAIRS, pct,
+  type Benchmark, type Composition, type CohortMetricResult,
 } from "./cohortBenchmark.js";
 
 export const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
- * La posición dentro del rango de la cohorte, como una barra.
+ * La posición dentro del rango de la cohort, como una barra.
  *
  * Se dibuja el rango p25–p75 y un punto donde cae esta emisión. Un punto adentro
  * de la caja dice "de mercado" mucho más rápido que "13ª de 25", y los dos
@@ -33,44 +33,44 @@ export const esc = (s: string) =>
  * el p75 queda en el borde en vez de salirse del dibujo, y el "13ª de 25" al
  * lado dice cuán afuera está.
  */
-function barra(m: MetricaResultado): string {
-  if (m.valor === null || m.p25 === null || m.p75 === null || m.p50 === null) return "";
-  const lo = Math.min(m.p25, m.valor);
-  const hi = Math.max(m.p75, m.valor);
+function barra(m: CohortMetricResult): string {
+  if (m.value === null || m.p25 === null || m.p75 === null || m.p50 === null) return "";
+  const lo = Math.min(m.p25, m.value);
+  const hi = Math.max(m.p75, m.value);
   const span = hi - lo || 1;
   const x = (v: number) => Math.max(0, Math.min(100, ((v - lo) / span) * 100));
   return `<div class="bar">
       <div class="box" style="left:${x(m.p25).toFixed(1)}%;width:${(x(m.p75) - x(m.p25)).toFixed(1)}%"></div>
       <div class="med" style="left:${x(m.p50).toFixed(1)}%"></div>
-      <div class="dot${m.agresivo ? " agr" : ""}" style="left:${x(m.valor).toFixed(1)}%"></div>
+      <div class="dot${m.aggressive ? " agr" : ""}" style="left:${x(m.value).toFixed(1)}%"></div>
     </div>`;
 }
 
-function filaMetrica(m: MetricaResultado): string {
-  if (m.valor === null) {
+function filaMetrica(m: CohortMetricResult): string {
+  if (m.value === null) {
     const motivo =
-      m.sinDato === "emision"
+      m.noData === "issuance"
         ? "esta emisión no publica el dato"
-        : `solo ${m.paresConDato} pares con dato — hacen falta ${MIN_PARES}`;
+        : `solo ${m.pairsWithData} pares con dato — hacen falta ${MIN_PAIRS}`;
     return `<tr class="nd">
-      <th>${esc(m.spec.etiqueta)}</th>
+      <th>${esc(m.spec.label)}</th>
       <td colspan="4"><span class="muted">Sin evaluar: ${esc(motivo)}</span></td>
     </tr>`;
   }
   const f = m.spec.fmt;
   return `<tr>
-    <th>${esc(m.spec.etiqueta)}</th>
-    <td class="val">${esc(f(m.valor))}</td>
+    <th>${esc(m.spec.label)}</th>
+    <td class="val">${esc(f(m.value))}</td>
     <td class="coh">${esc(f(m.p25!))} · <b>${esc(f(m.p50!))}</b> · ${esc(f(m.p75!))}</td>
     <td class="viz">${barra(m)}</td>
-    <td class="pos${m.extremo ? (m.agresivo ? " agr" : " ext") : ""}">${m.rank}ª<span class="muted"> de ${m.total}</span>${
-      m.agresivo ? '<div class="tag">más agresivo</div>' : ""
+    <td class="pos${m.extreme ? (m.aggressive ? " agr" : " ext") : ""}">${m.rank}ª<span class="muted"> de ${m.total}</span>${
+      m.aggressive ? '<div class="tag">más agresivo</div>' : ""
     }</td>
   </tr>`;
 }
 
-function filaComposicion(c: Composicion): string {
-  const notable = Math.abs(c.diferencia) > 0.1;
+function filaComposicion(c: Composition): string {
+  const notable = Math.abs(c.difference) > 0.1;
   const w = (v: number) => Math.min(100, v * 100 * 2.2).toFixed(1);
   /**
    * Una diferencia menor a un préstamo se muestra como "—", no como "+0%".
@@ -79,30 +79,30 @@ function filaComposicion(c: Composicion): string {
    * realidad era una diferencia por debajo de la resolución del pool: con 35
    * préstamos, 0,4 puntos son 0,14 préstamos.
    */
-  const dif = c.bajoResolucion
+  const dif = c.belowResolution
     ? `<span class="muted">—</span>`
-    : `${c.diferencia > 0 ? "+" : ""}${pct(c.diferencia)}`;
+    : `${c.difference > 0 ? "+" : ""}${pct(c.difference)}`;
   /**
    * Y la columna de la derecha dice cuántos préstamos son LA DIFERENCIA, no
    * cuántos tiene la emisión. La versión anterior mostraba "-13% · 5 préstamos"
-   * y esos 5 eran el multifamily de BANK5, no la brecha contra la cohorte: dos
+   * y esos 5 eran el multifamily de BANK5, no la brecha contra la cohort: dos
    * números distintos leídos como uno.
    */
-  const detalle = c.bajoResolucion
+  const detalle = c.belowResolution
     ? `menos de un préstamo de diferencia`
-    : `${c.prestamosDif} préstamo${c.prestamosDif === 1 ? "" : "s"} de diferencia` +
-      ` · esta emisión tiene ${c.prestamos}`;
+    : `${c.loansOfDifference} préstamo${c.loansOfDifference === 1 ? "" : "s"} de diferencia` +
+      ` · esta emisión tiene ${c.loans}`;
   return `<tr${notable ? ' class="notable"' : ""}>
-    <th>${esc(c.tipo)}</th>
-    <td class="mini"><div class="mb"><i style="width:${w(c.propio)}%"></i></div>${pct(c.propio)}</td>
-    <td class="mini"><div class="mb coh"><i style="width:${w(c.cohorte)}%"></i></div>${pct(c.cohorte)}</td>
+    <th>${esc(c.type)}</th>
+    <td class="mini"><div class="mb"><i style="width:${w(c.own)}%"></i></div>${pct(c.own)}</td>
+    <td class="mini"><div class="mb coh"><i style="width:${w(c.cohort)}%"></i></div>${pct(c.cohort)}</td>
     <td class="dif">${dif}</td>
     <td class="muted sm">${esc(detalle)}</td>
   </tr>`;
 }
 
 export function render(b: Benchmark): string {
-  const o = b.objetivo;
+  const o = b.target;
   const cuerpo = !b.evaluable
     ? /**
        * El rechazo es una respuesta, no una pantalla vacía.
@@ -113,15 +113,15 @@ export function render(b: Benchmark): string {
        */
       `<section class="refuse">
         <h2>No se puede evaluar</h2>
-        <p>Hacen falta ${MIN_PARES} emisiones comparables en la cohorte ${esc(o.anada)} y hay
-        ${b.pares.length}. Con menos, decir que esta emisión "se aparta del mercado" sería
-        una afirmación sobre ${b.pares.length} documentos.</p>
+        <p>Hacen falta ${MIN_PAIRS} emisiones comparables en la cohort ${esc(o.vintage)} y hay
+        ${b.pairs.length}. Con menos, decir que esta emisión "se aparta del mercado" sería
+        una afirmación sobre ${b.pairs.length} documentos.</p>
         <p class="muted">La respuesta correcta acá es que no se sabe.</p>
       </section>`
     : `${
-        b.objetivoMonoTipo
-          ? `<section class="warn"><h2>Esta emisión es ${pct(o.shareDominante)} ${esc(o.tipoDominante ?? "")}</h2>
-             <p>No es un conduit diversificado, así que la comparación contra la cohorte va a
+        b.targetSingleType
+          ? `<section class="warn"><h2>Esta emisión es ${pct(o.dominantShare)} ${esc(o.dominantType ?? "")}</h2>
+             <p>No es un conduit diversificado, así que la comparación contra la cohort va a
              mostrar diferencias garantizadas que no significan nada sobre cómo se suscribió.</p></section>`
           : ""
       }
@@ -129,31 +129,31 @@ export function render(b: Benchmark): string {
         <h2>Qué compró esta emisión</h2>
         <table class="c">
           <thead><tr>
-            <th></th><th>esta emisión</th><th>cohorte</th><th>dif.</th><th></th>
+            <th></th><th>esta emisión</th><th>cohort</th><th>dif.</th><th></th>
           </tr></thead>
-          <tbody>${b.composicion.map(filaComposicion).join("")}</tbody>
+          <tbody>${b.composition.map(filaComposicion).join("")}</tbody>
         </table>
-        <p class="note">Cada préstamo vale <b>${pct(b.puntoPorPrestamo, 1)}</b> de este pool
-        (${o.poolTipado} con tipo), así que una diferencia de 9 puntos son
-        ${Math.max(1, Math.round(0.09 / b.puntoPorPrestamo))} préstamos.
-        Hay que mover el <b>${pct(b.distancia)}</b> del pool para llegar a la mezcla de la
-        cohorte; sacando ${o.poolTipado} préstamos al azar del universo de los pares se esperaría
-        mover ${pct(b.distanciaNulo)}.</p>
+        <p class="note">Cada préstamo vale <b>${pct(b.pointPerLoan, 1)}</b> de este pool
+        (${o.typedPool} con tipo), así que una diferencia de 9 puntos son
+        ${Math.max(1, Math.round(0.09 / b.pointPerLoan))} préstamos.
+        Hay que mover el <b>${pct(b.distance)}</b> del pool para llegar a la mezcla de la
+        cohort; sacando ${o.typedPool} préstamos al azar del universo de los pares se esperaría
+        mover ${pct(b.nullDistance)}.</p>
       </section>
 
       <section>
         <h2>Términos</h2>
         <p class="lead">${
-          b.metricas.filter((m) => m.valor !== null).length === 0
+          b.metrics.filter((m) => m.value !== null).length === 0
             ? "Sin métricas evaluables."
-            : `En línea con la cohorte: ` +
-              b.metricas
-                .filter((m) => m.valor !== null)
-                .map((m) => `${esc(m.spec.etiqueta)} ${esc(m.spec.fmt(m.valor!))}`)
+            : `En línea con la cohort: ` +
+              b.metrics
+                .filter((m) => m.value !== null)
+                .map((m) => `${esc(m.spec.label)} ${esc(m.spec.fmt(m.value!))}`)
                 .join(" · ")
         }</p>
         <p class="note">Estos seis números rastrean lo mismo que la mezcla, más débilmente.
-        Sobre las 28 emisiones de la cohorte, cuántas métricas se apartan del rango
+        Sobre las 28 emisiones de la cohort, cuántas métricas se apartan del rango
         intercuartil correlaciona con cuánto se aparta la composición (rho = 0,59, t = 3,7):
         una emisión con mucha hotelería tiene DSCR y debt yield distintos <i>porque</i> los
         hoteles se suscriben distinto. La causa es la mezcla; los términos son su
@@ -163,18 +163,18 @@ export function render(b: Benchmark): string {
           <summary>Ver la posición de cada métrica</summary>
           <table class="m">
             <thead><tr>
-              <th></th><th>esta emisión</th><th>cohorte (p25 · mediana · p75)</th><th></th><th>posición</th>
+              <th></th><th>esta emisión</th><th>cohort (p25 · mediana · p75)</th><th></th><th>posición</th>
             </tr></thead>
-            <tbody>${b.metricas.map(filaMetrica).join("")}</tbody>
+            <tbody>${b.metrics.map(filaMetrica).join("")}</tbody>
           </table>
-          <p class="note">La posición es <b>ordinal, no percentil</b>: con ${b.pares.length}
-          pares un percentil tendría resolución de ~${b.resolucionPercentil.toFixed(0)} puntos.</p>
+          <p class="note">La posición es <b>ordinal, no percentil</b>: con ${b.pairs.length}
+          pares un percentil tendría resolución de ~${b.percentileResolution.toFixed(0)} puntos.</p>
         </details>
       </section>`;
 
   return `<!doctype html>
 <meta charset="utf-8">
-<title>${esc(o.nombre)} — benchmark de cohorte</title>
+<title>${esc(o.name)} — benchmark de cohort</title>
 <style>
   :root { --fg:#1a1a1a; --muted:#6b6b6b; --line:#e4e4e4; --bg:#fff;
           --box:#dfe7f3; --dot:#2b5fa8; --agr:#b8791a; --warn:#fff8e6; }
@@ -241,15 +241,15 @@ export function render(b: Benchmark): string {
   footer code { font-size:12px }
 </style>
 <main>
-  <h1>${esc(o.nombre)}</h1>
+  <h1>${esc(o.name)}</h1>
   <p class="sub">${esc(o.filed.slice(0, 10))} · ${o.pool} préstamos${
-    o.poolTipado < o.pool
-      ? `<span class="muted"> (${o.poolTipado} con tipo de propiedad — la mezcla se mide sobre esos)</span>`
+    o.typedPool < o.pool
+      ? `<span class="muted"> (${o.typedPool} con tipo de propiedad — la mezcla se mide sobre esos)</span>`
       : ""
-  } · cohorte ${esc(o.anada)}</p>
+  } · cohort ${esc(o.vintage)}</p>
   ${
     b.evaluable
-      ? !b.robusto
+      ? !b.robust
         ? /**
            * Las dos ponderaciones discrepan: se dice eso, no se elige una.
            *
@@ -261,28 +261,28 @@ export function render(b: Benchmark): string {
            *
            * Afirmar cualquiera de las dos sería afirmar más de lo que sabemos.
            */
-          `<p class="verdict filo">Mezcla <b>al filo</b> — hay que mover el ${pct(b.distancia)}
-           del pool para igualar la cohorte, contra ${pct(b.distanciaNulo)} esperado por azar
-           con ${o.poolTipado} préstamos. Que eso cuente como "distinta" depende de cómo se pondere
-           la referencia: contando todos los préstamos de los pares da p = ${b.pValor.toFixed(3)},
-           y dando el mismo peso a cada emisión da p = ${b.pValorPorEmision.toFixed(3)}.
+          `<p class="verdict filo">Mezcla <b>al filo</b> — hay que mover el ${pct(b.distance)}
+           del pool para igualar la cohort, contra ${pct(b.nullDistance)} esperado por azar
+           con ${o.typedPool} préstamos. Que eso cuente como "distinta" depende de cómo se pondere
+           la referencia: contando todos los préstamos de los pares da p = ${b.pValue.toFixed(3)},
+           y dando el mismo peso a cada emisión da p = ${b.pValueByIssuance.toFixed(3)}.
            Con las dos a distinto lado del 5%, la respuesta honesta es que está en el borde.</p>`
-        : `<p class="verdict ${b.pValor < 0.05 ? "sig" : ""}">${
-            b.pValor < 0.05
-              ? `Mezcla de propiedades <b>distinta de su cohorte</b> — hay que mover el
-                 ${pct(b.distancia)} del pool para igualarla, contra ${pct(b.distanciaNulo)}
-                 que se esperaría por azar con ${o.poolTipado} préstamos (p = ${b.pValor.toFixed(4)},
+        : `<p class="verdict ${b.pValue < 0.05 ? "sig" : ""}">${
+            b.pValue < 0.05
+              ? `Mezcla de propiedades <b>distinta de su cohort</b> — hay que mover el
+                 ${pct(b.distance)} del pool para igualarla, contra ${pct(b.nullDistance)}
+                 que se esperaría por azar con ${o.typedPool} préstamos (p = ${b.pValue.toFixed(4)},
                  y da lo mismo con las dos ponderaciones de la referencia).`
-              : `Mezcla de propiedades <b>indistinguible de su cohorte</b> — la distancia de
-                 ${pct(b.distancia)} está dentro de lo que produce el muestreo con ${o.poolTipado}
-                 préstamos (${pct(b.distanciaNulo)} esperado, p = ${b.pValor.toFixed(2)}).`
+              : `Mezcla de propiedades <b>indistinguible de su cohort</b> — la distancia de
+                 ${pct(b.distance)} está dentro de lo que produce el muestreo con ${o.typedPool}
+                 préstamos (${pct(b.nullDistance)} esperado, p = ${b.pValue.toFixed(2)}).`
           }</p>`
       : ""
   }
-  <p class="peers">${b.pares.length} emisiones comparables${
-    b.excluidas.length > 0
-      ? ` · ${b.excluidas.length} excluida${b.excluidas.length === 1 ? "" : "s"} por ser
-         mono-tipo: ${esc(b.excluidas.map((e) => e.nombre.slice(0, 34)).join(", "))}`
+  <p class="peers">${b.pairs.length} emisiones comparables${
+    b.excluded.length > 0
+      ? ` · ${b.excluded.length} excluida${b.excluded.length === 1 ? "" : "s"} por ser
+         mono-tipo: ${esc(b.excluded.map((e) => e.name.slice(0, 34)).join(", "))}`
       : ""
   }</p>
   ${cuerpo}

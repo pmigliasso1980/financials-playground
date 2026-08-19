@@ -1,5 +1,5 @@
 /**
- * ¿En qué se aparta esta emisión de su cohorte?
+ * ¿En qué se aparta esta emisión de su cohort?
  *
  *   npm run db:benchmark                    # la más reciente
  *   npm run db:benchmark -- BNK52
@@ -37,15 +37,15 @@
  * QUÉ EXCLUYE Y POR QUÉ
  *
  * Las emisiones de un solo tipo de propiedad no son conduits diversificados:
- * son otro producto. Compararlas contra la cohorte conduit produce diferencias
+ * son otro producto. Compararlas contra la cohort conduit produce diferencias
  * garantizadas que no significan nada. Se excluyen del grupo de referencia y se
  * dice cuáles.
  */
 
 import { closePool, ping, query } from "./client.js";
 import {
-  calcularBenchmark, cargarCandidatas, CONCENTRACION_TIPO, METRICAS,
-  MIN_PARA_METRICA, MIN_PARES, pct,
+  computeBenchmark, loadCandidates, TYPE_CONCENTRATION, COHORT_METRICS,
+  MIN_PER_METRIC, MIN_PAIRS, pct,
 } from "./cohortBenchmark.js";
 
 const health = await ping();
@@ -68,7 +68,7 @@ const args = process.argv.slice(2);
 const LISTAR = args.includes("--listar");
 
 /**
- * `--auditoria`: ¿en cuántas emisiones de la cohorte resuelve cada métrica?
+ * `--auditoria`: ¿en cuántas emisiones de la cohort resuelve cada métrica?
  *
  * POR QUÉ EXISTE
  *
@@ -88,18 +88,18 @@ const AUDITORIA = args.includes("--auditoria");
 const BUSQUEDA = args.find((a) => !a.startsWith("--")) ?? null;
 
 
-const candidatas = await cargarCandidatas();
+const candidatas = await loadCandidates();
 
 if (LISTAR) {
   console.log(`\n${"═".repeat(78)}`);
   console.log("Emisiones disponibles (más recientes primero)");
   console.log(`${"═".repeat(78)}\n`);
   for (const c of candidatas.slice(0, 30)) {
-    const share = c.shareDominante;
+    const share = c.dominantShare;
     console.log(
-      `  ${c.filed.slice(0, 10)}  ${c.nombre.slice(0, 42).padEnd(44)} ${String(c.pool).padStart(4)}` +
-        (share > CONCENTRACION_TIPO
-          ? `  \x1b[33mmono-tipo (${pct(share)} ${c.tipoDominante})\x1b[0m`
+      `  ${c.filed.slice(0, 10)}  ${c.name.slice(0, 42).padEnd(44)} ${String(c.pool).padStart(4)}` +
+        (share > TYPE_CONCENTRATION
+          ? `  \x1b[33mmono-tipo (${pct(share)} ${c.dominantType})\x1b[0m`
           : ""),
     );
   }
@@ -110,17 +110,17 @@ if (LISTAR) {
 
 if (AUDITORIA) {
   const anadaAudit = String(new Date().getFullYear());
-  const cohorte = candidatas.filter((c) => c.anada === anadaAudit);
-  const accs = cohorte.map((c) => c.accession);
+  const cohort = candidatas.filter((c) => c.vintage === anadaAudit);
+  const accs = cohort.map((c) => c.accession);
 
   console.log(`\n${"═".repeat(78)}`);
-  console.log(`Auditoría del benchmark — cohorte ${anadaAudit}`);
+  console.log(`Auditoría del benchmark — cohort ${anadaAudit}`);
   console.log(`${"═".repeat(78)}\n`);
-  console.log(`  ${cohorte.length} emisiones. ¿En cuántas resuelve cada métrica?\n`);
+  console.log(`  ${cohort.length} emisiones. ¿En cuántas resuelve cada métrica?\n`);
   console.log(`  métrica          resuelve   emisiones sin dato`);
   console.log(`  ${"─".repeat(70)}`);
 
-  for (const m of METRICAS) {
+  for (const m of COHORT_METRICS) {
     const { rows } = await query<{ accession: string; n: string }>(
       `SELECT l.accession, count(*)::text AS n
          FROM corpus.facts fa
@@ -130,15 +130,15 @@ if (AUDITORIA) {
           AND fa.value::numeric BETWEEN ${m.min} AND ${m.max}
           AND l.accession = ANY($2)
         GROUP BY l.accession
-       HAVING count(*) >= ${MIN_PARA_METRICA}`,
+       HAVING count(*) >= ${MIN_PER_METRIC}`,
       [m.key, accs],
     );
     const con = new Set(rows.map((r) => r.accession));
-    const sin = cohorte.filter((c) => !con.has(c.accession));
+    const sin = cohort.filter((c) => !con.has(c.accession));
     const cuenta = new Map(rows.map((r) => [r.accession, Number(r.n)]));
-    const share = cohorte.length ? con.size / cohorte.length : 0;
+    const share = cohort.length ? con.size / cohort.length : 0;
     console.log(
-      `  ${m.etiqueta.padEnd(14)} ${`${con.size}/${cohorte.length}`.padStart(8)}   ` +
+      `  ${m.label.padEnd(14)} ${`${con.size}/${cohort.length}`.padStart(8)}   ` +
         `${share >= 0.9 ? "\x1b[32m" : share >= 0.5 ? "\x1b[33m" : "\x1b[31m"}${pct(share).padStart(5)}\x1b[0m` +
         (sin.length > 0 ? `   \x1b[90m${sin.length} sin dato\x1b[0m` : ""),
     );
@@ -152,7 +152,7 @@ if (AUDITORIA) {
      * falta para decidir. Siete nombres no llenan una pantalla, y sin ellos no
      * se puede saber si la falta es aleatoria o estructural.
      */
-    if (sin.length > 0 && con.size < cohorte.length) {
+    if (sin.length > 0 && con.size < cohort.length) {
       /**
        * Cuántos préstamos tiene REALMENTE, sin el umbral.
        *
@@ -180,8 +180,8 @@ if (AUDITORIA) {
       for (const x of sin) {
         const n = crudo.get(x.accession) ?? 0;
         console.log(
-          `    \x1b[90m· ${x.nombre.slice(0, 42).padEnd(44)} ${String(n).padStart(3)} de ${x.pool}` +
-            (n > 0 ? ` \x1b[33m← hay dato, lo corta el umbral de ${MIN_PARA_METRICA}\x1b[0m` : ` \x1b[90mcero\x1b[0m`),
+          `    \x1b[90m· ${x.name.slice(0, 42).padEnd(44)} ${String(n).padStart(3)} de ${x.pool}` +
+            (n > 0 ? ` \x1b[33m← hay dato, lo corta el umbral de ${MIN_PER_METRIC}\x1b[0m` : ` \x1b[90mcero\x1b[0m`),
         );
       }
     }
@@ -191,7 +191,7 @@ if (AUDITORIA) {
    * ¿La falta es aleatoria o se agrupa por emisor?
    *
    * Una cobertura del 75% no dice lo mismo según cómo se reparta. Si las 7 sin
-   * ocupación están esparcidas, la distribución de la cohorte se arma sobre una
+   * ocupación están esparcidas, la distribución de la cohort se arma sobre una
    * submuestra parecida al todo. Si son todas del mismo shelf, la referencia
    * excluye sistemáticamente a un originador y comparar contra ella está
    * sesgado — sin que nada en la salida lo indique.
@@ -199,7 +199,7 @@ if (AUDITORIA) {
    * Es la misma pregunta que ya nos costó caro con `property_type`: ahí la
    * cobertura global era 93,7% y tres shelves enteros estaban abajo del umbral.
    */
-  const { rows: porShelf } = await query<{ shelf: string; total: string; con_occ: string }>(
+  const { rows: porShelf } = await query<{ shelf: string; total: string; with_occ: string }>(
     `WITH e AS (
        SELECT f.accession,
               split_part(f.company_name, ' ', 1) AS shelf,
@@ -214,7 +214,7 @@ if (AUDITORIA) {
         WHERE f.accession = ANY($1)
      )
      SELECT shelf, count(*)::text AS total,
-            count(*) FILTER (WHERE tiene)::text AS con_occ
+            count(*) FILTER (WHERE tiene)::text AS with_occ
        FROM e GROUP BY shelf HAVING count(*) >= 2 ORDER BY 1`,
     [accs],
   );
@@ -222,7 +222,7 @@ if (AUDITORIA) {
   console.log(`\n  Ocupación por shelf — ¿la falta se agrupa?\n`);
   for (const r of porShelf) {
     const tot = Number(r.total);
-    const con = Number(r.con_occ);
+    const con = Number(r.with_occ);
     console.log(
       `    ${r.shelf.slice(0, 18).padEnd(20)} ${`${con}/${tot}`.padStart(6)}` +
         (con === 0 ? `  \x1b[31m← el shelf entero\x1b[0m` : con < tot ? `  \x1b[33mparcial\x1b[0m` : ""),
@@ -240,7 +240,7 @@ if (AUDITORIA) {
    * LA MEDICIÓN QUE HABÍA QUE HACER DESDE EL PRINCIPIO: préstamos, no emisiones.
    *
    * Las dos tablas de arriba cuentan emisiones que pasan un umbral. Pero la
-   * mediana de una emisión se calcula sobre PRÉSTAMOS, y una cohorte donde cada
+   * mediana de una emisión se calcula sobre PRÉSTAMOS, y una cohort donde cada
    * deal tiene el dato en 11 de 35 daría 28/28 en la primera tabla y sería una
    * referencia construida sobre un tercio de la población.
    *
@@ -263,15 +263,15 @@ if (AUDITORIA) {
    * central del activo. Pero un caso no decide, y este corte sí.
    */
   const { rows: porTipo } = await query<{
-    tipo: string; total: string; con_occ: string;
+    type: string; total: string; with_occ: string;
   }>(
-    `SELECT coalesce(l.property_type, '(sin tipo)') AS tipo,
+    `SELECT coalesce(l.property_type, '(sin tipo)') AS type,
             count(*)::text AS total,
             count(*) FILTER (WHERE EXISTS (
               SELECT 1 FROM corpus.facts fa
                WHERE fa.loan_id = l.id AND fa.metric_key = 'occupancy'
                  AND fa.value ~ '^-?[0-9.]+$'
-            ))::text AS con_occ
+            ))::text AS with_occ
        FROM corpus.loans l
       WHERE l.accession = ANY($1)
       GROUP BY 1 HAVING count(*) >= 10
@@ -280,7 +280,7 @@ if (AUDITORIA) {
   );
 
   const totPrest = porTipo.reduce((a, r) => a + Number(r.total), 0);
-  const totOcc = porTipo.reduce((a, r) => a + Number(r.con_occ), 0);
+  const totOcc = porTipo.reduce((a, r) => a + Number(r.with_occ), 0);
 
   console.log(`\n${"─".repeat(78)}`);
   console.log(`\n  Ocupación a nivel PRÉSTAMO, por tipo de propiedad\n`);
@@ -288,10 +288,10 @@ if (AUDITORIA) {
   console.log(`    ${"─".repeat(52)}`);
   for (const r of porTipo) {
     const tot = Number(r.total);
-    const con = Number(r.con_occ);
+    const con = Number(r.with_occ);
     const sh = con / tot;
     console.log(
-      `    ${r.tipo.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
+      `    ${r.type.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
         `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(con).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
     );
   }
@@ -306,7 +306,7 @@ if (AUDITORIA) {
    * adentro del activo y la explicación "se informa donde significa algo" no se
    * sostiene.
    */
-  const shares = porTipo.map((r) => Number(r.con_occ) / Number(r.total));
+  const shares = porTipo.map((r) => Number(r.with_occ) / Number(r.total));
   const spread = Math.max(...shares) - Math.min(...shares);
   console.log(
     `\n    \x1b[90mDispersión entre tipos: ${pct(spread)} (del ${pct(Math.min(...shares))} al ${pct(Math.max(...shares))}).\x1b[0m`,
@@ -341,7 +341,7 @@ if (AUDITORIA) {
    * que SÍ traen el dato, si la cobertura es pareja entre tipos entonces el
    * formato es lo único que decide y el tipo no juega.
    */
-  const { rows: dentro } = await query<{ tipo: string; total: string; con_occ: string }>(
+  const { rows: dentro } = await query<{ type: string; total: string; with_occ: string }>(
     `WITH sanas AS (
        SELECT l.accession
          FROM corpus.loans l
@@ -353,13 +353,13 @@ if (AUDITORIA) {
                    AND fa.value ~ '^-?[0-9.]+$'
               ))::numeric / count(*) > 0.5
      )
-     SELECT coalesce(l.property_type, '(sin tipo)') AS tipo,
+     SELECT coalesce(l.property_type, '(sin tipo)') AS type,
             count(*)::text AS total,
             count(*) FILTER (WHERE EXISTS (
               SELECT 1 FROM corpus.facts fa
                WHERE fa.loan_id = l.id AND fa.metric_key = 'occupancy'
                  AND fa.value ~ '^-?[0-9.]+$'
-            ))::text AS con_occ
+            ))::text AS with_occ
        FROM corpus.loans l
        JOIN sanas s ON s.accession = l.accession
       GROUP BY 1 HAVING count(*) >= 10
@@ -372,10 +372,10 @@ if (AUDITORIA) {
   console.log(`    ${"─".repeat(52)}`);
   for (const r of dentro) {
     const tot = Number(r.total);
-    const con = Number(r.con_occ);
+    const con = Number(r.with_occ);
     const sh = con / tot;
     console.log(
-      `    ${r.tipo.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
+      `    ${r.type.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
         `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(con).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
     );
   }
@@ -394,8 +394,8 @@ if (AUDITORIA) {
    * anotado aparte. Se muestran, no se computan.
    */
   const sd = dentro
-    .filter((r) => !r.tipo.startsWith("("))
-    .map((r) => Number(r.con_occ) / Number(r.total));
+    .filter((r) => !r.type.startsWith("("))
+    .map((r) => Number(r.with_occ) / Number(r.total));
   const spreadDentro = sd.length ? Math.max(...sd) - Math.min(...sd) : 0;
   console.log(
     `\n    \x1b[90mDispersión entre los ${sd.length} tipos reales: ${pct(spreadDentro)}` +
@@ -426,12 +426,12 @@ if (AUDITORIA) {
    * Trust 2026-5" — que puede ser el truncado a 42 caracteres de dos deals
    * distintos, o la misma cosechada dos veces.
    *
-   * No es cosmético: la cohorte es el denominador de toda posición ordinal. Una
+   * No es cosmético: la cohort es el denominador de toda posición ordinal. Una
    * emisión duplicada se cuenta como dos pares, corre la mediana hacia sí misma
    * y desplaza cada "13ª de 25" sin que nada lo indique.
    */
-  const { rows: dups } = await query<{ nombre: string; n: string; accs: string; pools: string }>(
-    `SELECT f.company_name AS nombre, count(*)::text AS n,
+  const { rows: dups } = await query<{ name: string; n: string; accs: string; pools: string }>(
+    `SELECT f.company_name AS name, count(*)::text AS n,
             string_agg(f.accession, ' · ') AS accs,
             string_agg(p.pool::text, ' · ') AS pools
        FROM corpus.filings f
@@ -453,19 +453,19 @@ if (AUDITORIA) {
    * categorías gruesas significa que ahora todas las emisiones usan la misma
    * taxonomía. Una lista larga con variantes significa que sigue mezclado.
    */
-  const { rows: cats } = await query<{ tipo: string; n: string; emisiones: string }>(
-    `SELECT coalesce(property_type, '(sin tipo)') AS tipo,
+  const { rows: cats } = await query<{ type: string; n: string; issuances: string }>(
+    `SELECT coalesce(property_type, '(sin tipo)') AS type,
             count(*)::text AS n,
-            count(DISTINCT accession)::text AS emisiones
+            count(DISTINCT accession)::text AS issuances
        FROM corpus.loans WHERE accession = ANY($1)
       GROUP BY 1 ORDER BY count(*) DESC`,
     [accs],
   );
-  console.log(`\n  Categorías de property_type en la cohorte — ${cats.length} distintas\n`);
+  console.log(`\n  Categorías de property_type en la cohort — ${cats.length} distintas\n`);
   for (const c of cats) {
     console.log(
-      `    ${c.tipo.slice(0, 34).padEnd(36)} ${String(c.n).padStart(4)} préstamos` +
-        ` \x1b[90men ${c.emisiones} emisiones\x1b[0m` +
+      `    ${c.type.slice(0, 34).padEnd(36)} ${String(c.n).padStart(4)} préstamos` +
+        ` \x1b[90men ${c.issuances} emisiones\x1b[0m` +
         /**
          * Dos marcas, por dos modos de falla distintos.
          *
@@ -478,9 +478,9 @@ if (AUDITORIA) {
          * celda de datos que se coló en la columna. Eso se puede afirmar sin
          * saber de qué documento vino.
          */
-        (/^[\d.,\s]+$/.test(c.tipo)
+        (/^[\d.,\s]+$/.test(c.type)
           ? `  \x1b[31m← no es una categoría: valor numérico\x1b[0m`
-          : Number(c.emisiones) === 1 && Number(c.n) >= 3
+          : Number(c.issuances) === 1 && Number(c.n) >= 3
             ? `  \x1b[33m← solo en una: ¿taxonomía distinta?\x1b[0m`
             : ""),
     );
@@ -503,15 +503,15 @@ if (AUDITORIA) {
    * corrimiento — dos causas con arreglos completamente distintos.
    */
   const { rows: sospechosos } = await query<{
-    nombre: string; loan_id: string; tipo: string;
-    prop_name: string | null; prop_count: string | null; unidad: string | null;
+    name: string; loan_id: string; type: string;
+    prop_name: string | null; prop_count: string | null; unit: string | null;
   }>(
-    `SELECT f.company_name AS nombre,
+    `SELECT f.company_name AS name,
             coalesce(l.loan_ref, 'fila ' || l.row_index) AS loan_id,
-            l.property_type AS tipo,
+            l.property_type AS type,
             l.property_name AS prop_name,
             max(fa.value) FILTER (WHERE fa.metric_key = 'property_count') AS prop_count,
-            max(fa.value) FILTER (WHERE fa.metric_key = 'unit_of_measure') AS unidad
+            max(fa.value) FILTER (WHERE fa.metric_key = 'unit_of_measure') AS unit
        FROM corpus.loans l
        JOIN corpus.filings f ON f.accession = l.accession
        LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
@@ -524,11 +524,11 @@ if (AUDITORIA) {
   if (sospechosos.length > 0) {
     console.log(`\n  Préstamos con tipo numérico — ¿están corridas las columnas?\n`);
     for (const x of sospechosos) {
-      console.log(`    \x1b[1m${x.nombre.slice(0, 40)}\x1b[0m  préstamo ${x.loan_id}`);
+      console.log(`    \x1b[1m${x.name.slice(0, 40)}\x1b[0m  préstamo ${x.loan_id}`);
       console.log(
-        `      tipo=\x1b[31m${JSON.stringify(x.tipo)}\x1b[0m` +
+        `      tipo=\x1b[31m${JSON.stringify(x.type)}\x1b[0m` +
           `  # props=${JSON.stringify(x.prop_count)}` +
-          `  unidad=${JSON.stringify(x.unidad)}`,
+          `  unidad=${JSON.stringify(x.unit)}`,
       );
       console.log(`      nombre=${JSON.stringify((x.prop_name ?? "").slice(0, 44))}`);
     }
@@ -580,7 +580,7 @@ if (AUDITORIA) {
    * con dos o tres no es un préstamo con pocos datos, es otra cosa.
    */
   const { rows: fantasmas } = await query<{
-    nombre: string; pool: string; flacos: string; vacios: string; min_facts: string;
+    name: string; pool: string; thin: string; empty: string; min_facts: string;
   }>(
     `WITH conteo AS (
        SELECT l.accession, l.id, count(fa.id) AS facts
@@ -589,10 +589,10 @@ if (AUDITORIA) {
         WHERE l.accession = ANY($1)
         GROUP BY l.accession, l.id
      )
-     SELECT f.company_name AS nombre,
+     SELECT f.company_name AS name,
             count(*)::text AS pool,
-            count(*) FILTER (WHERE c.facts <= 5)::text AS flacos,
-            count(*) FILTER (WHERE c.facts = 0)::text AS vacios,
+            count(*) FILTER (WHERE c.facts <= 5)::text AS thin,
+            count(*) FILTER (WHERE c.facts = 0)::text AS empty,
             min(c.facts)::text AS min_facts
        FROM conteo c JOIN corpus.filings f ON f.accession = c.accession
       GROUP BY f.company_name
@@ -601,15 +601,15 @@ if (AUDITORIA) {
     [accs],
   );
 
-  const totalFlacos = fantasmas.reduce((a, r) => a + Number(r.flacos), 0);
+  const totalFlacos = fantasmas.reduce((a, r) => a + Number(r.thin), 0);
   console.log(
     `\n  Filas con 5 facts o menos — ¿son préstamos?  \x1b[1m${totalFlacos} en ${fantasmas.length} emisiones\x1b[0m\n`,
   );
   for (const r of fantasmas) {
     console.log(
-      `    ${r.nombre.slice(0, 40).padEnd(42)} ${String(r.flacos).padStart(3)} de ${String(r.pool).padStart(3)}` +
+      `    ${r.name.slice(0, 40).padEnd(42)} ${String(r.thin).padStart(3)} de ${String(r.pool).padStart(3)}` +
         `  \x1b[90mmínimo ${r.min_facts} facts\x1b[0m` +
-        (Number(r.vacios) > 0 ? `  \x1b[31m${r.vacios} sin ningún fact\x1b[0m` : ""),
+        (Number(r.empty) > 0 ? `  \x1b[31m${r.empty} sin ningún fact\x1b[0m` : ""),
     );
   }
   if (totalFlacos > 0) {
@@ -757,12 +757,12 @@ if (AUDITORIA) {
     `    \x1b[90mqueda acá es cobertura parcial, no filas fantasma. Tarea #40.\x1b[0m`,
   );
 
-  console.log(`\n  ¿Emisiones duplicadas? — la cohorte es el denominador de todo\n`);
+  console.log(`\n  ¿Emisiones duplicadas? — la cohort es el denominador de todo\n`);
   if (dups.length === 0) {
-    console.log(`    \x1b[32mNinguna: ${cohorte.length} nombres distintos en ${cohorte.length} emisiones.\x1b[0m`);
+    console.log(`    \x1b[32mNinguna: ${cohort.length} nombres distintos en ${cohort.length} emisiones.\x1b[0m`);
   } else {
     for (const d of dups) {
-      console.log(`    \x1b[33m${d.nombre.slice(0, 46)}\x1b[0m  ×${d.n}  pools ${d.pools}`);
+      console.log(`    \x1b[33m${d.name.slice(0, 46)}\x1b[0m  ×${d.n}  pools ${d.pools}`);
       console.log(`      \x1b[90m${d.accs}\x1b[0m`);
     }
     console.log(
@@ -771,15 +771,15 @@ if (AUDITORIA) {
     console.log(`    \x1b[90mrevisar si es la misma emisión cosechada dos veces.\x1b[0m`);
   }
 
-  console.log(`\n  Concentración por tipo — el umbral de exclusión es ${pct(CONCENTRACION_TIPO)}:\n`);
-  for (const c of [...cohorte].sort(
-    (a, b) => b.shareDominante - a.shareDominante,
+  console.log(`\n  Concentración por tipo — el umbral de exclusión es ${pct(TYPE_CONCENTRATION)}:\n`);
+  for (const c of [...cohort].sort(
+    (a, b) => b.dominantShare - a.dominantShare,
   ).slice(0, 8)) {
-    const sh = c.shareDominante;
+    const sh = c.dominantShare;
     console.log(
-      `    ${c.nombre.slice(0, 40).padEnd(42)} ${pct(sh).padStart(5)} ${(c.tipoDominante ?? "").slice(0, 16)}` +
-        (sh > CONCENTRACION_TIPO
-          ? sh < CONCENTRACION_TIPO + 0.08
+      `    ${c.name.slice(0, 40).padEnd(42)} ${pct(sh).padStart(5)} ${(c.dominantType ?? "").slice(0, 16)}` +
+        (sh > TYPE_CONCENTRATION
+          ? sh < TYPE_CONCENTRATION + 0.08
             ? `  \x1b[33m← al filo del umbral\x1b[0m`
             : `  \x1b[90mexcluida\x1b[0m`
           : ""),
@@ -794,7 +794,7 @@ if (AUDITORIA) {
  * La vista de terminal. Los números salen del módulo; acá solo se eligen
  * colores, anchos y qué se dice al lado de cada cifra.
  */
-const b = await calcularBenchmark(BUSQUEDA, candidatas);
+const b = await computeBenchmark(BUSQUEDA, candidatas);
 
 if (!b) {
   console.error(`\n✗ No se encontró una emisión que coincida con "${BUSQUEDA}".`);
@@ -803,19 +803,19 @@ if (!b) {
   process.exit(1);
 }
 
-const o = b.objetivo;
+const o = b.target;
 
 console.log(`\n${"═".repeat(78)}`);
-console.log(`${o.nombre}`);
+console.log(`${o.name}`);
 console.log(`${"═".repeat(78)}`);
 console.log(
-  `\n\x1b[90m  ${o.filed.slice(0, 10)} · ${o.pool} préstamos · cohorte ${o.anada}\x1b[0m`,
+  `\n\x1b[90m  ${o.filed.slice(0, 10)} · ${o.pool} préstamos · cohort ${o.vintage}\x1b[0m`,
 );
 console.log(
-  `  \x1b[90m${b.pares.length} pares comparables` +
-    (b.excluidas.length > 0
-      ? ` · ${b.excluidas.length} excluida(s) por ser mono-tipo: ` +
-        b.excluidas.map((e) => e.nombre.slice(0, 24)).join(", ")
+  `  \x1b[90m${b.pairs.length} pares comparables` +
+    (b.excluded.length > 0
+      ? ` · ${b.excluded.length} excluida(s) por ser mono-tipo: ` +
+        b.excluded.map((e) => e.name.slice(0, 24)).join(", ")
       : "") +
     `\x1b[0m`,
 );
@@ -823,61 +823,61 @@ console.log(
 /** El rechazo, que es parte de la respuesta y no una pantalla vacía. */
 if (!b.evaluable) {
   console.log(
-    `\n  \x1b[31mNo se puede evaluar: hacen falta ${MIN_PARES} pares y hay ${b.pares.length}.\x1b[0m`,
+    `\n  \x1b[31mNo se puede evaluar: hacen falta ${MIN_PAIRS} pares y hay ${b.pairs.length}.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mCon menos, "se aparta del mercado" sería una afirmación sobre ${b.pares.length}\x1b[0m`,
+    `  \x1b[90mCon menos, "se aparta del mercado" sería una afirmación sobre ${b.pairs.length}\x1b[0m`,
   );
   console.log(`  \x1b[90mdocumentos. La respuesta correcta es que no se sabe.\x1b[0m\n`);
   await closePool();
   process.exit(0);
 }
 
-if (b.objetivoMonoTipo) {
+if (b.targetSingleType) {
   console.log(
-    `\n  \x1b[33mEsta emisión es ${pct(o.shareDominante)} ${o.tipoDominante}:\x1b[0m`,
+    `\n  \x1b[33mEsta emisión es ${pct(o.dominantShare)} ${o.dominantType}:\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mno es un conduit diversificado y la comparación contra la cohorte va a\x1b[0m`,
+    `  \x1b[90mno es un conduit diversificado y la comparación contra la cohort va a\x1b[0m`,
   );
   console.log(`  \x1b[90mmostrar diferencias garantizadas que no significan nada.\x1b[0m`);
 }
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Posición dentro de la cohorte ${o.anada}`);
+console.log(`Posición dentro de la cohort ${o.vintage}`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  métrica        esta emisión   cohorte (p25–mediana–p75)      posición`);
+console.log(`  métrica        esta emisión   cohort (p25–mediana–p75)      posición`);
 console.log(`  ${"─".repeat(72)}`);
 
-for (const m of b.metricas) {
-  if (m.valor === null) {
+for (const m of b.metrics) {
+  if (m.value === null) {
     console.log(
-      `  ${m.spec.etiqueta.padEnd(14)} ` +
-        `\x1b[90m${m.sinDato === "emision" ? "sin dato en esta emisión" : `solo ${m.paresConDato} pares con dato`}\x1b[0m`,
+      `  ${m.spec.label.padEnd(14)} ` +
+        `\x1b[90m${m.noData === "issuance" ? "sin dato en esta emisión" : `solo ${m.pairsWithData} pares con dato`}\x1b[0m`,
     );
     continue;
   }
   const f = m.spec.fmt;
   console.log(
-    `  ${m.spec.etiqueta.padEnd(14)} ${f(m.valor).padStart(12)}   ` +
+    `  ${m.spec.label.padEnd(14)} ${f(m.value).padStart(12)}   ` +
       `${f(m.p25!).padStart(8)} ${f(m.p50!).padStart(8)} ${f(m.p75!).padStart(8)}      ` +
-      `${m.extremo ? (m.agresivo ? "\x1b[33m" : "\x1b[36m") : "\x1b[90m"}${m.rank}ª de ${m.total}\x1b[0m` +
-      (m.agresivo ? "  \x1b[33m← más agresivo\x1b[0m" : ""),
+      `${m.extreme ? (m.aggressive ? "\x1b[33m" : "\x1b[36m") : "\x1b[90m"}${m.rank}ª de ${m.total}\x1b[0m` +
+      (m.aggressive ? "  \x1b[33m← más agresivo\x1b[0m" : ""),
   );
 }
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Composición contra la cohorte");
+console.log("Composición contra la cohort");
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  tipo               esta emisión   cohorte    diferencia`);
+console.log(`  tipo               esta emisión   cohort    diferencia`);
 console.log(`  ${"─".repeat(58)}`);
 
-for (const c of b.composicion) {
-  const notable = Math.abs(c.diferencia) > 0.1;
+for (const c of b.composition) {
+  const notable = Math.abs(c.difference) > 0.1;
   console.log(
-    `  ${c.tipo.padEnd(18)} ${pct(c.propio).padStart(12)}   ${pct(c.cohorte).padStart(7)}    ` +
-      `${notable ? "\x1b[33m" : "\x1b[90m"}${(c.diferencia > 0 ? "+" : "") + pct(c.diferencia)}\x1b[0m` +
-      `  \x1b[90m${c.prestamos} préstamo(s)\x1b[0m`,
+    `  ${c.type.padEnd(18)} ${pct(c.own).padStart(12)}   ${pct(c.cohort).padStart(7)}    ` +
+      `${notable ? "\x1b[33m" : "\x1b[90m"}${(c.difference > 0 ? "+" : "") + pct(c.difference)}\x1b[0m` +
+      `  \x1b[90m${c.loans} préstamo(s)\x1b[0m`,
   );
 }
 
@@ -886,18 +886,18 @@ for (const c of b.composicion) {
  * puntos, así que un "+9%" son dos préstamos.
  */
 console.log(
-  `\n  \x1b[90mCada préstamo vale ${pct(b.puntoPorPrestamo, 1)} de este pool (${o.pool} préstamos):\x1b[0m`,
+  `\n  \x1b[90mCada préstamo vale ${pct(b.pointPerLoan, 1)} de este pool (${o.pool} préstamos):\x1b[0m`,
 );
 console.log(
-  `  \x1b[90muna diferencia de 9 puntos son ${Math.max(1, Math.round(0.09 / b.puntoPorPrestamo))} préstamos, no una tendencia.\x1b[0m`,
+  `  \x1b[90muna diferencia de 9 puntos son ${Math.max(1, Math.round(0.09 / b.pointPerLoan))} préstamos, no una tendencia.\x1b[0m`,
 );
 console.log(
-  `\n  \x1b[90mLa posición es ordinal, no percentil: con ${b.pares.length} pares un percentil\x1b[0m`,
+  `\n  \x1b[90mLa posición es ordinal, no percentil: con ${b.pairs.length} pares un percentil\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mtiene resolución de ~${b.resolucionPercentil.toFixed(0)} puntos y presentarlo con decimales\x1b[0m`,
+  `  \x1b[90mtiene resolución de ~${b.percentileResolution.toFixed(0)} puntos y presentarlo con decimales\x1b[0m`,
 );
 console.log(`  \x1b[90msugeriría una precisión que no existe.\x1b[0m`);
-console.log(`\n  \x1b[90mLa misma comparación como página:  npm run db:page -- "${BUSQUEDA ?? o.nombre.slice(0, 14)}"\x1b[0m\n`);
+console.log(`\n  \x1b[90mLa misma comparación como página:  npm run db:page -- "${BUSQUEDA ?? o.name.slice(0, 14)}"\x1b[0m\n`);
 
 await closePool();

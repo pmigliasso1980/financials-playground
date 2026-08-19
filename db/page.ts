@@ -32,7 +32,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { closePool, ping } from "./client.js";
-import { calcularBenchmark, cargarCandidatas, pct } from "./cohortBenchmark.js";
+import { computeBenchmark, loadCandidates, pct } from "./cohortBenchmark.js";
 import { render } from "./pageRender.js";
 
 const health = await ping();
@@ -47,20 +47,20 @@ const BUSQUEDA = args.find((a) => !a.startsWith("--")) ?? null;
 
 // ---------------------------------------------------------------------------
 
-const candidatas = await cargarCandidatas();
+const candidatas = await loadCandidates();
 const dir = new URL("../out/", import.meta.url).pathname;
 
 const slugDe = (nombre: string) =>
   nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
 /**
- * `--todas`: genera la página de cada emisión de la cohorte y mide algo que la
+ * `--todas`: genera la página de cada emisión de la cohort y mide algo que la
  * página sola no puede mostrar.
  *
  * LA PREGUNTA DE PRODUCTO
  *
  * En BANK5 2026-5YR24, cinco de las seis métricas caen dentro del rango
- * intercuartil de la cohorte. Si eso pasa en las 28, la tabla de métricas —que
+ * intercuartil de la cohort. Si eso pasa en las 28, la tabla de métricas —que
  * es la mitad de la página— no informa nada y lo único que distingue a una
  * emisión es su mezcla de propiedades. Si pasa en 10 de 28, informa bastante.
  *
@@ -69,11 +69,11 @@ const slugDe = (nombre: string) =>
  */
 if (args.includes("--todas")) {
   const anada = String(new Date().getFullYear());
-  const cohorte = candidatas.filter((c) => c.anada === anada);
+  const cohort = candidatas.filter((c) => c.vintage === anada);
   await mkdir(dir, { recursive: true });
 
   console.log(`\n${"═".repeat(78)}`);
-  console.log(`¿Informa la tabla de métricas? — cohorte ${anada}`);
+  console.log(`¿Informa la tabla de métricas? — cohort ${anada}`);
   console.log(`${"═".repeat(78)}\n`);
   console.log(`  emisión                              pool   evaluadas   fuera del p25-p75`);
   console.log(`  ${"─".repeat(74)}`);
@@ -92,13 +92,13 @@ if (args.includes("--todas")) {
    */
   const pares_: Array<{ fuera: number; d: number }> = [];
 
-  for (const c of cohorte) {
-    const bm = await calcularBenchmark(c.nombre, candidatas);
+  for (const c of cohort) {
+    const bm = await computeBenchmark(c.name, candidatas);
     if (!bm) continue;
-    await writeFile(`${dir}${slugDe(c.nombre)}.html`, render(bm), "utf8");
+    await writeFile(`${dir}${slugDe(c.name)}.html`, render(bm), "utf8");
 
     if (!bm.evaluable) {
-      console.log(`  ${c.nombre.slice(0, 34).padEnd(36)} ${String(c.pool).padStart(5)}   \x1b[90mno evaluable\x1b[0m`);
+      console.log(`  ${c.name.slice(0, 34).padEnd(36)} ${String(c.pool).padStart(5)}   \x1b[90mno evaluable\x1b[0m`);
       continue;
     }
 
@@ -109,24 +109,24 @@ if (args.includes("--todas")) {
      * medio del mercado. Una emisión puede ser 19ª de 25 y estar adentro de la
      * caja: es la mitad superior, pero no se aparta.
      */
-    const conDato = bm.metricas.filter((m) => m.valor !== null);
-    const fuera = conDato.filter((m) => m.valor! < m.p25! || m.valor! > m.p75!);
+    const conDato = bm.metrics.filter((m) => m.value !== null);
+    const fuera = conDato.filter((m) => m.value! < m.p25! || m.value! > m.p75!);
     totalEval += conDato.length;
     totalFuera += fuera.length;
     for (const m of conDato) {
-      const e = fueraPorMetrica.get(m.spec.etiqueta) ?? { fuera: 0, eval: 0 };
+      const e = fueraPorMetrica.get(m.spec.label) ?? { fuera: 0, eval: 0 };
       e.eval++;
-      if (m.valor! < m.p25! || m.valor! > m.p75!) e.fuera++;
-      fueraPorMetrica.set(m.spec.etiqueta, e);
+      if (m.value! < m.p25! || m.value! > m.p75!) e.fuera++;
+      fueraPorMetrica.set(m.spec.label, e);
     }
 
-    pares_.push({ fuera: fuera.length, d: bm.distancia - bm.distanciaNulo });
+    pares_.push({ fuera: fuera.length, d: bm.distance - bm.nullDistance });
 
     console.log(
-      `  ${c.nombre.slice(0, 34).padEnd(36)} ${String(c.pool).padStart(5)}   ` +
+      `  ${c.name.slice(0, 34).padEnd(36)} ${String(c.pool).padStart(5)}   ` +
         `${String(conDato.length).padStart(9)}   ` +
         `${fuera.length === 0 ? "\x1b[90m" : fuera.length >= 3 ? "\x1b[33m" : ""}${fuera.length}\x1b[0m` +
-        (fuera.length > 0 ? `  \x1b[90m${fuera.map((m) => m.spec.etiqueta).join(", ")}\x1b[0m` : ""),
+        (fuera.length > 0 ? `  \x1b[90m${fuera.map((m) => m.spec.label).join(", ")}\x1b[0m` : ""),
     );
   }
 
@@ -150,7 +150,7 @@ if (args.includes("--todas")) {
    * 50 ± 19 para afirmar algo con dos errores estándar.
    */
   const share = totalEval ? totalFuera / totalEval : 0;
-  const n = cohorte.length;
+  const n = cohort.length;
   const se = Math.sqrt(0.25 / Math.max(1, n));
   const z = (share - 0.5) / se;
 
@@ -260,12 +260,12 @@ if (args.includes("--todas")) {
     );
   }
 
-  console.log(`\n  ${cohorte.length} páginas en ${dir}\n`);
+  console.log(`\n  ${cohort.length} páginas en ${dir}\n`);
   await closePool();
   process.exit(0);
 }
 
-const b = await calcularBenchmark(BUSQUEDA, candidatas);
+const b = await computeBenchmark(BUSQUEDA, candidatas);
 
 if (!b) {
   console.error(`\n✗ No se encontró una emisión que coincida con "${BUSQUEDA}".`);
@@ -275,13 +275,13 @@ if (!b) {
 }
 
 await mkdir(dir, { recursive: true });
-const ruta = `${dir}${slugDe(b.objetivo.nombre)}.html`;
+const ruta = `${dir}${slugDe(b.target.name)}.html`;
 await writeFile(ruta, render(b), "utf8");
 
-console.log(`\n  ${b.objetivo.nombre}`);
+console.log(`\n  ${b.target.name}`);
 console.log(
-  `  \x1b[90m${b.objetivo.pool} préstamos · ${b.pares.length} pares · ` +
-    `${b.evaluable ? `${b.metricas.filter((m) => m.valor !== null).length} de ${b.metricas.length} métricas evaluadas` : "no evaluable"}\x1b[0m`,
+  `  \x1b[90m${b.target.pool} préstamos · ${b.pairs.length} pares · ` +
+    `${b.evaluable ? `${b.metrics.filter((m) => m.value !== null).length} de ${b.metrics.length} métricas evaluadas` : "no evaluable"}\x1b[0m`,
 );
 console.log(`\n  → ${ruta}\n`);
 
