@@ -1,119 +1,119 @@
 /**
- * Los préstamos sin tipo de propiedad: qué son, antes de decidir qué hacer.
+ * The loans with no property type: what they are, before deciding what to do.
  *
  *   npm run db:type-gap
  *
- * POR QUÉ AHORA, Y POR QUÉ EMPIEZA MIRANDO EN VEZ DE ARREGLANDO
+ * WHY NOW, AND WHY IT STARTS BY LOOKING RATHER THAN FIXING
  *
- * El índice del producto muestra quince filas que dicen "34/35": préstamos que
- * existen en la emisión y no entran a la medición de composición porque no tienen
- * tipo. Dejó de ser deuda de backlog y pasó a ser una columna en la cara del
- * producto.
+ * The product index shows fifteen rows reading "34/35": loans that exist in the
+ * issuance and do not enter the composition measurement because they have no
+ * type. It stopped being backlog debt and became a column on the face of the
+ * product.
  *
- * La tentación es escribir el arreglo directo —completar el tipo desde otra
- * columna— pero cuál es "otra columna" depende de POR QUÉ falta, y hay al menos
- * cuatro motivos posibles que piden arreglos distintos:
+ * The temptation is to write the fix directly —fill the type in from another
+ * column— but which "other column" depends on WHY it is missing, and there are at
+ * least four possible reasons that call for different fixes:
  *
- *   1. El préstamo tiene varias propiedades de tipos distintos. El Annex A pone
- *      "Various" en la fila del préstamo y el tipo real en las filas de propiedad,
- *      que el harvester descarta. Acá NO hay un tipo que recuperar: el préstamo
- *      genuinamente no tiene uno, y la respuesta correcta puede ser una categoría
- *      "Varios" en vez de un null.
- *   2. La emisión usa un encabezado que el mapeo no reconoce. Se arregla en la
- *      taxonomía y recupera todos los préstamos de esa emisión de una.
- *   3. La celda está vacía en el documento. No hay nada que hacer.
- *   4. El valor existe pero cae en 'Sin clasificar' del CASE. Eso no es este
- *      script —esos préstamos SÍ tienen property_type— pero conviene contarlos al
- *      lado porque se confunden al leer.
+ *   1. The loan has several properties of different types. The Annex A puts
+ *      "Various" in the loan row and the real type in the property rows, which
+ *      the harvester discards. Here there is NO type to recover: the loan
+ *      genuinely does not have one, and the right answer may be a "Various"
+ *      category rather than a null.
+ *   2. The issuance uses a header the mapping does not recognise. That is fixed
+ *      in the taxonomy and recovers every loan of that issuance at once.
+ *   3. The cell is empty in the document. There is nothing to be done.
+ *   4. The value exists but falls into the CASE's 'Unclassified'. That is not
+ *      this script —those loans DO have a property_type— but it is worth counting
+ *      alongside because the two are easy to confuse when reading.
  *
- * Los cuatro se ven distinto en los datos y el arreglo de uno no sirve para los
- * otros. Así que primero se mira.
+ * All four look different in the data and the fix for one does not help the
+ * others. So first we look.
  *
- * LA HIPÓTESIS QUE TENGO, PARA QUE QUEDE ESCRITA ANTES DEL RESULTADO
+ * THE HYPOTHESIS I HOLD, WRITTEN DOWN BEFORE THE RESULT
  *
- * Que sean multi-propiedad. Diecisiete préstamos repartidos en quince emisiones
- * —casi uno por emisión, sin concentrarse en ninguna— no parece un encabezado sin
- * mapear: eso daría todos los préstamos de una o dos emisiones juntos. Un
- * fenómeno raro y parejo entre documentos se parece más a una propiedad del
- * préstamo que a un defecto del parser.
+ * That they are multi-property. Seventeen loans spread across fifteen issuances
+ * —nearly one per issuance, concentrating in none— does not look like an unmapped
+ * header: that would give you all the loans of one or two issuances together. A
+ * rare phenomenon spread evenly across documents looks more like a property of
+ * the loan than a defect of the parser.
  *
- * Si es eso, el arreglo NO es completar el dato: es dejar de contarlos como
- * ausencia. Y entonces la pregunta de producto pasa a ser si "Varios" es una
- * categoría de composición o una fila aparte.
+ * If that is it, the fix is NOT to fill in the datum: it is to stop counting them
+ * as absent. And then the product question becomes whether "Various" is a
+ * composition category or a row of its own.
  *
- * QUÉ DIO, Y DÓNDE LA HIPÓTESIS SE QUEDA CORTA
+ * WHAT IT GAVE, AND WHERE THE HYPOTHESIS FALLS SHORT
  *
- * Para 2026 acertó entera: los 17 son carteras, todas con dos o más propiedades y
- * con nombres que lo dicen —"ExchangeRight 75", "Patoma Partners 4-Pack",
- * "Mountain Industrial Portfolio" con noventa—. Ninguna tiene una columna de tipo
- * sin mapear.
+ * For 2026 it was entirely right: all 17 are portfolios, every one with two or
+ * more properties and with names that say so —"ExchangeRight 75", "Patoma
+ * Partners 4-Pack", "Mountain Industrial Portfolio" with ninety. None has an
+ * unmapped type column.
  *
- * Pero el corpus entero son 362 préstamos, no 17. Yo estaba mirando una cohorte y
- * hablando del corpus, que es el error de unidad de análisis otra vez.
+ * But the whole corpus is 362 loans, not 17. I was looking at one cohort and
+ * talking about the corpus, which is the unit-of-analysis error all over again.
  *
- * Y sobre esos 362 la hipótesis explica la mayoría pero no todo:
+ * And over those 362 the hypothesis explains most but not all:
  *
- *   212 de 362 (59%) tienen property_count > 1 — multi-propiedad confirmado
- *   253 de 362 (70%) se llaman Various o Portfolio
- *   pero 2020 tiene 121 de 1.430 (8,5%), cuatro veces la tasa del resto, y una
- *   sola emisión concentra 19
+ *   212 of 362 (59%) have property_count > 1 — multi-property confirmed
+ *   253 of 362 (70%) are called Various or Portfolio
+ *   but 2020 has 121 of 1,430 (8.5%), four times the rate of the rest, and one
+ *   single issuance concentrates 19
  *
- * Una emisión con 19 préstamos sin tipo NO es multi-propiedad: es un encabezado
- * que el mapeo no reconoce. Así que hay dos poblaciones y una sola de ellas es la
- * que yo describí.
+ * An issuance with 19 loans lacking a type is NOT multi-property: it is a header
+ * the mapping does not recognise. So there are two populations and only one of
+ * them is the one I described.
  *
- * Se agrega abajo el corte que las separa, en vez de escribir un arreglo que
- * atiende a la que ya entendí y deja la otra donde está.
+ * The cut that separates them is added below, rather than writing a fix that
+ * addresses the one I already understood and leaves the other where it is.
  *
- * Y UN TEST QUE NO PODÍA FALLAR, ESCRITO ACÁ MISMO
+ * AND A TEST THAT COULD NOT FAIL, WRITTEN RIGHT HERE
  *
- * La primera versión de ese corte buscaba el encabezado sin mapear en
- * `corpus.unmapped_cells`. Esa tabla tiene `value_num NUMERIC NOT NULL` y el
- * harvester hace `if (value === null) continue`: solo entra lo que parsea como
- * número. Un tipo de propiedad es texto, así que NUNCA puede estar ahí.
+ * The first version of that cut looked for the unmapped header in
+ * `corpus.unmapped_cells`. That table has `value_num NUMERIC NOT NULL` and the
+ * harvester does `if (value === null) continue`: only what parses as a number
+ * gets in. A property type is text, so it can NEVER be there.
  *
- * O sea que la consulta devolvía vacío siempre, y ese vacío se leía como "el
- * Annex A no publica la columna" cuando en realidad significaba "no lo podemos
- * saber por esta vía". La conclusión opuesta a la verdadera, en el script cuyo
- * único propósito era distinguir las dos poblaciones.
+ * So the query always returned empty, and that emptiness read as "the Annex A
+ * does not publish the column" when it actually meant "we cannot know this way".
+ * The opposite conclusion to the true one, in the script whose only purpose was
+ * to distinguish the two populations.
  *
- * La fuente correcta es `corpus.filings.columns_unmapped`, que guarda los nombres
- * de los encabezados en la etapa de mapeo, antes de que importe si el valor es
- * texto o número.
+ * The correct source is `corpus.filings.columns_unmapped`, which stores the
+ * header names at the mapping stage, before it matters whether the value is text
+ * or a number.
  *
- * Y CON LA FUENTE BUENA APARECIERON TRES POBLACIONES, NO DOS
+ * AND WITH THE RIGHT SOURCE, THREE POPULATIONS APPEARED, NOT TWO
  *
- * El filtro `~* 'type|property'` que usé era demasiado ancho y produjo tres pistas
- * falsas seguidas. Ninguno de estos encabezados es un tipo de propiedad:
+ * The `~* 'type|property'` filter I used was far too wide and produced three
+ * false leads in a row. None of these headers is a property type:
  *
- *   "Title Type"          — es fee contra leasehold: el derecho sobre el terreno.
- *   "Appraised Value Type" — as-is contra as-stabilized: qué supone la tasación.
- *   "Footnotes (for Loan and Property Information)" — notas al pie.
+ *   "Title Type"           — fee versus leasehold: the interest in the land.
+ *   "Appraised Value Type" — as-is versus as-stabilized: what the appraisal assumes.
+ *   "Footnotes (for Loan and Property Information)" — footnotes.
  *
- * Aparecen en casi todas las emisiones porque son columnas normales que el mapeo
- * no usa, no porque tengan que ver con el hueco. Un filtro por substring encuentra
- * lo que sea que contenga la palabra, y "type" está en media docena de conceptos
- * distintos del Annex A.
+ * They appear in almost every issuance because they are ordinary columns the
+ * mapping does not use, not because they have anything to do with the gap. A
+ * substring filter finds whatever contains the word, and "type" appears in half a
+ * dozen different concepts in an Annex A.
  *
- * Lo que sí apareció, en GS 2020 y Benchmark 2020-B21 —las dos que concentran 19 y
- * 17— es otra cosa:
+ * What DID appear, in GS 2020 and Benchmark 2020-B21 —the two concentrating 19
+ * and 17— is something else:
  *
  *   "Loan / Property Flag Loan Property"
  *   "Property Name Dearborn Flex P..."
  *
- * Eso no es un encabezado: es un encabezado con la primera fila de datos pegada
- * adentro. Es la tarea #48, y explica por qué la columna de tipo tampoco mapea en
- * esas emisiones — su encabezado también está corrompido.
+ * That is not a header: it is a header with the first data row glued inside it.
+ * It is task #48, and it explains why the type column does not map in those
+ * issuances either — their header is corrupted too.
  *
- * Y queda una tercera que no es ninguna de las dos: BBCMS 2022-C17 con 8 de 8
- * préstamos sin tipo, sin encabezados sin mapear y sin nombres "Various". Es la
- * emisión de la tarea #40, que ya estaba abierta por tener 39 observations.
+ * And a third remains that is neither: BBCMS 2022-C17 with 8 of 8 loans lacking a
+ * type, no unmapped headers and no "Various" names. It is the issuance of task
+ * #40, already open for having 39 observations.
  *
- *   población 1  carteras multi-propiedad     ~70%   no hay nada que recuperar
- *   población 2  encabezados con datos pegados        tarea #48
- *   población 3  BBCMS 2022-C17                       tarea #40
+ *   population 1  multi-property portfolios   ~70%   nothing to recover
+ *   population 2  headers with glued-in data          task #48
+ *   population 3  BBCMS 2022-C17                      task #40
  *
- * Tres causas, tres arreglos, y el primer diagnóstico las tenía como una sola.
+ * Three causes, three fixes, and the first diagnosis had them as one.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -131,147 +131,148 @@ const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 const num = (v: number) => v.toLocaleString("en-US");
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Préstamos sin tipo de propiedad");
+console.log("Loans with no property type");
 console.log(`${"═".repeat(78)}`);
 
 // ---------------------------------------------------------------------------
-// 1. Cuántos son, y si se concentran en algún lado
+// 1. How many there are, and whether they concentrate anywhere
 // ---------------------------------------------------------------------------
 
-const { rows: porAnada } = await query<{
-  anada: string; prestamos: string; sin_tipo: string; emisiones: string; em_con_hueco: string;
+const { rows: byVintage } = await query<{
+  vintage: string; loans: string; no_type: string; issuances: string; iss_with_gap: string;
 }>(
-  `SELECT extract(year FROM f.filed_at)::int::text AS anada,
-          count(*)::text AS prestamos,
-          count(*) FILTER (WHERE l.property_type IS NULL)::text AS sin_tipo,
-          count(DISTINCT l.accession)::text AS emisiones,
-          count(DISTINCT l.accession) FILTER (WHERE l.property_type IS NULL)::text AS em_con_hueco
+  `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
+          count(*)::text AS loans,
+          count(*) FILTER (WHERE l.property_type IS NULL)::text AS no_type,
+          count(DISTINCT l.accession)::text AS issuances,
+          count(DISTINCT l.accession) FILTER (WHERE l.property_type IS NULL)::text AS iss_with_gap
      FROM corpus.loans l
      JOIN corpus.filings f ON f.accession = l.accession
     GROUP BY 1 ORDER BY 1`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Por añada");
+console.log("By vintage");
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  añada   préstamos   sin tipo      %      emisiones con hueco`);
+console.log(`  vintage    loans   no type      %      issuances with a gap`);
 console.log(`  ${"─".repeat(62)}`);
-let totalSin = 0;
+let totalMissing = 0;
 let total = 0;
-for (const r of porAnada) {
-  const sin = Number(r.sin_tipo), n = Number(r.prestamos);
-  totalSin += sin;
+for (const r of byVintage) {
+  const missing = Number(r.no_type), n = Number(r.loans);
+  totalMissing += missing;
   total += n;
   console.log(
-    `  ${r.anada}   ${num(n).padStart(9)} ${String(sin).padStart(10)} ${pct(sin / Math.max(1, n), 1).padStart(7)}` +
-      `      ${r.em_con_hueco} de ${r.emisiones}` +
-      (sin / Math.max(1, n) > 0.05 ? `  \x1b[33m← concentrado\x1b[0m` : ""),
+    `  ${r.vintage}   ${num(n).padStart(9)} ${String(missing).padStart(10)} ${pct(missing / Math.max(1, n), 1).padStart(7)}` +
+      `      ${r.iss_with_gap} de ${r.issuances}` +
+      (missing / Math.max(1, n) > 0.05 ? `  \x1b[33m← concentrado\x1b[0m` : ""),
   );
 }
 console.log(
-  `\n  \x1b[1m${totalSin} de ${num(total)} préstamos\x1b[0m (${pct(totalSin / Math.max(1, total), 2)}) sin tipo en todo el corpus.`,
+  `\n  \x1b[1m${totalMissing} of ${num(total)} loans\x1b[0m (${pct(totalMissing / Math.max(1, total), 2)}) have no type across the whole corpus.`,
 );
 
 /**
- * La forma decide el diagnóstico.
+ * The shape decides the diagnosis.
  *
- * Si los huecos se apilan en pocas emisiones, es un encabezado sin mapear y se
- * arregla en la taxonomía. Si están repartidos de a uno, es una propiedad del
- * préstamo y la taxonomía no tiene nada que ver.
+ * If the gaps pile up in a few issuances, it is an unmapped header and it is
+ * fixed in the taxonomy. If they are spread one at a time, it is a property of
+ * the loan and the taxonomy has nothing to do with it.
  */
-const { rows: forma } = await query<{ por_emision: string; emisiones: string; max_en_una: string }>(
+const { rows: shape } = await query<{ per_issuance: string; issuances: string; max_in_one: string }>(
   `WITH x AS (
-     SELECT accession, count(*) FILTER (WHERE property_type IS NULL) AS sin_tipo,
+     SELECT accession, count(*) FILTER (WHERE property_type IS NULL) AS no_type,
             count(*) AS n
        FROM corpus.loans GROUP BY accession
    )
-   SELECT round(avg(sin_tipo) FILTER (WHERE sin_tipo > 0), 2)::text AS por_emision,
-          count(*) FILTER (WHERE sin_tipo > 0)::text AS emisiones,
-          max(sin_tipo)::text AS max_en_una
+   SELECT round(avg(no_type) FILTER (WHERE no_type > 0), 2)::text AS per_issuance,
+          count(*) FILTER (WHERE no_type > 0)::text AS issuances,
+          max(no_type)::text AS max_in_one
      FROM x`,
 );
-const f0 = forma[0]!;
+const f0 = shape[0]!;
 console.log(
-  `  \x1b[90mRepartidos en ${f0.emisiones} emisiones, ${f0.por_emision} por emisión en promedio, ` +
-    `${f0.max_en_una} en la peor.\x1b[0m`,
+  `  \x1b[90mSpread across ${f0.issuances} issuances, ${f0.per_issuance} per issuance on average, ` +
+    `${f0.max_in_one} in the worst.\x1b[0m`,
 );
 console.log(
-  Number(f0.max_en_una) <= 3
-    ? `  \x1b[90mNinguna emisión concentra: no parece un encabezado sin mapear.\x1b[0m`
-    : `  \x1b[33mAlguna emisión concentra ${f0.max_en_una}: ahí sí puede ser el mapeo.\x1b[0m`,
+  Number(f0.max_in_one) <= 3
+    ? `  \x1b[90mNo issuance concentrates them: it does not look like an unmapped header.\x1b[0m`
+    : `  \x1b[33mSome issuance concentrates ${f0.max_in_one}: there it may well be the mapping.\x1b[0m`,
 );
 
 // ---------------------------------------------------------------------------
-// 2. Qué SÍ se sabe de esos préstamos
+// 2. What IS known about those loans
 // ---------------------------------------------------------------------------
 
 /**
- * `property_count` es la prueba directa de la hipótesis multi-propiedad, y
- * `property_name` la indirecta: los Annex A escriben "Various" o listan varias.
+ * `property_count` is the direct test of the multi-property hypothesis, and
+ * `property_name` the indirect one: Annex A documents write "Various" or list
+ * several.
  */
-const { rows: quePasa } = await query<{
-  total: string; con_count: string; multi: string; nombre_various: string;
-  con_detalle: string; con_units: string; con_dscr: string;
+const { rows: whatIsKnown } = await query<{
+  total: string; with_count: string; multi: string; name_various: string;
+  with_detail: string; with_units: string; with_dscr: string;
 }>(
-  `WITH sin AS (SELECT id, property_name FROM corpus.loans WHERE property_type IS NULL)
+  `WITH missing AS (SELECT id, property_name FROM corpus.loans WHERE property_type IS NULL)
    SELECT count(*)::text AS total,
-          count(pc.value)::text AS con_count,
+          count(pc.value)::text AS with_count,
           count(*) FILTER (WHERE pc.value ~ '^[0-9.]+$' AND pc.value::numeric > 1)::text AS multi,
-          count(*) FILTER (WHERE s.property_name ~* 'various|portfolio')::text AS nombre_various,
-          count(pd.value)::text AS con_detalle,
-          count(un.value)::text AS con_units,
-          count(ds.value)::text AS con_dscr
-     FROM sin s
+          count(*) FILTER (WHERE s.property_name ~* 'various|portfolio')::text AS name_various,
+          count(pd.value)::text AS with_detail,
+          count(un.value)::text AS with_units,
+          count(ds.value)::text AS with_dscr
+     FROM missing s
      LEFT JOIN corpus.facts pc ON pc.loan_id = s.id AND pc.metric_key = 'property_count'
      LEFT JOIN corpus.facts pd ON pd.loan_id = s.id AND pd.metric_key = 'property_type_detailed'
      LEFT JOIN corpus.facts un ON un.loan_id = s.id AND un.metric_key = 'units'
      LEFT JOIN corpus.facts ds ON ds.loan_id = s.id AND ds.metric_key = 'dscr'`,
 );
-const q = quePasa[0]!;
+const q = whatIsKnown[0]!;
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Qué se sabe de los préstamos sin tipo");
+console.log("What is known about the loans with no type");
 console.log(`${"─".repeat(78)}\n`);
-const linea = (et: string, v: string, nota = "") =>
+const line = (et: string, v: string, nota = "") =>
   console.log(
     `  ${et.padEnd(34)} ${String(v).padStart(5)} de ${q.total}` +
       `  ${pct(Number(v) / Math.max(1, Number(q.total)), 0).padStart(6)}   \x1b[90m${nota}\x1b[0m`,
   );
-linea("tienen property_count", q.con_count);
-linea("...y es mayor a 1", q.multi, "← multi-propiedad: no tienen UN tipo");
-linea("se llaman Various / Portfolio", q.nombre_various, "la pista del nombre");
-linea("tienen property_type_detailed", q.con_detalle, "← si lo tienen, se puede derivar");
-linea("tienen units", q.con_units, "el resto del parseo funcionó");
-linea("tienen dscr", q.con_dscr, "no son filas fantasma");
+line("have property_count", q.with_count);
+line("...and it is greater than 1", q.multi, "← multi-property: they have no ONE type");
+line("are called Various / Portfolio", q.name_various, "the clue in the name");
+line("have property_type_detailed", q.with_detail, "← if they do, it can be derived");
+line("have units", q.with_units, "the rest of the parsing worked");
+line("have dscr", q.with_dscr, "they are not phantom rows");
 
 /**
- * La distinción que decide el arreglo: un préstamo multi-propiedad no tiene un
- * tipo que recuperar, y uno de una sola propiedad sin tipo sí lo perdió.
+ * The distinction that decides the fix: a multi-property loan has no type to
+ * recover, and a single-property loan without a type genuinely lost it.
  */
 console.log(
-  `\n  \x1b[90mUn préstamo con varias propiedades no TIENE un tipo — el Annex A pone\x1b[0m`,
+  `\n  \x1b[90mA loan with several properties does not HAVE a type — the Annex A writes\x1b[0m`,
 );
 console.log(
-  `  \x1b[90m"Various" y los tipos viven en las filas de propiedad, que se descartan.\x1b[0m`,
+  `  \x1b[90m"Various" and the types live in the property rows, which get discarded.\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mAhí el arreglo no es completar el dato: es dejar de contarlo como ausencia.\x1b[0m`,
+  `  \x1b[90mThere the fix is not to fill the datum in: it is to stop counting it as absent.\x1b[0m`,
 );
 
 // ---------------------------------------------------------------------------
-// 3. Las filas, una por una — son diecisiete
+// 3. The rows, one by one — there are seventeen
 // ---------------------------------------------------------------------------
 
-const { rows: detalle } = await query<{
-  emision: string; loan_ref: string | null; nombre: string | null;
-  count: string | null; detalle: string | null; sin_mapear: string | null;
+const { rows: detail } = await query<{
+  issuance: string; loan_ref: string | null; name: string | null;
+  count: string | null; detail: string | null; unmapped: string | null;
 }>(
-  `SELECT f.company_name AS emision, l.loan_ref, l.property_name AS nombre,
-          pc.value AS count, pd.value AS detalle,
+  `SELECT f.company_name AS issuance, l.loan_ref, l.property_name AS name,
+          pc.value AS count, pd.value AS detail,
           (SELECT string_agg(h, ' · ')
              FROM jsonb_array_elements_text(f.columns_unmapped) AS h
             WHERE h ~* '(property|asset|collateral|general)\\s*type'
-              AND h !~* 'title|appraised|footnote') AS sin_mapear
+              AND h !~* 'title|appraised|footnote') AS unmapped
      FROM corpus.loans l
      JOIN corpus.filings f ON f.accession = l.accession
      LEFT JOIN corpus.facts pc ON pc.loan_id = l.id AND pc.metric_key = 'property_count'
@@ -282,34 +283,35 @@ const { rows: detalle } = await query<{
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Las filas de la cohorte actual — ${detalle.length}`);
+console.log(`The rows of the current cohort — ${detail.length}`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  emisión                        ref     props   nombre / subtipo`);
+console.log(`  issuance                       ref     props   name / subtype`);
 console.log(`  ${"─".repeat(72)}`);
-for (const r of detalle) {
+for (const r of detail) {
   console.log(
-    `  ${(r.emision ?? "").slice(0, 30).padEnd(31)} ${(r.loan_ref ?? "—").slice(0, 6).padEnd(7)} ` +
+    `  ${(r.issuance ?? "").slice(0, 30).padEnd(31)} ${(r.loan_ref ?? "—").slice(0, 6).padEnd(7)} ` +
       `${(r.count ?? "—").padStart(5)}   ` +
-      `\x1b[90m${(r.detalle ?? r.nombre ?? "(sin nombre)").slice(0, 34)}\x1b[0m`,
+      `\x1b[90m${(r.detail ?? r.name ?? "(no name)").slice(0, 34)}\x1b[0m`,
   );
-  if (r.sin_mapear) {
-    console.log(`  \x1b[33m      columnas sin mapear con 'type': ${r.sin_mapear.slice(0, 60)}\x1b[0m`);
+  if (r.unmapped) {
+    console.log(`  \x1b[33m      unmapped columns containing 'type': ${r.unmapped.slice(0, 60)}\x1b[0m`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// 4. El otro agujero, que se confunde con este
+// 4. The other gap, which gets confused with this one
 // ---------------------------------------------------------------------------
 
 /**
- * 'Sin clasificar' NO es lo mismo que sin tipo.
+ * 'Unclassified' is NOT the same as having no type.
  *
- * Esos préstamos tienen property_type y el CASE no lo reconoce, así que entran a
- * la composición como una categoría propia y ensucian la distancia sin avisar. Se
- * cuenta al lado porque las dos cosas se leen igual en la página.
+ * Those loans do have a property_type and the CASE does not recognise it, so they
+ * enter the composition as a category of their own and pollute the distance
+ * without warning. It is counted alongside because the two read identically on
+ * the page.
  */
-const { rows: sinClasificar } = await query<{ tipo: string; n: string }>(
-  `SELECT l.property_type AS tipo, count(*)::text AS n
+const { rows: unclassified } = await query<{ type: string; n: string }>(
+  `SELECT l.property_type AS type, count(*)::text AS n
      FROM corpus.loans l
     WHERE l.property_type IS NOT NULL
       AND l.property_type !~* 'multifamily|cooperative|garden|low rise|mid rise|student'
@@ -324,99 +326,100 @@ const { rows: sinClasificar } = await query<{ tipo: string; n: string }>(
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Y el otro agujero: tienen tipo, pero el CASE no lo reconoce");
+console.log("And the other gap: they have a type, but the CASE does not recognise it");
 console.log(`${"─".repeat(78)}\n`);
-if (sinClasificar.length === 0) {
-  console.log(`  \x1b[32mNinguno. Todos los valores caen en alguna categoría.\x1b[0m`);
+if (unclassified.length === 0) {
+  console.log(`  \x1b[32mNone. Every value falls into some category.\x1b[0m`);
 } else {
-  const totalSC = sinClasificar.reduce((t, r) => t + Number(r.n), 0);
-  for (const r of sinClasificar) {
-    console.log(`  ${r.tipo.slice(0, 44).padEnd(46)} ${String(r.n).padStart(5)}`);
+  const totalUnclassified = unclassified.reduce((t, r) => t + Number(r.n), 0);
+  for (const r of unclassified) {
+    console.log(`  ${r.type.slice(0, 44).padEnd(46)} ${String(r.n).padStart(5)}`);
   }
   console.log(
-    `\n  \x1b[33m${totalSC} préstamos entran a la composición como 'Sin clasificar'.\x1b[0m`,
+    `\n  \x1b[33m${totalUnclassified} loans enter the composition as 'Unclassified'.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mNo son un hueco: son una categoría que existe y nadie decidió. Suma a la\x1b[0m`,
+    `  \x1b[90mThey are not a gap: they are a category that exists and nobody decided on.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mdistancia como cualquier otra, así que dos emisiones con muchos de estos se\x1b[0m`,
+    `  \x1b[90mIt adds to the distance like any other, so two issuances with many of these\x1b[0m`,
   );
-  console.log(`  \x1b[90mparecen entre sí por una razón que no es de negocio.\x1b[0m`);
+  console.log(`  \x1b[90mlook alike for a reason that is not about the business.\x1b[0m`);
 }
 
 /**
- * POR QUÉ UN ENCABEZADO NO MAPEA, USANDO EL MAPEADOR DE VERDAD.
+ * WHY A HEADER DOES NOT MAP, USING THE REAL MAPPER.
  *
- * No sirve razonar sobre el patrón leyéndolo: `scoreHeader` devuelve 0 tanto si
- * ningún patrón coincide como si un `exclude` lo bloqueó, y las dos cosas piden
- * arreglos opuestos. Se corre la función real contra el encabezado real y se
- * reporta cuál de las dos pasó.
+ * Reasoning about the pattern by reading it is no use: `scoreHeader` returns 0
+ * both when no pattern matches and when an `exclude` blocked it, and those two
+ * call for opposite fixes. The real function is run against the real header and
+ * it reports which of the two happened.
  *
- * La sospecha, escrita antes de correrlo: los `exclude` son substrings sin anclar.
- * `property_type` excluye /sub/i para no llevarse "Subordinate", y eso también
- * mata cualquier encabezado que contenga "Suburban" — que es un subtipo de oficina
- * y aparece como VALOR cuando la fila de datos quedó pegada al encabezado. Ya pasó
- * una vez en este archivo con /per\s*\/ matcheando "per" adentro de "Property".
+ * The suspicion, written before running it: the `exclude` patterns are unanchored
+ * substrings. `property_type` excludes /sub/i so as not to swallow "Subordinate",
+ * and that also kills any header containing "Suburban" — which is an office
+ * subtype and appears as a VALUE when the data row ended up glued to the header.
+ * It already happened once in this file with /per\s*\/ matching "per" inside
+ * "Property".
  */
-function porQueNoMapea(header: string): string {
-  const limpio = header.replace(/\s+/g, " ").trim();
+function whyItDoesNotMap(header: string): string {
+  const clean = header.replace(/\s+/g, " ").trim();
   const spec = METRIC_SPECS.find((m) => m.key === "property_type");
-  if (!spec) return "\x1b[90m      (no existe la métrica property_type)\x1b[0m";
+  if (!spec) return "\x1b[90m      (the property_type metric does not exist)\x1b[0m";
 
-  const bloqueo = spec.exclude?.find((re) => re.test(limpio));
-  if (bloqueo) {
-    const m = limpio.match(bloqueo);
+  const blocker = spec.exclude?.find((re) => re.test(clean));
+  if (blocker) {
+    const m = clean.match(blocker);
     return (
-      `\x1b[31m      bloqueado por el exclude ${String(bloqueo)} — matchea "${m?.[0]}"\x1b[0m` +
-      `\n  \x1b[90m      el patrón no está anclado, así que pega adentro de una palabra\x1b[0m`
+      `\x1b[31m      blocked by the exclude ${String(blocker)} — matches "${m?.[0]}"\x1b[0m` +
+      `\n  \x1b[90m      the pattern is unanchored, so it matches inside a word\x1b[0m`
     );
   }
-  const s = scoreHeader(limpio, spec);
+  const s = scoreHeader(clean, spec);
   if (s > 0) {
-    return `\x1b[33m      mapea con puntaje ${s.toFixed(2)} — se lo llevó otra métrica o otra columna\x1b[0m`;
+    return `\x1b[33m      maps with score ${s.toFixed(2)} — another metric or column took it\x1b[0m`;
   }
-  return `\x1b[90m      ningún patrón coincide: falta agregarlo a la taxonomía\x1b[0m`;
+  return `\x1b[90m      no pattern matches: it needs adding to the taxonomy\x1b[0m`;
 }
 
 // ---------------------------------------------------------------------------
-// 5. Las emisiones que CONCENTRAN: ahí no es multi-propiedad
+// 5. The issuances that CONCENTRATE: there it is not multi-property
 // ---------------------------------------------------------------------------
 
 /**
- * La segunda población, que la hipótesis no explica.
+ * The second population, which the hypothesis does not explain.
  *
- * Un préstamo suelto sin tipo en una emisión es una cartera. Diecinueve en la
- * misma emisión no: eso es una columna que el mapeo no reconoció, y se arregla en
- * la taxonomía recuperando todos de una vez.
+ * A single loan without a type in an issuance is a portfolio. Nineteen in the
+ * same issuance is not: that is a column the mapping did not recognise, and it is
+ * fixed in the taxonomy, recovering all of them at once.
  *
- * La prueba está en `filings.columns_unmapped`: si esa emisión tiene un encabezado
- * con "type" o "property" que quedó sin mapear, el diagnóstico está cerrado. Si no
- * lo tiene, el Annex A no publica la columna y no hay nada que recuperar.
+ * The evidence is in `filings.columns_unmapped`: if that issuance has an unmapped
+ * header containing "type" or "property", the diagnosis is closed. If it does
+ * not, the Annex A does not publish the column and there is nothing to recover.
  *
- * NO en `unmapped_cells`, que fue el primer intento: esa tabla solo guarda celdas
- * numéricas, así que buscar una columna de texto ahí es una consulta que devuelve
- * vacío por construcción.
+ * NOT in `unmapped_cells`, which was the first attempt: that table only stores
+ * numeric cells, so looking for a text column there is a query that returns empty
+ * by construction.
  */
-const { rows: concentradas } = await query<{
-  emision: string; anada: string; n: string; sin_tipo: string;
-  various: string; con_count: string; headers: string | null; pegados: string | null;
+const { rows: concentrated } = await query<{
+  issuance: string; vintage: string; n: string; no_type: string;
+  various: string; with_count: string; headers: string | null; glued: string | null;
 }>(
   `WITH x AS (
-     SELECT l.accession, f.company_name AS emision,
-            extract(year FROM f.filed_at)::int AS anada,
+     SELECT l.accession, f.company_name AS issuance,
+            extract(year FROM f.filed_at)::int AS vintage,
             count(*) AS n,
-            count(*) FILTER (WHERE l.property_type IS NULL) AS sin_tipo,
+            count(*) FILTER (WHERE l.property_type IS NULL) AS no_type,
             count(*) FILTER (WHERE l.property_type IS NULL
                                AND l.property_name ~* 'various|portfolio') AS various
        FROM corpus.loans l
        JOIN corpus.filings f ON f.accession = l.accession
       GROUP BY 1, 2, 3
    )
-   SELECT x.emision, x.anada::text, x.n::text, x.sin_tipo::text, x.various::text,
+   SELECT x.issuance, x.vintage::text, x.n::text, x.no_type::text, x.various::text,
           (SELECT count(*)::text FROM corpus.loans l2
              JOIN corpus.facts pc ON pc.loan_id = l2.id AND pc.metric_key = 'property_count'
-            WHERE l2.accession = x.accession AND l2.property_type IS NULL) AS con_count,
+            WHERE l2.accession = x.accession AND l2.property_type IS NULL) AS with_count,
           (SELECT string_agg(h, ' · ')
              FROM corpus.filings f2,
                   LATERAL jsonb_array_elements_text(f2.columns_unmapped) AS h
@@ -427,62 +430,62 @@ const { rows: concentradas } = await query<{
              FROM corpus.filings f3,
                   LATERAL jsonb_array_elements_text(f3.columns_unmapped) AS h
             WHERE f3.accession = x.accession
-              AND (length(h) > 45 OR h ~ '[0-9]{3}')) AS pegados
+              AND (length(h) > 45 OR h ~ '[0-9]{3}')) AS glued
      FROM x
-    WHERE x.sin_tipo >= 5
-    ORDER BY x.sin_tipo DESC LIMIT 12`,
+    WHERE x.no_type >= 5
+    ORDER BY x.no_type DESC LIMIT 12`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Las emisiones que concentran — ahí el diagnóstico es otro");
+console.log("The issuances that concentrate — there the diagnosis is different");
 console.log(`${"─".repeat(78)}\n`);
-if (concentradas.length === 0) {
-  console.log(`  \x1b[32mNinguna emisión llega a 5 préstamos sin tipo.\x1b[0m`);
+if (concentrated.length === 0) {
+  console.log(`  \x1b[32mNo issuance reaches 5 loans without a type.\x1b[0m`);
 } else {
-  console.log(`  emisión                          añada   sin tipo / pool   "Various"   con count`);
+  console.log(`  issuance                        vintage   no type / pool   "Various"   with count`);
   console.log(`  ${"─".repeat(76)}`);
-  for (const r of concentradas) {
-    const sin = Number(r.sin_tipo), n = Number(r.n), vv = Number(r.various);
+  for (const r of concentrated) {
+    const missing = Number(r.no_type), n = Number(r.n), vv = Number(r.various);
     console.log(
-      `  ${r.emision.slice(0, 30).padEnd(32)} ${r.anada}   ${String(sin).padStart(6)} / ${String(n).padEnd(5)}` +
-        `  ${String(vv).padStart(7)}   ${String(r.con_count).padStart(7)}` +
-        (vv / Math.max(1, sin) < 0.5 ? `  \x1b[33m← no son carteras\x1b[0m` : ""),
+      `  ${r.issuance.slice(0, 30).padEnd(32)} ${r.vintage}   ${String(missing).padStart(6)} / ${String(n).padEnd(5)}` +
+        `  ${String(vv).padStart(7)}   ${String(r.with_count).padStart(7)}` +
+        (vv / Math.max(1, missing) < 0.5 ? `  \x1b[33m← these are not portfolios\x1b[0m` : ""),
     );
     if (r.headers) {
       for (const h of r.headers.split(" § ")) {
-        console.log(`  \x1b[32m    encabezado: ${h.slice(0, 100)}\x1b[0m`);
-        console.log(`  ${porQueNoMapea(h)}`);
+        console.log(`  \x1b[32m    header: ${h.slice(0, 100)}\x1b[0m`);
+        console.log(`  ${whyItDoesNotMap(h)}`);
       }
     }
     /**
-     * La firma de la tarea #48: un encabezado de más de 45 caracteres o con tres
-     * dígitos seguidos no es un encabezado, es uno con datos pegados adentro. Si
-     * el encabezado del bloque está corrompido, la columna de tipo tampoco mapea.
+     * The signature of task #48: a header longer than 45 characters or with three
+     * consecutive digits is not a header, it is one with data glued inside. If the
+     * block's header is corrupted, the type column does not map either.
      */
-    if (r.pegados) {
-      console.log(`  \x1b[33m    encabezados con datos pegados (#48): ${r.pegados.slice(0, 56)}\x1b[0m`);
+    if (r.glued) {
+      console.log(`  \x1b[33m    headers with glued-in data (#48): ${r.glued.slice(0, 56)}\x1b[0m`);
     }
   }
   console.log(
-    `\n  \x1b[90mTres poblaciones, tres arreglos. Carteras multi-propiedad: no hay nada que\x1b[0m`,
+    `\n  \x1b[90mThree populations, three fixes. Multi-property portfolios: nothing to\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mrecuperar, hace falta una categoría "Varios". Encabezados con datos pegados:\x1b[0m`,
+    `  \x1b[90mrecover, a "Various" category is needed. Headers with glued-in data: that\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mes la tarea #48 y arreglarla recupera la emisión entera. Y BBCMS 2022-C17,\x1b[0m`,
+    `  \x1b[90mis task #48 and fixing it recovers the whole issuance. And BBCMS 2022-C17,\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mque no es ninguna de las dos y ya estaba abierta como #40.\x1b[0m`,
+    `  \x1b[90mwhich is neither and was already open as #40.\x1b[0m`,
   );
   console.log(
-    `\n  \x1b[90m"Title Type" y "Appraised Value Type" NO son tipo de propiedad —son fee vs\x1b[0m`,
+    `\n  \x1b[90m"Title Type" and "Appraised Value Type" are NOT property types — they are\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mleasehold y as-is vs as-stabilized—. El filtro anterior los traía como pista.\x1b[0m`,
+    `  \x1b[90mfee vs leasehold and as-is vs as-stabilized. The earlier filter surfaced them.\x1b[0m`,
   );
 }
 
-const estado = await corpusState();
+const state = await corpusState();
 await closePool();
-console.log(`\n\x1b[90m  ${provenanceStamp(estado)}\x1b[0m\n`);
+console.log(`\n\x1b[90m  ${provenanceStamp(state)}\x1b[0m\n`);
