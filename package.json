@@ -67,7 +67,11 @@
     "db:missing-state": "tsx db/missingState.ts",
     "db:provenance": "tsx db/provenanceCli.ts",
     "api:scenarios": "tsx api/scenarios.ts",
-    "api:contract": "python3 tools/check-html-contract.py"
+    "api:contract": "python3 tools/check-html-contract.py",
+    "check:spanish": "python3 tools/find-spanish.py && python3 tools/find-spanish-idents.py",
+    "check:sql": "python3 tools/check-sql.py",
+    "check:all": "npm run typecheck && npm run check:spanish && npm run check:sql && npm run api:contract",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13",

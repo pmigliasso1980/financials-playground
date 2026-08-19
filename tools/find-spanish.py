@@ -102,3 +102,12 @@ for p in paths:
         print(f"{len(hits):5d}  {p}")
 print(f"\n{total} suspect lines across {sum(1 for p in paths if scan(p))} files"
       f" (of {len(paths)} scanned)")
+
+# Exit nonzero when anything is found.
+#
+# This printed its report and exited 0 for the whole migration, so wiring it
+# into a pre-push hook would have gated on nothing: `set -e` never fired and
+# the push went through with 3,764 suspect lines on screen. A checker that
+# reports without failing is a checker you have to remember to read, which is
+# the same failure this project keeps re-committing in different clothes.
+sys.exit(1 if total else 0)

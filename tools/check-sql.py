@@ -80,6 +80,7 @@ def check(path: pathlib.Path) -> int:
 
     const = {m.group(1): m.group(2) for m in re.finditer(r"^const (\w+) = `([^`]*)`;", src, re.M)}
     bad = 0
+    unverified: list[int] = []
     for n, sql in enumerate(sqls, 1):
         s = sql
         for k, v in const.items():
@@ -99,8 +100,15 @@ def check(path: pathlib.Path) -> int:
             #          `$${params.length + 1}`, which the substitution turns into
             #          `$'x'`. api/comps.ts builds its placeholders that way.
             if "'x'" in str(e) or 'at or near "$"' in str(e):
-                print(f"  ? {path.name}: NOT VERIFIED — interpolates SQL fragments, not values")
-                return 0
+                # NOT a `return 0`. This used to bail out of the whole file the
+                # moment one query turned out to be unverifiable, throwing away
+                # any real syntax errors already found in earlier queries of the
+                # same file. Planting `SELEKT` in db/identities.ts printed
+                # "✗ syntax error" and still exited 0, because a later query hit
+                # this branch and discarded the count. Same shape as the rest:
+                # the checker had a path where it reported a finding and passed.
+                unverified.append(n)
+                continue
             print(f"  ✗ {path.name} query {n}: {e}")
             bad += 1
             continue
@@ -143,9 +151,28 @@ def check(path: pathlib.Path) -> int:
             for f in found:
                 print(f"  ✗ {path.name} query {n}: {f}")
             bad += 1
-    if bad == 0:
-        print(f"  ✓ {path.name}: {len(sqls)} queries, syntax ok, no SELECT without FROM")
+    if unverified:
+        print(f"  ? {path.name}: {len(unverified)} of {len(sqls)} queries NOT VERIFIED"
+              f" — they interpolate SQL fragments, not values")
+    if bad == 0 and len(unverified) < len(sqls):
+        print(f"  ✓ {path.name}: {len(sqls) - len(unverified)} of {len(sqls)} queries"
+              f" checked, syntax ok, no SELECT without FROM")
     return bad
 
 
-sys.exit(sum(check(pathlib.Path(a)) for a in sys.argv[1:]))
+# With no arguments this used to scan sys.argv[1:] — an empty list — and exit 0.
+# In a hook that reads as "SQL is fine" when nothing was looked at. Default to
+# every tracked file that could contain a query.
+args = sys.argv[1:]
+if not args:
+    import subprocess
+    tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.split("\n")
+    args = [f for f in tracked
+            if f.endswith((".ts", ".mts")) and not f.startswith("harvest/fixtures/")
+            and pathlib.Path(f).exists()]
+    args = [f for f in args if "query" in pathlib.Path(f).read_text(errors="ignore")]
+    if not args:
+        print("check-sql: no files with queries found — refusing to report success")
+        sys.exit(1)
+
+sys.exit(sum(check(pathlib.Path(a)) for a in args))

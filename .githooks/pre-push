@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# The gate that this project learned it needed the hard way.
+#
+# The migration to English was closed file by file against find-spanish.py,
+# which works on prose and cannot see a Spanish identifier: one word on a line
+# of English code never reaches its two-word threshold. Sixteen files were
+# committed as translated with ~1,100 Spanish identifiers still in them, and
+# nothing said otherwise, because the only thing being asked was a tool that
+# could not fail.
+#
+# Running it by hand is not a fix for that. The failure was not forgetting to
+# run it; it was trusting one instrument. So both run here, and so does tsc.
+#
+# Install with: npm run hooks:install
+# Bypass with:  git push --no-verify   (when you mean to, and know why)
+
+set -e
+
+echo "pre-push: typecheck"
+npx tsc --noEmit
+
+echo "pre-push: Spanish prose"
+python3 tools/find-spanish.py
+
+echo "pre-push: Spanish identifiers"
+python3 tools/find-spanish-idents.py
+
+echo "pre-push: SQL syntax"
+python3 tools/check-sql.py
+
+echo "pre-push: HTML/API contract"
+python3 tools/check-html-contract.py
+
+echo "pre-push: ok"
