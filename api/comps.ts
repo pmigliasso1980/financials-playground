@@ -1,114 +1,117 @@
 /**
- * Comparables: la única pregunta que el corpus le puede contestar a un broker.
+ * Comparables: the one question this corpus can answer for a broker.
  *
- * "Tengo una propiedad de este tipo, en este estado, de este tamaño. ¿Qué
- * términos consiguieron préstamos parecidos?"
+ * "I have a property of this type, in this state, of this size. What terms did
+ * similar loans get?"
  *
- * Es lógica de dominio pura, sin HTTP, para que se pueda probar y para que el
- * servidor sea solo transporte.
+ * It is pure domain logic, with no HTTP, so it can be tested and so the server is
+ * only transport.
  *
- * LAS TRES REGLAS QUE VIENEN DEL TRABAJO ANTERIOR
+ * THE THREE RULES THAT COME FROM THE EARLIER WORK
  *
- * 1. Se niega antes que inventar. Bajo el mínimo no hay rango que dar, y devolver
- *    una mediana de tres préstamos es peor que no contestar: parece una respuesta.
+ * 1. It refuses rather than invents. Below the minimum there is no range to give,
+ *    and returning the median of three loans is worse than not answering: it looks
+ *    like an answer.
  *
- *    Pero antes de negarse abre el radio: estado, después la división censal,
- *    después todo el país. Se para en el PRIMER peldaño que alcanza, no en el que
- *    más devuelve, porque un comparable de otro estado es peor que uno propio y el
- *    radio se abre solo lo necesario.
+ *    But before refusing it widens the radius: state, then census division, then
+ *    the whole country. It stops at the FIRST rung that suffices, not the one that
+ *    returns the most, because a comparable from another state is worse than one
+ *    from your own and the radius opens only as far as needed.
  *
- * 2. Cada número trae su base. La cobertura no es la misma para todas las
- *    métricas —puede haber 31 comparables y solo 22 con debt yield— así que cada
- *    distribución dice sobre cuántos se calculó, no sobre cuántos hay.
+ * 2. Every number carries its base. Coverage is not the same across metrics
+ *    —there may be 31 comparables and only 22 with a debt yield— so each
+ *    distribution says how many it was computed over, not how many exist.
  *
- * 3. Toda respuesta trae procedencia y el límite del canal. Este corpus es SOLO
- *    conduit CMBS: no hay bancos, agencias, deuda puente ni compañías de vida. Un
- *    broker que compara contra esto compara contra un canal, y si la respuesta no
- *    lo dice, miente por omisión.
+ * 3. Every answer carries provenance and the channel's limit. This corpus is ONLY
+ *    conduit CMBS: no banks, agencies, bridge debt or life companies. A broker
+ *    comparing against this is comparing against one channel, and if the answer
+ *    does not say so, it lies by omission.
  */
 
 import { query } from "../db/client.js";
 import { corpusState, provenanceStamp } from "../db/provenance.js";
 
 /**
- * REVISADO CON DATOS, Y ESO SE DECLARA.
+ * REVISED WITH DATA, AND THAT IS DECLARED.
  *
- * Estaba en 5, fijado antes de ver nada. La corrida de `api:casos` mostró por qué
- * quedaba corto: multifamily en Georgia devolvió 6 comparables y un rango de LTV
- * de 65,4% a 69,1%. Un intercuartil construido con seis puntos son dos o tres
- * préstamos, y ese rango proyecta una precisión que no tiene.
+ * It was 5, fixed before seeing anything. The `api:scenarios` run showed why that
+ * fell short: multifamily in Georgia returned 6 comparables and an LTV range of
+ * 65.4% to 69.1%. An interquartile range built from six points is two or three
+ * loans, and that range projects a precision it does not have.
  *
- * Se sube a 10. No es que 5 estuviera "mal" —era una cuenta a priori razonable—
- * sino que ahora hay evidencia de en qué se equivocaba, y eso vale más que la
- * pureza de no tocarlo.
+ * Raised to 10. It is not that 5 was "wrong" —it was a reasonable a priori count—
+ * but that there is now evidence of what it got wrong, and that is worth more than
+ * the purity of not touching it.
  */
 export const MIN_COMPARABLES = 10;
-export const BANDA_DEFECTO = 0.5;
-export const MESES_DEFECTO = 18;
+export const DEFAULT_BAND = 0.5;
+export const DEFAULT_MONTHS = 18;
 
-export const TIPOS = [
+export const PROPERTY_TYPES = [
   "Multifamily", "Retail", "Office", "Industrial",
   "Self Storage", "Hospitality", "Mixed Use", "Manufactured",
 ] as const;
-export type Tipo = (typeof TIPOS)[number];
+export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
 /**
- * LAS NUEVE DIVISIONES CENSALES, Y POR QUÉ NO LAS CUATRO REGIONES.
+ * THE NINE CENSUS DIVISIONS, AND WHY NOT THE FOUR REGIONS.
  *
- * `api:casos` dejó a la vista que el filtro por estado es el que rompe el
- * producto: industrial en Nueva Jersey encontró 4 comparables y 53 en todo el
- * país. No falta información, está en el estado de al lado — y un broker de NJ
- * mira comparables de Pensilvania y Nueva York sin dudarlo.
+ * `api:scenarios` made plain that the state filter is what breaks the product:
+ * industrial in New Jersey found 4 comparables and 53 across the country. The
+ * information is not missing, it is in the next state over — and a New Jersey
+ * broker looks at Pennsylvania and New York comparables without hesitating.
  *
- * Las cuatro regiones grandes (Noreste, Medio Oeste, Sur, Oeste) son demasiado
- * gruesas: meten Florida con Virginia Occidental y California con Alaska. Las
- * nueve divisiones agrupan mercados que de verdad se comparan entre sí.
+ * The four big regions (Northeast, Midwest, South, West) are too coarse: they put
+ * Florida with West Virginia and California with Alaska. The nine divisions group
+ * markets that genuinely compare with each other.
  *
- * No es una taxonomía nuestra: es la del Census Bureau, la misma que usan los
- * informes de mercado del sector. Inventar nuestras propias regiones sería una
- * decisión arbitraria más para justificar.
+ * It is not our taxonomy: it is the Census Bureau's, the same one the sector's
+ * market reports use. Inventing our own regions would be one more arbitrary
+ * decision to justify.
  */
-export const DIVISIONES: Record<string, { nombre: string; estados: string[] }> = {
-  new_england: { nombre: "Nueva Inglaterra", estados: ["CT", "ME", "MA", "NH", "RI", "VT"] },
-  mid_atlantic: { nombre: "Atlántico Medio", estados: ["NJ", "NY", "PA"] },
-  e_north_central: { nombre: "Centro Noreste", estados: ["IL", "IN", "MI", "OH", "WI"] },
-  w_north_central: { nombre: "Centro Noroeste", estados: ["IA", "KS", "MN", "MO", "NE", "ND", "SD"] },
-  south_atlantic: { nombre: "Atlántico Sur", estados: ["DE", "DC", "FL", "GA", "MD", "NC", "SC", "VA", "WV"] },
-  e_south_central: { nombre: "Centro Sureste", estados: ["AL", "KY", "MS", "TN"] },
-  w_south_central: { nombre: "Centro Suroeste", estados: ["AR", "LA", "OK", "TX"] },
-  mountain: { nombre: "Montañas", estados: ["AZ", "CO", "ID", "MT", "NV", "NM", "UT", "WY"] },
-  pacific: { nombre: "Pacífico", estados: ["AK", "CA", "HI", "OR", "WA"] },
+export const DIVISIONS: Record<string, { name: string; states: string[] }> = {
+  new_england: { name: "New England", states: ["CT", "ME", "MA", "NH", "RI", "VT"] },
+  mid_atlantic: { name: "Mid-Atlantic", states: ["NJ", "NY", "PA"] },
+  e_north_central: { name: "East North Central", states: ["IL", "IN", "MI", "OH", "WI"] },
+  w_north_central: { name: "West North Central", states: ["IA", "KS", "MN", "MO", "NE", "ND", "SD"] },
+  south_atlantic: { name: "South Atlantic", states: ["DE", "DC", "FL", "GA", "MD", "NC", "SC", "VA", "WV"] },
+  e_south_central: { name: "East South Central", states: ["AL", "KY", "MS", "TN"] },
+  w_south_central: { name: "West South Central", states: ["AR", "LA", "OK", "TX"] },
+  mountain: { name: "Mountain", states: ["AZ", "CO", "ID", "MT", "NV", "NM", "UT", "WY"] },
+  pacific: { name: "Pacific", states: ["AK", "CA", "HI", "OR", "WA"] },
 };
 
-export function divisionDe(estado: string): { nombre: string; estados: string[] } | null {
-  const e = estado.toUpperCase();
-  for (const d of Object.values(DIVISIONES)) if (d.estados.includes(e)) return d;
+export function divisionOf(state: string): { name: string; states: string[] } | null {
+  const e = state.toUpperCase();
+  for (const d of Object.values(DIVISIONS)) if (d.states.includes(e)) return d;
   return null;
 }
 
 /**
- * Hasta dónde hubo que abrir el radio.
+ * How far the radius had to open.
  *
- * "País" NO es un peldaño más de la escalera, y esa distinción se pagó cara.
+ * "Country" is NOT just another rung of the ladder, and that distinction was paid
+ * for dearly.
  *
- * La primera versión bajaba automáticamente hasta el país, y con eso los doce
- * casos de prueba pasaron a contestarse. Parecía un triunfo y era una regresión:
- * como el corpus siempre tiene diez préstamos de cualquier tipo a nivel nacional,
- * `suficiente: false` se volvió INALCANZABLE. El producto perdió la capacidad de
- * decir que no, que es el rasgo que lo distingue de una planilla.
+ * The first version stepped automatically down to the country, and with that all
+ * twelve test scenarios started answering. It looked like a triumph and it was a
+ * regression: since the corpus always has ten loans of any type nationally,
+ * `sufficient: false` became UNREACHABLE. The product lost its ability to say no,
+ * which is the trait that distinguishes it from a spreadsheet.
  *
- * Es la misma prueba-que-no-puede-fallar que aparece en todo este repositorio, esta
- * vez adentro del producto.
+ * It is the same test-that-cannot-fail that appears all over this repository, this
+ * time inside the product.
  *
- * Y los números lo confirman: retail de 4M en Ohio a nivel nacional da un LTV de
- * 38,2% a 58,0%. Veinte puntos de intercuartil no son un conjunto de comparables,
- * son el mercado entero — cierto y sin información.
+ * And the numbers confirm it: retail at 4M in Ohio, nationally, gives an LTV of
+ * 38.2% to 58.0%. Twenty points of interquartile range is not a comparable set, it
+ * is the whole market — true and uninformative.
  *
- * Así que el radio automático llega hasta la REGIÓN. El país existe, pero hay que
- * pedirlo: es una afirmación distinta —"así se financia esto en el país", no "así
- * se financia en tu mercado"— y quien pregunta tiene que elegirla.
+ * So the automatic radius stops at the REGION. The country exists, but it has to
+ * be asked for: it is a different claim —"this is how this gets financed
+ * nationally", not "this is how it gets financed in your market"— and whoever asks
+ * has to choose it.
  */
-export type Alcance = "estado" | "region" | "pais";
+export type Scope = "state" | "region" | "country";
 
 const CANON = `CASE
     WHEN l.property_type ~* 'multifamily|cooperative|garden|low rise|mid rise|student' THEN 'Multifamily'
@@ -119,30 +122,30 @@ const CANON = `CASE
     WHEN l.property_type ~* 'hospitality|hotel|service|extended stay' THEN 'Hospitality'
     WHEN l.property_type ~* 'mixed' THEN 'Mixed Use'
     WHEN l.property_type ~* 'manufactured' THEN 'Manufactured'
-    ELSE 'Otro'
+    ELSE 'Other'
   END`;
 
-export interface Criterios {
-  estado: string;
-  tipo: Tipo;
-  monto: number;
+export interface Criteria {
+  state: string;
+  type: PropertyType;
+  amount: number;
   /**
-   * Pedir explícitamente el alcance nacional. Por defecto la escalera para en la
-   * región, para que la negativa siga siendo posible.
+   * Explicitly ask for national scope. By default the ladder stops at the region,
+   * so that the refusal remains possible.
    */
-  nacional?: boolean;
-  /** Ancho de la banda de tamaño. 0,5 = ±50%. */
-  banda?: number;
-  /** Ventana hacia atrás desde hoy. */
-  meses?: number;
-  /** Opcional: el LTV que pide el cliente, para ubicarlo en la distribución. */
-  ltvObjetivo?: number;
+  national?: boolean;
+  /** Width of the size band. 0.5 = ±50%. */
+  band?: number;
+  /** Look-back window from today. */
+  months?: number;
+  /** Optional: the LTV the client is asking for, to place it in the distribution. */
+  targetLtv?: number;
 }
 
-export interface Distribucion {
-  metrica: string;
-  etiqueta: string;
-  /** Sobre cuántos comparables se calculó: NO es el total de comparables. */
+export interface Distribution {
+  metric: string;
+  label: string;
+  /** How many comparables it was computed over: NOT the total number of comparables. */
   base: number;
   p25: number;
   p50: number;
@@ -151,206 +154,207 @@ export interface Distribucion {
 
 export interface Comparable {
   loanId: number;
-  emision: string;
-  fecha: string;
-  propiedad: string | null;
-  ciudad: string | null;
-  monto: number;
+  issuance: string;
+  date: string;
+  property: string | null;
+  city: string | null;
+  amount: number;
   accession: string;
   /**
-   * DOS URLS, LAS DOS LEÍDAS DE LA BASE Y NINGUNA CONSTRUIDA DE MEMORIA.
+   * TWO URLS, BOTH READ FROM THE DATABASE AND NEITHER BUILT FROM MEMORY.
    *
-   * `documento` es exactamente el archivo que el harvester descargó y parseó —la
-   * columna `file_url` de `corpus.filings`—, así que abre el Annex A del que
-   * salieron estos números y no una búsqueda parecida.
+   * `document` is exactly the file the harvester downloaded and parsed —the
+   * `file_url` column of `corpus.filings`— so it opens the Annex A these numbers
+   * came from and not a similar-looking search.
    *
-   * `indice` es la página del filing en EDGAR, armada con cik + accession, para
-   * cuando alguien quiere ver el resto de los documentos de esa emisión.
+   * `index` is the filing's page on EDGAR, built from cik + accession, for when
+   * someone wants to see the rest of that issuance's documents.
    *
-   * La primera versión de esto era una URL de búsqueda de EDGAR que escribí de
-   * memoria, con los parámetros vacíos y `action` repetido dos veces: no llevaba a
-   * ninguna parte. El dato correcto estaba en la base desde el principio.
+   * The first version of this was an EDGAR search URL I wrote from memory, with
+   * empty parameters and `action` repeated twice: it led nowhere. The correct datum
+   * was in the database from the start.
    */
-  documento: string;
-  indice: string;
+  document: string;
+  index: string;
 }
 
-/** Un peldaño de la escalera geográfica, con cuántos hay en ese radio. */
-export interface Peldano {
-  alcance: Alcance;
-  etiqueta: string;
-  encontrados: number;
+/** One rung of the geographic ladder, with how many exist at that radius. */
+export interface Rung {
+  scope: Scope;
+  label: string;
+  found: number;
 }
 
-export type Respuesta =
+export type CompsResponse =
   | {
-      suficiente: false;
-      encontrados: number;
-      minimo: number;
-      /** La escalera completa, para que se vea que se intentó abrir el radio. */
-      escalera: Peldano[];
-      /** Qué pasaría si se afloja cada criterio, para que decida quien pregunta. */
-      siAmplias: Array<{ criterio: string; encontrados: number }>;
-      criterios: Criterios;
-      corpus: { provenanceStamp: string; canal: string };
+      sufficient: false;
+      found: number;
+      minimum: number;
+      /** The full ladder, so it is visible that the radius was widened. */
+      ladder: Rung[];
+      /** What would happen if each criterion were loosened, so the asker decides. */
+      ifWidened: Array<{ criterion: string; found: number }>;
+      criteria: Criteria;
+      corpus: { provenanceStamp: string; channel: string };
     }
   | {
-      suficiente: true;
-      encontrados: number;
+      sufficient: true;
+      found: number;
       /**
-       * Qué radio se terminó usando. Va en la respuesta porque cambia lo que el
-       * número significa: "31 en Texas" y "31 en el Centro Suroeste" no son la
-       * misma afirmación, y el que pregunta tiene que poder distinguirlas.
+       * Which radius ended up being used. It travels in the response because it
+       * changes what the number means: "31 in Texas" and "31 in West South
+       * Central" are not the same claim, and the asker has to be able to tell them
+       * apart.
        */
-      alcance: Alcance;
-      alcanceEtiqueta: string;
-      escalera: Peldano[];
-      distribuciones: Distribucion[];
-      objetivo: { ltv: number; alcanzaron: number; de: number } | null;
-      muestra: Comparable[];
-      criterios: Criterios;
-      corpus: { provenanceStamp: string; canal: string };
+      scope: Scope;
+      scopeLabel: string;
+      ladder: Rung[];
+      distributions: Distribution[];
+      target: { ltv: number; reached: number; of: number } | null;
+      sample: Comparable[];
+      criteria: Criteria;
+      corpus: { provenanceStamp: string; channel: string };
     };
 
 /**
- * La página del filing en EDGAR: cik + accession sin guiones + accession con
- * guiones. Es la única parte que se arma con una regla en vez de leerse, y por eso
- * el smoke la verifica contra un accession real.
+ * The filing's page on EDGAR: cik + accession without dashes + accession with
+ * dashes. It is the only part built from a rule rather than read, which is why the
+ * smoke test verifies it against a real accession.
  */
-export function indiceEdgar(cik: string, accession: string): string {
-  const limpio = accession.replace(/-/g, "");
-  return `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${limpio}/${accession}-index.htm`;
+export function edgarIndexUrl(cik: string, accession: string): string {
+  const clean = accession.replace(/-/g, "");
+  return `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${clean}/${accession}-index.htm`;
 }
 
-const CANAL =
-  "Solo conduit CMBS de SEC EDGAR. No incluye bancos, agencias, deuda puente ni " +
-  "compañías de seguros de vida.";
+const CHANNEL =
+  "Conduit CMBS from SEC EDGAR only. Does not include banks, agencies, bridge debt " +
+  "or life insurance companies.";
 
 /**
- * El WHERE compartido, parametrizado por ámbito geográfico.
+ * The shared WHERE clause, parameterised by geographic scope.
  *
- * `estados = null` significa todo el país. Si esto cambia acá, cambia en el
- * conteo, en las distribuciones y en la muestra a la vez — que es el motivo de que
- * exista una sola función y no tres consultas parecidas.
+ * `states = null` means the whole country. If this changes here, it changes in the
+ * count, in the distributions and in the sample at once — which is the reason a
+ * single function exists rather than three similar queries.
  */
-function filtro(c: Criterios, estados: string[] | null) {
-  const banda = c.banda ?? BANDA_DEFECTO;
-  const meses = c.meses ?? MESES_DEFECTO;
+function filter(c: Criteria, states: string[] | null) {
+  const band = c.band ?? DEFAULT_BAND;
+  const months = c.months ?? DEFAULT_MONTHS;
   const params: unknown[] = [
-    c.tipo,
-    c.monto * (1 - banda),
-    c.monto * (1 + banda),
-    String(meses),
+    c.type,
+    c.amount * (1 - band),
+    c.amount * (1 + band),
+    String(months),
   ];
   let sql = `${CANON} = $1
           AND am.value::numeric BETWEEN $2 AND $3
           AND f.filed_at >= now() - ($4 || ' months')::interval`;
-  if (estados) {
-    params.push(estados);
+  if (states) {
+    params.push(states);
     sql += `\n          AND nullif(btrim(l.state), '') = ANY($${params.length})`;
   }
   return { sql, params };
 }
 
-const DESDE = `FROM corpus.loans l
+const FROM = `FROM corpus.loans l
    JOIN corpus.filings f ON f.accession = l.accession
    JOIN corpus.facts am ON am.loan_id = l.id AND am.metric_key = 'loan_amount'
                        AND am.value ~ '^[0-9.]+$' AND am.value::numeric > 0`;
 
-async function contar(c: Criterios, estados: string[] | null): Promise<number> {
-  const { sql, params } = filtro(c, estados);
+async function count(c: Criteria, states: string[] | null): Promise<number> {
+  const { sql, params } = filter(c, states);
   const { rows } = await query<{ n: string }>(
-    `SELECT count(*)::text AS n ${DESDE} WHERE ${sql}`,
+    `SELECT count(*)::text AS n ${FROM} WHERE ${sql}`,
     params,
   );
   return Number(rows[0]!.n);
 }
 
-const METRICAS: Array<{ key: string; etiqueta: string; max: number }> = [
-  { key: "ltv", etiqueta: "LTV", max: 2 },
-  { key: "dscr", etiqueta: "DSCR", max: 20 },
-  { key: "debt_yield", etiqueta: "Debt yield", max: 2 },
-  { key: "interest_rate", etiqueta: "Tasa", max: 1 },
+const METRICS: Array<{ key: string; label: string; max: number }> = [
+  { key: "ltv", label: "LTV", max: 2 },
+  { key: "dscr", label: "DSCR", max: 20 },
+  { key: "debt_yield", label: "Debt yield", max: 2 },
+  { key: "interest_rate", label: "Rate", max: 1 },
 ];
 
-export async function buscarComparables(c: Criterios): Promise<Respuesta> {
-  const estado = await corpusState();
-  const corpus = { provenanceStamp: provenanceStamp(estado), canal: CANAL };
-  const div = divisionDe(c.estado);
+export async function findComparables(c: Criteria): Promise<CompsResponse> {
+  const state = await corpusState();
+  const corpus = { provenanceStamp: provenanceStamp(state), channel: CHANNEL };
+  const div = divisionOf(c.state);
 
   /**
-   * LA ESCALERA: estado, después región, después país.
+   * THE LADDER: state, then region, then country.
    *
-   * Se para en el PRIMER peldaño que llega al mínimo, no en el que más devuelve.
-   * Un comparable de otro estado es peor que uno del mismo estado, así que el
-   * radio se abre solo lo necesario y nunca por gusto.
+   * It stops at the FIRST rung that reaches the minimum, not the one that returns
+   * the most. A comparable from another state is worse than one from the same
+   * state, so the radius opens only as far as needed and never for its own sake.
    *
-   * Los tres peldaños se cuentan igual —también los que no se usaron— porque
-   * "4 en NJ, 19 en el Atlántico Medio" le dice al que pregunta de dónde salió
-   * su respuesta y qué tan lejos hubo que ir a buscarla.
+   * All three rungs are counted the same —including the ones not used— because
+   * "4 in NJ, 19 in the Mid-Atlantic" tells the asker where their answer came from
+   * and how far we had to go to find it.
    */
-  const peldanos: Array<{ alcance: Alcance; etiqueta: string; estados: string[] | null }> = [
-    { alcance: "estado", etiqueta: c.estado.toUpperCase(), estados: [c.estado.toUpperCase()] },
-    ...(div ? [{ alcance: "region" as const, etiqueta: div.nombre, estados: div.estados }] : []),
-    /** Solo si lo piden. Ver el comentario de `Alcance`. */
-    ...(c.nacional ? [{ alcance: "pais" as const, etiqueta: "todo el país", estados: null }] : []),
+  const rungs: Array<{ scope: Scope; label: string; states: string[] | null }> = [
+    { scope: "state", label: c.state.toUpperCase(), states: [c.state.toUpperCase()] },
+    ...(div ? [{ scope: "region" as const, label: div.name, states: div.states }] : []),
+    /** Only if asked for. See the comment on `Scope`. */
+    ...(c.national ? [{ scope: "country" as const, label: "the whole country", states: null }] : []),
   ];
 
-  const escalera: Peldano[] = [];
-  let elegido: (typeof peldanos)[number] | null = null;
-  for (const p of peldanos) {
-    const n = await contar(c, p.estados);
-    escalera.push({ alcance: p.alcance, etiqueta: p.etiqueta, encontrados: n });
-    if (!elegido && n >= MIN_COMPARABLES) elegido = p;
+  const ladder: Rung[] = [];
+  let chosen: (typeof rungs)[number] | null = null;
+  for (const p of rungs) {
+    const n = await count(c, p.states);
+    ladder.push({ scope: p.scope, label: p.label, found: n });
+    if (!chosen && n >= MIN_COMPARABLES) chosen = p;
   }
 
   /**
-   * El conteo nacional se calcula SIEMPRE aunque no se use, para poder ofrecerlo
-   * en la negativa. "No hay comparables en tu mercado, pero hay 58 en el país si
-   * querés verlos" es una respuesta mejor que un callejón, y deja la decisión del
-   * lado de quien pregunta.
+   * The national count is ALWAYS computed even when unused, so it can be offered
+   * in the refusal. "There are no comparables in your market, but there are 58
+   * nationally if you want to see them" is a better answer than a dead end, and it
+   * leaves the decision with the asker.
    */
-  if (!c.nacional) {
-    const nPais = await contar(c, null);
-    escalera.push({ alcance: "pais", etiqueta: "todo el país (hay que pedirlo)", encontrados: nPais });
+  if (!c.national) {
+    const nCountry = await count(c, null);
+    ladder.push({ scope: "country", label: "the whole country (must be asked for)", found: nCountry });
   }
 
-  if (!elegido) {
+  if (!chosen) {
     /**
-     * Ni abriendo a todo el país alcanza. Recién ahí se ofrecen los otros dos
-     * ejes —tamaño y ventana— porque aflojarlos cambia qué es un comparable, y
-     * eso es una decisión de quien pregunta y no nuestra.
+     * Not even opening to the whole country is enough. Only then are the other two
+     * axes —size and window— offered, because loosening them changes what counts
+     * as a comparable, and that is the asker's decision and not ours.
      */
     return {
-      suficiente: false,
-      encontrados: escalera[0]!.encontrados,
-      minimo: MIN_COMPARABLES,
-      escalera,
-      siAmplias: [
-        { criterio: "±100% de monto en vez de ±50%", encontrados: await contar({ ...c, banda: 1 }, null) },
-        { criterio: "últimos 36 meses en vez de 18", encontrados: await contar({ ...c, meses: 36 }, null) },
+      sufficient: false,
+      found: ladder[0]!.found,
+      minimum: MIN_COMPARABLES,
+      ladder,
+      ifWidened: [
+        { criterion: "±100% of amount instead of ±50%", found: await count({ ...c, band: 1 }, null) },
+        { criterion: "last 36 months instead of 18", found: await count({ ...c, months: 36 }, null) },
       ],
-      criterios: c,
+      criteria: c,
       corpus,
     };
   }
 
-  const ambito = elegido.estados;
-  const encontrados = escalera.find((e) => e.alcance === elegido!.alcance)!.encontrados;
-  const { sql, params } = filtro(c, ambito);
+  const scopeStates = chosen.states;
+  const found = ladder.find((e) => e.scope === chosen!.scope)!.found;
+  const { sql, params } = filter(c, scopeStates);
 
   /**
-   * Una consulta por métrica: cada una tiene su propia cobertura, y calcularlas
-   * juntas obligaría a un FILTER por métrica que oscurece de dónde sale cada base.
+   * One query per metric: each has its own coverage, and computing them together
+   * would require a FILTER per metric that obscures where each base comes from.
    */
-  const distribuciones: Distribucion[] = [];
-  for (const m of METRICAS) {
+  const distributions: Distribution[] = [];
+  for (const m of METRICS) {
     const { rows } = await query<{ base: string; p25: string; p50: string; p75: string }>(
       `SELECT count(*)::text AS base,
               percentile_cont(0.25) WITHIN GROUP (ORDER BY v.value::numeric)::text AS p25,
               percentile_cont(0.50) WITHIN GROUP (ORDER BY v.value::numeric)::text AS p50,
               percentile_cont(0.75) WITHIN GROUP (ORDER BY v.value::numeric)::text AS p75
-         ${DESDE}
+         ${FROM}
          JOIN corpus.facts v ON v.loan_id = l.id AND v.metric_key = $${params.length + 1}
                             AND v.value ~ '^[0-9.]+$'
                             AND v.value::numeric > 0 AND v.value::numeric < $${params.length + 2}
@@ -359,45 +363,45 @@ export async function buscarComparables(c: Criterios): Promise<Respuesta> {
     );
     const r = rows[0]!;
     if (Number(r.base) === 0) continue;
-    distribuciones.push({
-      metrica: m.key, etiqueta: m.etiqueta, base: Number(r.base),
+    distributions.push({
+      metric: m.key, label: m.label, base: Number(r.base),
       p25: Number(r.p25), p50: Number(r.p50), p75: Number(r.p75),
     });
   }
 
-  /** Dónde cae lo que pide el cliente dentro de lo que el canal efectivamente dio. */
-  let objetivo: { ltv: number; alcanzaron: number; de: number } | null = null;
-  if (c.ltvObjetivo != null) {
-    const { rows } = await query<{ alcanzaron: string; de: string }>(
-      `SELECT count(*) FILTER (WHERE v.value::numeric >= $${params.length + 1})::text AS alcanzaron,
-              count(*)::text AS de
-         ${DESDE}
+  /** Where the client's request falls within what the channel actually delivered. */
+  let target: { ltv: number; reached: number; of: number } | null = null;
+  if (c.targetLtv != null) {
+    const { rows } = await query<{ reached: string; of: string }>(
+      `SELECT count(*) FILTER (WHERE v.value::numeric >= $${params.length + 1})::text AS reached,
+              count(*)::text AS of
+         ${FROM}
          JOIN corpus.facts v ON v.loan_id = l.id AND v.metric_key = 'ltv'
                             AND v.value ~ '^[0-9.]+$'
                             AND v.value::numeric > 0 AND v.value::numeric <= 2
         WHERE ${sql}`,
-      [...params, c.ltvObjetivo],
+      [...params, c.targetLtv],
     );
-    objetivo = {
-      ltv: c.ltvObjetivo,
-      alcanzaron: Number(rows[0]!.alcanzaron),
-      de: Number(rows[0]!.de),
+    target = {
+      ltv: c.targetLtv,
+      reached: Number(rows[0]!.reached),
+      of: Number(rows[0]!.of),
     };
   }
 
   /**
-   * La muestra va con el documento de EDGAR. Un comparable que no se puede abrir
-   * es un número que hay que creer; con el filing atrás, se verifica.
+   * The sample travels with its EDGAR document. A comparable you cannot open is a
+   * number you have to take on trust; with the filing behind it, it is verifiable.
    */
-  const { rows: muestra } = await query<{
-    id: string; emision: string; fecha: string; propiedad: string | null;
-    ciudad: string | null; estado: string | null; monto: string; accession: string;
+  const { rows: sample } = await query<{
+    id: string; issuance: string; date: string; property: string | null;
+    city: string | null; state: string | null; amount: string; accession: string;
     cik: string; file_url: string;
   }>(
-    `SELECT l.id::text, f.company_name AS emision, f.filed_at::text AS fecha,
-            l.property_name AS propiedad, l.city AS ciudad, l.state AS estado,
-            am.value AS monto, l.accession, f.cik, f.file_url
-       ${DESDE}
+    `SELECT l.id::text, f.company_name AS issuance, f.filed_at::text AS date,
+            l.property_name AS property, l.city AS city, l.state AS state,
+            am.value AS amount, l.accession, f.cik, f.file_url
+       ${FROM}
       WHERE ${sql}
       ORDER BY f.filed_at DESC, am.value::numeric DESC
       LIMIT 25`,
@@ -405,21 +409,21 @@ export async function buscarComparables(c: Criterios): Promise<Respuesta> {
   );
 
   return {
-    suficiente: true,
-    encontrados,
-    alcance: elegido.alcance,
-    alcanceEtiqueta: elegido.etiqueta,
-    escalera,
-    distribuciones,
-    objetivo,
-    muestra: muestra.map((r) => ({
-      loanId: Number(r.id), emision: r.emision, fecha: r.fecha.slice(0, 10),
-      propiedad: r.propiedad,
-      ciudad: r.ciudad && r.estado ? `${r.ciudad}, ${r.estado}` : r.ciudad,
-      monto: Number(r.monto), accession: r.accession,
-      documento: r.file_url, indice: indiceEdgar(r.cik, r.accession),
+    sufficient: true,
+    found,
+    scope: chosen.scope,
+    scopeLabel: chosen.label,
+    ladder,
+    distributions,
+    target,
+    sample: sample.map((r) => ({
+      loanId: Number(r.id), issuance: r.issuance, date: r.date.slice(0, 10),
+      property: r.property,
+      city: r.city && r.state ? `${r.city}, ${r.state}` : r.city,
+      amount: Number(r.amount), accession: r.accession,
+      document: r.file_url, index: edgarIndexUrl(r.cik, r.accession),
     })),
-    criterios: c,
+    criteria: c,
     corpus,
   };
 }

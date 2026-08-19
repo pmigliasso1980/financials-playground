@@ -47,8 +47,10 @@ paths = [pathlib.Path(a) for a in sys.argv[1:]]
 if not paths:
     root = pathlib.Path(".")
     pats = ["db/*.ts", "db/migrations/*.sql", "api/*.ts", "api/*.html", "mcp/*.ts",
-            "analysis/*.ts", "harvest/*.ts", "harvest/*/*.ts", "docs/*.md", "*.md",
-            "tools/*.py"]
+            "analysis/*.ts", "harvest/*.ts", "harvest/*/*.ts", "docs/*.md", "*.md"]
+    # tools/ is excluded from the default sweep: these two files contain the
+    # Spanish vocabulary the detector matches on, so scanning them reports the
+    # word list as a finding. Pass them explicitly if you want to check them.
     paths = sorted({p for g in pats for p in root.glob(g)})
 
 total = 0
