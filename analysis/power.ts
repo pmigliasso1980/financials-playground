@@ -160,7 +160,7 @@ if (rows.length < 2) {
 
 const rng = makeRng(SEED);
 
-interface Anada {
+interface Vintage {
   vintage: string;
   n: number;
   median: number;
@@ -169,7 +169,7 @@ interface Anada {
   se: number;
 }
 
-const vintages: Anada[] = [];
+const vintages: Vintage[] = [];
 
 console.log(`  vintage   n    median         95% CI              width`);
 console.log(`  ${"─".repeat(62)}`);
@@ -233,7 +233,7 @@ const target = 0.05;
 const factor = (mde / target) ** 2;
 
 if (mde >= CLAIMED_EFFECT) {
-  console.log(`  \x1b[31mLA MUESTRA NUNCA PUDO SOSTENER EL HALLAZGO.\x1b[0m`);
+  console.log(`  \x1b[31mTHE SAMPLE COULD NEVER HAVE SUPPORTED THE FINDING.\x1b[0m`);
   console.log(
     `  \x1b[90mThe claimed effect is smaller than the sampling noise. Even if the\x1b[0m`,
   );
@@ -277,7 +277,7 @@ for (let i = 0; i < vintages.length; i++) {
 const pairs = (vintages.length * (vintages.length - 1)) / 2;
 console.log(
   `  Pairs with non-overlapping intervals: ${distinguishable.length} of ${pairs}` +
-    `  \x1b[90m(criterio conservador)\x1b[0m`,
+    `  \x1b[90m(conservative criterion)\x1b[0m`,
 );
 if (distinguishable.length > 0) {
   console.log(`  \x1b[90m${distinguishable.join(" · ")}\x1b[0m`);

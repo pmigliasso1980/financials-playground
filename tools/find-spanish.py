@@ -40,6 +40,31 @@ mientras entonces ademas cual cuales quien cuanto cuantos"""
 # too, and any line with an accent is caught regardless.
 WORD_RE = re.compile(r'\b(' + '|'.join(WORDS.split()) + r')\b', re.I)
 
+# The content-word half of the vocabulary, borrowed from find-spanish-idents.py
+# so there is ONE list to maintain rather than two that drift.
+#
+# WHY THIS WAS ADDED, THIRD BLIND SPOT OF THE DAY
+#
+# The two-function-word threshold cannot see a line whose Spanish is made of
+# content words. db/delinquency.ts had `console.log("Morosidad y special
+# servicing")` —a user-facing heading— plus a section header `DOS EVENTOS
+# DISTINTOS` and a printed `(umbral ...)`, and this tool returned 0 for the
+# file. None of morosidad, eventos, distintos or umbral is a function word, and
+# `${cierra} de ${n} cierran dentro de ±...` has `de` twice but only ONE
+# distinct function word, so it missed that too.
+#
+# A single content stem is enough to flag: unlike `de` or `la`, a word like
+# `morosidad` or `saldo` does not appear in English by accident.
+def _stems() -> set[str]:
+    src = (pathlib.Path(__file__).parent / "find-spanish-idents.py").read_text()
+    body = src.split('STEMS = """')[1].split('""".split()')[0]
+    return set(body.split())
+
+try:
+    STEM_RE = re.compile(r'\b(' + '|'.join(sorted(_stems())) + r')\b', re.I)
+except Exception:
+    STEM_RE = None
+
 def scan(path: pathlib.Path):
     out = []
     for n, line in enumerate(path.read_text(errors="ignore").split("\n"), 1):
@@ -47,7 +72,13 @@ def scan(path: pathlib.Path):
             out.append((n, line, "accent")); continue
         hits = {m.group(1).lower() for m in WORD_RE.finditer(line)}
         if len(hits) >= 2:
-            out.append((n, line, ",".join(sorted(hits)[:4])))
+            out.append((n, line, ",".join(sorted(hits)[:4]))); continue
+        # One content stem is enough. `morosidad` and `saldo` do not turn up in
+        # English prose the way `de` and `la` turn up in code.
+        if STEM_RE is not None:
+            stems = {m.group(1).lower() for m in STEM_RE.finditer(line)}
+            if stems:
+                out.append((n, line, ",".join(sorted(stems)[:4])))
     return out
 
 # package-lock.json is generated and enormous; scanning it says nothing.
