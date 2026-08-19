@@ -47,7 +47,7 @@ if (!health.ok) {
 }
 
 const vintageFlag = process.argv.indexOf("--vintage");
-const ANADA = vintageFlag === -1 ? null : Number(process.argv[vintageFlag + 1]);
+const VINTAGE = vintageFlag === -1 ? null : Number(process.argv[vintageFlag + 1]);
 
 /**
  * Fixed before looking at anything.
@@ -74,11 +74,11 @@ console.log(`\n${"═".repeat(78)}`);
 console.log("Is the cohort big enough to be a reference?");
 console.log(`${"═".repeat(78)}`);
 
-const { rows: cohortes } = await query<{
+const { rows: cohorts } = await query<{
   vintage: string; issuances: string; loans: string;
-  mediana_pool: string; top2: string;
+  median_pool: string; top2: string;
 }>(
-  `WITH por_emision AS (
+  `WITH per_issuance AS (
      SELECT extract(year FROM f.filed_at)::int AS vintage,
             f.accession, count(l.id) AS pool
        FROM corpus.filings f
@@ -89,12 +89,12 @@ const { rows: cohortes } = await query<{
    rankeado AS (
      SELECT *, row_number() OVER (PARTITION BY vintage ORDER BY pool DESC) AS rn,
             sum(pool) OVER (PARTITION BY vintage) AS total
-       FROM por_emision
+       FROM per_issuance
    )
    SELECT vintage::text,
           count(*)::text AS issuances,
           sum(pool)::text AS loans,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY pool)::text AS mediana_pool,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY pool)::text AS median_pool,
           (sum(pool) FILTER (WHERE rn <= 2)::numeric / nullif(max(total), 0))::text AS top2
      FROM rankeado
     GROUP BY vintage
@@ -104,10 +104,10 @@ const { rows: cohortes } = await query<{
 console.log(`\n  vintage  issuances   loans   median pool   top-2 of total`);
 console.log(`  ${"─".repeat(64)}`);
 
-for (const c of cohortes) {
+for (const c of cohorts) {
   const em = Number(c.issuances);
   const top2 = Number(c.top2);
-  const suficiente = em - 1 >= MIN_PAIRS;
+  const sufficient = em - 1 >= MIN_PAIRS;
 
   /**
    * THE TOP-2 IS COMPARED AGAINST ITS FLOOR, NOT AGAINST A FIXED NUMBER.
@@ -136,18 +136,18 @@ for (const c of cohortes) {
    *
    * Fixing a class B error I introduced a class A one on the same line.
    */
-  const piso = Math.min(1, 2 / Math.max(1, em));
-  const exceso = top2 / piso;
+  const floor = Math.min(1, 2 / Math.max(1, em));
+  const excess = top2 / floor;
   /** With 2 or fewer issuances the ratio is always 1.0: there is nothing to measure. */
-  const medible = em > 2;
-  const concentrada = medible && exceso > MAX_EXCESS;
+  const measurable = em > 2;
+  const concentrada = measurable && excess > MAX_EXCESS;
 
   console.log(
     `  ${c.vintage}   ${String(em).padStart(9)}   ${String(c.loans).padStart(9)}   ` +
-      `${Number(c.mediana_pool).toFixed(0).padStart(12)}   ` +
+      `${Number(c.median_pool).toFixed(0).padStart(12)}   ` +
       `${(concentrada ? "\x1b[31m" : "\x1b[90m")}${pct(top2).padStart(7)}\x1b[0m` +
-      ` \x1b[90m(piso ${pct(piso)}${medible ? `, ${exceso.toFixed(2)}x` : ", sin medir"})\x1b[0m` +
-      (suficiente ? "  \x1b[32m✓\x1b[0m" : `  \x1b[31m← ${em - 1} pares\x1b[0m`),
+      ` \x1b[90m(floor ${pct(floor)}${measurable ? `, ${excess.toFixed(2)}x` : ", not measured"})\x1b[0m` +
+      (sufficient ? "  \x1b[32m✓\x1b[0m" : `  \x1b[31m← ${em - 1} pairs\x1b[0m`),
   );
 }
 
@@ -168,45 +168,45 @@ console.log(
 );
 
 // ---------------------------------------------------------------------------
-// La cohorte viva, en detalle
+// The live cohort, in detail
 // ---------------------------------------------------------------------------
 
-const objetivo = ANADA ?? Number(cohortes[0]?.vintage ?? new Date().getFullYear());
+const target = VINTAGE ?? Number(cohorts[0]?.vintage ?? new Date().getFullYear());
 
 const { rows: issuances } = await query<{
-  nombre: string; pool: string; con_dscr: string; con_ltv: string; mes: string;
+  name: string; pool: string; with_dscr: string; with_ltv: string; month: string;
 }>(
-  `SELECT left(f.company_name, 34) AS nombre,
+  `SELECT left(f.company_name, 34) AS name,
           count(l.id)::text AS pool,
           count(*) FILTER (WHERE EXISTS (
             SELECT 1 FROM corpus.facts x WHERE x.loan_id = l.id AND x.metric_key = 'dscr'
-          ))::text AS con_dscr,
+          ))::text AS with_dscr,
           count(*) FILTER (WHERE EXISTS (
             SELECT 1 FROM corpus.facts x WHERE x.loan_id = l.id AND x.metric_key = 'ltv'
-          ))::text AS con_ltv,
-          to_char(f.filed_at, 'MM') AS mes
+          ))::text AS with_ltv,
+          to_char(f.filed_at, 'MM') AS month
      FROM corpus.filings f
      JOIN corpus.loans l ON l.accession = f.accession
     WHERE extract(year FROM f.filed_at) = $1
     GROUP BY f.company_name, f.accession, f.filed_at
     ORDER BY f.filed_at`,
-  [objetivo],
+  [target],
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`La cohorte ${objetivo} en detalle`);
+console.log(`The ${target} cohort in detail`);
 console.log(`${"─".repeat(78)}\n`);
 
 if (issuances.length === 0) {
-  console.log(`  \x1b[33mSin issuances en ${objetivo}.\x1b[0m\n`);
+  console.log(`  \x1b[33mNo issuances in ${target}.\x1b[0m\n`);
 } else {
   console.log(`  month  issuance                             pool   DSCR    LTV`);
   console.log(`  ${"─".repeat(66)}`);
   for (const e of issuances) {
     const pool = Number(e.pool);
     console.log(
-      `  ${e.mes}    ${e.nombre.padEnd(36)} ${String(pool).padStart(5)}  ` +
-        `${pct(Number(e.con_dscr) / pool).padStart(5)}  ${pct(Number(e.con_ltv) / pool).padStart(5)}`,
+      `  ${e.month}    ${e.name.padEnd(36)} ${String(pool).padStart(5)}  ` +
+        `${pct(Number(e.with_dscr) / pool).padStart(5)}  ${pct(Number(e.with_ltv) / pool).padStart(5)}`,
     );
   }
 
@@ -217,11 +217,11 @@ if (issuances.length === 0) {
    * issuance is compared against a market from six months earlier — which in this
    * period, with rates moving, is not the same market.
    */
-  const meses = new Set(issuances.map((e) => e.mes));
+  const months = new Set(issuances.map((e) => e.month));
   console.log(
-    `\n  \x1b[90m${issuances.length} issuances en ${meses.size} meses distintos.\x1b[0m` +
-      (meses.size < 4
-        ? `  \x1b[33m← concentradas en el tiempo\x1b[0m`
+    `\n  \x1b[90m${issuances.length} issuances across ${months.size} distinct months.\x1b[0m` +
+      (months.size < 4
+        ? `  \x1b[33m← concentrated in time\x1b[0m`
         : ""),
   );
 }

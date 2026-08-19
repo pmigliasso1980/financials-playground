@@ -71,7 +71,7 @@ const MIN_POOL = 150;
  * nada.
  */
 const SPECIAL = process.argv.includes("--special");
-const COLUMNA = SPECIAL ? "special_servicer" : "master_servicer";
+const COLUMN = SPECIAL ? "special_servicer" : "master_servicer";
 const ROLE = SPECIAL ? "administrador especial" : "administrador maestro";
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
@@ -110,14 +110,14 @@ const SHELF = `
 const BASE = `
   SELECT l.id,
          ${SHELF} AS shelf,
-         sr.${COLUMNA} AS master,
-         extract(year FROM f.filed_at)::int AS anada,
-         (d.transfer_date IS NOT NULL)::int AS evento
+         sr.${COLUMN} AS master,
+         extract(year FROM f.filed_at)::int AS vintage,
+         (d.transfer_date IS NOT NULL)::int AS event
     FROM corpus.loans l
     JOIN corpus.filings f ON f.accession = l.accession
     JOIN corpus.servicer_reports sr ON sr.deal_accession = f.accession
     LEFT JOIN corpus.delinquency d ON d.loan_id = l.id
-   WHERE sr.${COLUMNA} IS NOT NULL
+   WHERE sr.${COLUMN} IS NOT NULL
 `;
 
 console.log(`\n${"═".repeat(78)}`);
@@ -125,17 +125,17 @@ console.log(`Issuer or ${ROLE}?`);
 console.log(`${"═".repeat(78)}`);
 
 const { rows: tot } = await query<{ n: string; ev: string }>(
-  `WITH base AS (${BASE}) SELECT count(*)::text AS n, sum(evento)::text AS ev FROM base`,
+  `WITH base AS (${BASE}) SELECT count(*)::text AS n, sum(event)::text AS ev FROM base`,
 );
 const nTot = Number(tot[0]!.n);
 const evTot = Number(tot[0]!.ev);
 console.log(
   `\n\x1b[90m  ${nTot.toLocaleString("en-US")} loans with an identified servicer · ` +
-    `${evTot} transferencias · tasa base ${pct(evTot / nTot)}\x1b[0m`,
+    `${evTot} transfers · base rate ${pct(evTot / nTot)}\x1b[0m`,
 );
 
 // ---------------------------------------------------------------------------
-// 1. Marginal por administrador
+// 1. Marginal by servicer
 // ---------------------------------------------------------------------------
 
 const { rows: porMaster } = await query<{
@@ -143,14 +143,14 @@ const { rows: porMaster } = await query<{
 }>(
   `WITH base AS (${BASE})
    SELECT master, count(DISTINCT shelf)::text AS issuers,
-          count(*)::text AS n, sum(evento)::text AS ev
+          count(*)::text AS n, sum(event)::text AS ev
      FROM base GROUP BY master ORDER BY count(*) DESC`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Por ${ROLE} (marginal)`);
+console.log(`By ${ROLE} (marginal)`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  administrador             emis.       n   eventos     tasa        IC 95%`);
+console.log(`  servicer                  iss.        n    events      rate       95% CI`);
 console.log(`  ${"─".repeat(72)}`);
 for (const r of porMaster) {
   const n = Number(r.n), ev = Number(r.ev);
@@ -163,15 +163,15 @@ for (const r of porMaster) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Las celdas: issuer × administrador
+// 2. The cells: issuer × servicer
 // ---------------------------------------------------------------------------
 
 const { rows: celdas } = await query<{
   shelf: string; master: string; n: string; ev: string; vintages: string;
 }>(
   `WITH base AS (${BASE})
-   SELECT shelf, master, count(*)::text AS n, sum(evento)::text AS ev,
-          string_agg(DISTINCT anada::text, ',' ORDER BY anada::text) AS vintages
+   SELECT shelf, master, count(*)::text AS n, sum(event)::text AS ev,
+          string_agg(DISTINCT vintage::text, ',' ORDER BY vintage::text) AS vintages
      FROM base GROUP BY shelf, master
     HAVING count(*) >= ${MIN_POOL}
     ORDER BY master, shelf`,
@@ -199,10 +199,10 @@ for (const c of celdas) {
     master: c.master, tasa, n,
   });
 
-  const etiqueta = c.master === masterPrev ? "" : c.master.slice(0, 21);
+  const label = c.master === masterPrev ? "" : c.master.slice(0, 21);
   masterPrev = c.master;
   console.log(
-    `  ${etiqueta.padEnd(22)} ${c.shelf.padEnd(10)} ${String(n).padStart(5)} ${String(ev).padStart(4)}  ` +
+    `  ${label.padEnd(22)} ${c.shelf.padEnd(10)} ${String(n).padStart(5)} ${String(ev).padStart(4)}  ` +
       `${pct(tasa).padStart(6)}  [${pct(lo).padStart(5)} , ${pct(hi).padStart(5)}]  ` +
       `\x1b[90m${c.vintages}\x1b[0m`,
   );
@@ -283,10 +283,10 @@ for (const [shelf, xs] of porShelfCeldas) {
   );
 }
 
-const mediana = (xs: number[]) =>
+const median = (xs: number[]) =>
   xs.length === 0 ? null : [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
-const medMaster = mediana(spreadsMaster);
-const medShelf = mediana(spreadsShelf);
+const medMaster = median(spreadsMaster);
+const medShelf = median(spreadsShelf);
 
 console.log(`\n${"─".repeat(78)}\n`);
 if (medMaster === null || medShelf === null) {

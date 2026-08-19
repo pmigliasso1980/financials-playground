@@ -65,11 +65,11 @@ const CANON = `CASE
     WHEN l.property_type ~* 'hospitality|hotel|service|extended stay' THEN 'Hospitality'
     WHEN l.property_type ~* 'mixed' THEN 'Mixed Use'
     WHEN l.property_type ~* 'manufactured' THEN 'Manufactured'
-    ELSE 'Sin clasificar'
+    ELSE 'Unclassified'
   END`;
 
-const { rows } = await query<{ accession: string; nombre: string; tipo: string; n: string }>(
-  `SELECT l.accession, f.company_name AS nombre, ${CANON} AS tipo, count(*)::text AS n
+const { rows } = await query<{ accession: string; name: string; type: string; n: string }>(
+  `SELECT l.accession, f.company_name AS name, ${CANON} AS type, count(*)::text AS n
      FROM corpus.loans l
      JOIN corpus.filings f ON f.accession = l.accession
     WHERE l.property_type IS NOT NULL
@@ -84,13 +84,13 @@ if (rows.length === 0) {
   process.exit(0);
 }
 
-const tipos = [...new Set(rows.map((r) => r.tipo))].sort();
-const porEmision = new Map<string, { nombre: string; conteo: Map<string, number>; total: number }>();
+const types = [...new Set(rows.map((r) => r.type))].sort();
+const byIssuance = new Map<string, { name: string; counts: Map<string, number>; total: number }>();
 for (const r of rows) {
-  const e = porEmision.get(r.accession) ?? { nombre: r.nombre, conteo: new Map(), total: 0 };
-  e.conteo.set(r.tipo, Number(r.n));
+  const e = byIssuance.get(r.accession) ?? { name: r.name, counts: new Map(), total: 0 };
+  e.counts.set(r.type, Number(r.n));
   e.total += Number(r.n);
-  porEmision.set(r.accession, e);
+  byIssuance.set(r.accession, e);
 }
 
 console.log(`\n${"═".repeat(78)}`);
@@ -106,7 +106,7 @@ console.log(`  issuance                           pool   distance   null p50   p
 console.log(`  ${"─".repeat(74)}`);
 
 let significant = 0;
-const detalle: Array<{ nombre: string; d: number; p: number; pool: number }> = [];
+const detalle: Array<{ name: string; d: number; p: number; pool: number }> = [];
 /**
  * THE WEIGHTING OF THE REFERENCE, WHICH I CHOSE WITHOUT THINKING.
  *
@@ -125,7 +125,7 @@ const detalle: Array<{ nombre: string; d: number; p: number; pool: number }> = [
 const perIssuanceSig = new Set<string>();
 const perLoanSig = new Set<string>();
 
-for (const [accession, e] of porEmision) {
+for (const [accession, e] of byIssuance) {
   /**
    * The reference excludes the issuance itself.
    *
@@ -133,55 +133,55 @@ for (const [accession, e] of porEmision) {
    * the ones weighing most in the average: the bias would run against finding
    * signal where there is the most data.
    */
-  const resto = new Map<string, number>();
-  let totalResto = 0;
-  for (const [acc, o] of porEmision) {
+  const rest = new Map<string, number>();
+  let totalRest = 0;
+  for (const [acc, o] of byIssuance) {
     if (acc === accession) continue;
-    for (const [t, n] of o.conteo) resto.set(t, (resto.get(t) ?? 0) + n);
-    totalResto += o.total;
+    for (const [t, n] of o.counts) rest.set(t, (rest.get(t) ?? 0) + n);
+    totalRest += o.total;
   }
 
-  const q = tipos.map((t) => (resto.get(t) ?? 0) / Math.max(1, totalResto));
-  const p = tipos.map((t) => (e.conteo.get(t) ?? 0) / Math.max(1, e.total));
+  const q = types.map((t) => (rest.get(t) ?? 0) / Math.max(1, totalRest));
+  const p = types.map((t) => (e.counts.get(t) ?? 0) / Math.max(1, e.total));
   const dObs = totalVariation(p, q);
 
   /** The same reference, with each issuance weighing equally rather than by loan. */
-  const otras = [...porEmision].filter(([acc]) => acc !== accession);
-  const qEmision = tipos.map((t) => {
-    const suma = otras.reduce(
-      (x, [, o]) => x + (o.conteo.get(t) ?? 0) / Math.max(1, o.total),
+  const others = [...byIssuance].filter(([acc]) => acc !== accession);
+  const qIssuance = types.map((t) => {
+    const sum = others.reduce(
+      (x, [, o]) => x + (o.counts.get(t) ?? 0) / Math.max(1, o.total),
       0,
     );
-    return suma / Math.max(1, otras.length);
+    return sum / Math.max(1, others.length);
   });
-  const dEmision = totalVariation(p, qEmision);
+  const dIssuance = totalVariation(p, qIssuance);
 
-  const porPrestamo = apart(p, q, e.total);
-  const nuloP50 = porPrestamo.nullMedian;
-  const pVal = porPrestamo.p;
+  const perLoan = apart(p, q, e.total);
+  const nullP50 = perLoan.nullMedian;
+  const pVal = perLoan.p;
   if (pVal < ALPHA) {
     significant++;
-    perLoanSig.add(e.nombre);
+    perLoanSig.add(e.name);
   }
 
   /**
    * The null is re-simulated inside `apart`: changing the reference also changes
    * which distances chance produces.
    */
-  if (apart(p, qEmision, e.total).p < ALPHA) perIssuanceSig.add(e.nombre);
-  detalle.push({ nombre: e.nombre, d: dObs, p: pVal, pool: e.total });
+  if (apart(p, qIssuance, e.total).p < ALPHA) perIssuanceSig.add(e.name);
+  detalle.push({ name: e.name, d: dObs, p: pVal, pool: e.total });
 
   const marca = pVal < ALPHA ? "\x1b[32m" : "\x1b[90m";
   console.log(
-    `  ${e.nombre.slice(0, 32).padEnd(34)} ${String(e.total).padStart(4)}   ` +
-      `${dObs.toFixed(3).padStart(9)}   ${nuloP50.toFixed(3).padStart(8)}   ` +
+    `  ${e.name.slice(0, 32).padEnd(34)} ${String(e.total).padStart(4)}   ` +
+      `${dObs.toFixed(3).padStart(9)}   ${nullP50.toFixed(3).padStart(8)}   ` +
       `${marca}${pVal < 1 / SIMULATIONS ? `<${(1 / SIMULATIONS).toFixed(4)}` : pVal.toFixed(4)}\x1b[0m`,
   );
 }
 
 console.log(`\n${"─".repeat(78)}\n`);
 
-const n = porEmision.size;
+const n = byIssuance.size;
 const expected = n * ALPHA;
 console.log(
   `  \x1b[1m${significant} of ${n} issuances with a mix more different than chance (p < ${ALPHA})\x1b[0m`,
@@ -225,7 +225,7 @@ console.log(
 );
 console.log(`    by issuance (each deal equal)        ${perIssuanceSig.size} significant`);
 console.log(
-  `    \x1b[90mcoinciden en ${[...perLoanSig].filter((x) => perIssuanceSig.has(x)).length}\x1b[0m`,
+  `    \x1b[90moverlap on ${[...perLoanSig].filter((x) => perIssuanceSig.has(x)).length}\x1b[0m`,
 );
 if (onlyPerLoan.length === 0 && onlyPerIssuance.length === 0) {
   console.log(
@@ -244,7 +244,7 @@ const top = [...detalle].sort((a, b) => a.p - b.p || b.d - a.d).slice(0, 5);
 console.log(`\n  The five most different:\n`);
 for (const t of top) {
   console.log(
-    `    ${t.nombre.slice(0, 36).padEnd(38)} d = ${t.d.toFixed(3)}  p = ${t.p.toFixed(4)}  ` +
+    `    ${t.name.slice(0, 36).padEnd(38)} d = ${t.d.toFixed(3)}  p = ${t.p.toFixed(4)}  ` +
       `\x1b[90m${t.pool} loans\x1b[0m`,
   );
 }
