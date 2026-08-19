@@ -6,8 +6,10 @@
     "rootDir": "."
   },
   "include": [
-    "scripts/**/*.ts",
     "harvest/**/*.ts",
-    "db/**/*.ts"
+    "db/**/*.ts",
+    "api/**/*.ts",
+    "mcp/**/*.ts",
+    "analysis/**/*.ts"
   ]
 }

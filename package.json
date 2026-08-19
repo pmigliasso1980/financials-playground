@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Sandbox de exploraci\u00f3n sobre la plataforma Lev (CRE) \u2014 cliente REST tipado, tipos generados desde OpenAPI, y docs sincronizados.",
+  "description": "A corpus of conduit CMBS loans built from public SEC EDGAR filings, with the tools to interrogate it and to try to prove it wrong.",
   "engines": {
     "node": ">=20.3"
   },
@@ -54,7 +54,6 @@
     "harvest:servicer:test": "tsx harvest/servicer.test.ts",
     "harvest:test": "tsx harvest/test.ts",
     "harvest:ties": "tsx harvest/tieProbe.ts",
-    "sync:docs": "bash scripts/sync-docs.sh",
     "taxonomy": "tsx harvest/taxonomy.ts",
     "test:all": "npm run typecheck && npm run harvest:env:test && npm run harvest:test && npm run harvest:real && npm run harvest:scale && npm run harvest:fixtures && npm run harvest:servicer:test",
     "typecheck": "tsc --noEmit",

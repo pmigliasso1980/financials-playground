@@ -5,21 +5,16 @@ dist/
 .backfill-checkpoint.json
 .backfill-deals.json
 
-# Datos cosechados de EDGAR — se regeneran con `npm run harvest`
+# Data harvested from EDGAR — regenerated with `npm run harvest`
 harvest/out/
 
-# Los fixtures SÍ se versionan: son documentos reales recortados que hacen
-# reproducible el test de parseo. Se capturan con `npm run harvest:capture`.
+# The fixtures ARE versioned: they are real documents, trimmed, which make the
+# parsing test reproducible. Captured with `npm run harvest:capture`.
 !harvest/fixtures/
 src/generated/
 *.log
 .DS_Store
 
-# Los docs sincronizados de lev.com son material de terceros y pesan.
-# Regenerar con: npm run sync:docs
-docs/vendor/*
-!docs/vendor/.gitkeep
-
-# Instantáneas del corpus para comparar entre corridas.
+# Corpus snapshots, for comparing between runs.
 .snapshots/
 out/

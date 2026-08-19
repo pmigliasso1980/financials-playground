@@ -1,10 +1,10 @@
-# Postgres local para el corpus.
+# Local Postgres for the corpus.
 #
 #   docker compose up -d
 #   npm run db:migrate
 #
-# El puerto es 5433, no 5432, para no chocar con un Postgres que ya tengas
-# instalado en la máquina.
+# The port is 5433, not 5432, so it does not clash with a Postgres you may
+# already have installed on the machine.
 
 services:
   postgres:

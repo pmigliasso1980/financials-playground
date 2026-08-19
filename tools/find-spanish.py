@@ -43,15 +43,24 @@ def scan(path: pathlib.Path):
             out.append((n, line, ",".join(sorted(hits)[:4])))
     return out
 
+# package-lock.json is generated and enormous; scanning it says nothing.
+SKIP = {"package-lock.json"}
+
 paths = [pathlib.Path(a) for a in sys.argv[1:]]
 if not paths:
     root = pathlib.Path(".")
+    # Everything that ships, not only the code. package.json's description sat in
+    # Spanish through the whole migration because the sweep only covered .ts, .sql,
+    # .html and .md — the detector was correct about every file it looked at, and
+    # the file list was the thing that was wrong. Same failure shape as tsconfig's
+    # include: the instrument was fine, its scope was not.
     pats = ["db/*.ts", "db/migrations/*.sql", "api/*.ts", "api/*.html", "mcp/*.ts",
-            "analysis/*.ts", "harvest/*.ts", "harvest/*/*.ts", "docs/*.md", "*.md"]
+            "analysis/*.ts", "harvest/*.ts", "harvest/*/*.ts", "docs/*.md", "*.md",
+            "*.json", "*.yml", "*.yaml", "*.sh", "scripts/*.sh", ".gitignore"]
     # tools/ is excluded from the default sweep: these two files contain the
     # Spanish vocabulary the detector matches on, so scanning them reports the
     # word list as a finding. Pass them explicitly if you want to check them.
-    paths = sorted({p for g in pats for p in root.glob(g)})
+    paths = sorted({p for g in pats for p in root.glob(g) if p.name not in SKIP})
 
 total = 0
 for p in paths:
