@@ -1,19 +1,19 @@
 /**
- * Test de conformidad de la persistencia.
+ * Persistence conformance test.
  *
  *   docker compose up -d
  *   npm run db:migrate
  *   npm run db:test
  *
- * LA INVARIANTE QUE VERIFICA
+ * THE INVARIANT IT VERIFIES
  *
- * Escribir un HarvestResult y volver a leerlo tiene que devolver lo mismo. Si
- * eso se cumple, el mock no necesita saber si los datos vinieron de un JSON o
- * de Postgres, y todo el resto del sistema —el Index, la promoción, la
- * búsqueda— sigue funcionando igual.
+ * Writing a HarvestResult and reading it back has to return the same thing. If
+ * that holds, the mock does not need to know whether the data came from a JSON
+ * file or from Postgres, and the whole rest of the system —the Index, promotion,
+ * search— keeps working the same way.
  *
- * Sin base disponible avisa cómo levantarla y termina sin fallar, para que el
- * pipeline de tests no se rompa en una máquina sin Docker.
+ * With no database available it explains how to start one and exits without
+ * failing, so the test pipeline does not break on a machine without Docker.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -39,7 +39,7 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 function eq<T>(actual: T, expected: T, label: string) {
-  if (actual !== expected) throw new Error(`${label}: esperaba ${String(expected)}, recibí ${String(actual)}`);
+  if (actual !== expected) throw new Error(`${label}: expected ${String(expected)}, got ${String(actual)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,11 +170,11 @@ console.log("Escritura");
 
 const report = await saveHarvest(fixture);
 
-await check("guarda préstamos, observations y facts", () => {
-  eq(report.loans, 2, "préstamos");
+await check("stores loans, observations and facts", () => {
+  eq(report.loans, 2, "loans");
   eq(report.observations, 8, "observations");
-  assert(report.facts > 0, "no derivó ningún fact");
-  eq(report.replaced, false, "no debería haber reemplazado nada");
+  assert(report.facts > 0, "derived no facts at all");
+  eq(report.replaced, false, "should not have replaced anything");
 });
 
 await check("deriva los facts de las observations", async () => {
@@ -189,10 +189,10 @@ await check("deriva los facts de las observations", async () => {
   const byKey = new Map(rows.map((r) => [r.metric_key, r]));
   eq(byKey.get("noi_underwritten")?.value, "10932267", "NOI underwritten");
   eq(byKey.get("dscr")?.value, "1.83", "DSCR");
-  assert(byKey.get("dscr")?.rationale, "el fact debería explicar por qué ganó");
+  assert(byKey.get("dscr")?.rationale, "the fact should explain why it won");
 });
 
-await check("los facts apuntan a la observation que los originó", async () => {
+await check("facts point at the observation that produced them", async () => {
   const { rows } = await query<{ header: string }>(
     `SELECT o.source_header AS header
        FROM corpus.facts f
@@ -211,7 +211,7 @@ console.log("\nRoundtrip");
 const loaded = await loadHarvest(ACCESSION);
 
 await check("vuelve a leerse", () => {
-  assert(loaded, "loadHarvest devolvió null");
+  assert(loaded, "loadHarvest returned null");
 });
 
 await check("el source se preserva entero", () => {
@@ -223,7 +223,7 @@ await check("el source se preserva entero", () => {
   eq(loaded!.source.fileUrl, SOURCE.fileUrl, "fileUrl");
 });
 
-await check("los préstamos vuelven en orden y con sus etiquetas", () => {
+await check("loans come back in order and with their labels", () => {
   eq(loaded!.properties.length, 2, "cantidad");
   eq(loaded!.properties[0]!.label.property_name, "TheWit Chicago", "primero");
   eq(loaded!.properties[0]!.label.city, "Chicago", "ciudad");
@@ -232,7 +232,7 @@ await check("los préstamos vuelven en orden y con sus etiquetas", () => {
 
 await check("las observations conservan valor, crudo y provenance", () => {
   const noi = loaded!.properties[0]!.observations.find((o) => o.metric_key === "noi_underwritten");
-  assert(noi, "no encontró el NOI");
+  assert(noi, "did not find the NOI");
   eq(noi!.value, "10932267", "valor");
   eq(noi!.raw_value, "10,932,267", "valor crudo");
   eq(noi!.source_header, "Underwritten Net Operating Income ($)", "header original");
@@ -251,7 +251,7 @@ await check("no se pierde ninguna observation", () => {
 
 await check("los metadatos del procesamiento se preservan", () => {
   eq(loaded!.columnsUnmapped.length, 2, "columnas sin mapear");
-  assert(loaded!.columnsUnmapped.includes("Footnotes"), "perdió un header sin mapear");
+  assert(loaded!.columnsUnmapped.includes("Footnotes"), "lost an unmapped header");
   eq(loaded!.columnsMapped.length, 3, "columnas mapeadas");
   eq(loaded!.stats.propertiesKept, 2, "stats");
 });
@@ -263,16 +263,16 @@ console.log("\nRecosecha");
 const second = await saveHarvest(fixture);
 
 await check("recosechar reemplaza en vez de duplicar", async () => {
-  eq(second.replaced, true, "debería haber reemplazado");
+  eq(second.replaced, true, "should have replaced");
   const { rows } = await query<{ count: string }>(
     "SELECT count(*) AS count FROM corpus.loans WHERE accession = $1",
     [ACCESSION],
   );
-  eq(Number(rows[0]!.count), 2, "préstamos tras recosechar");
+  eq(Number(rows[0]!.count), 2, "loans after re-harvesting");
 });
 
 await check("un mapeo mejorado actualiza los valores", async () => {
-  // Simula que el mapeo mejoró y ahora captura una métrica más.
+  // Simulates the mapping improving and now capturing one more metric.
   const improved = buildFixture();
   improved.properties[1]!.observations.push({
     id: `${ACCESSION}:1:occupancy`,
@@ -290,47 +290,48 @@ await check("un mapeo mejorado actualiza los valores", async () => {
   });
 
   const third = await saveHarvest(improved);
-  eq(third.observations, 9, "debería tener una observation más");
+  eq(third.observations, 9, "should have one more observation");
 
   const reloaded = await loadHarvest(ACCESSION);
   const occ = reloaded!.properties[1]!.observations.find((o) => o.metric_key === "occupancy");
-  assert(occ, "la métrica nueva no se guardó");
-  eq(occ!.value, "0.95", "valor de la métrica nueva");
+  assert(occ, "the new metric was not stored");
+  eq(occ!.value, "0.95", "value of the new metric");
 });
 
 await check("el corpus completo incluye el filing", async () => {
   const all = await loadAllHarvests();
   assert(
     all.some((r) => r.source.accession === ACCESSION),
-    "loadAllHarvests no lo devolvió",
+    "loadAllHarvests did not return it",
   );
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nVistas de diagnóstico");
+console.log("\nDiagnostic views");
 
-await check("metric_coverage cuenta préstamos por métrica", async () => {
+await check("metric_coverage counts loans per metric", async () => {
   const stats = await corpusStats();
   assert(stats.filings > 0, "sin filings");
   const noi = stats.byMetric.find((m) => m.metric_key === "noi_underwritten");
   assert(noi, "noi_underwritten no aparece en la cobertura");
-  assert(noi!.loans >= 2, `esperaba al menos 2 préstamos, hay ${noi!.loans}`);
+  assert(noi!.loans >= 2, `expected at least 2 loans, there are ${noi!.loans}`);
 });
 
-await check("unmapped_headers arma la cola de trabajo del mapeo", async () => {
+await check("unmapped_headers builds the mapping work queue", async () => {
   /**
-   * La aserción va contra el filing de prueba, no contra el top global.
+   * The assertion runs against the test filing, not against the global top.
    *
-   * La primera versión pedía que "Footnotes" —el header sin mapear de este
-   * fixture— apareciera en `corpusStats().topUnmapped`. Eso funcionó mientras el
-   * corpus estuvo casi vacío y empezó a fallar con 219 emisiones reales: la vista
-   * ordena por cuántos filings desaprovecha cada header, y uno que aparece en un
-   * solo filing de prueba no compite contra los que aparecen en cientos.
+   * The first version required "Footnotes" —this fixture's unmapped header— to
+   * appear in `corpusStats().topUnmapped`. That worked while the corpus was
+   * nearly empty and started failing at 219 real issuances: the view sorts by how
+   * many filings each header wastes, and one that appears in a single test filing
+   * does not compete with those appearing in hundreds.
    *
-   * El test no verificaba la vista: verificaba que el corpus fuera chico. Es la
-   * misma clase de acoplamiento que ya nos mordió con los selectores por
-   * síntoma —una aserción que depende de estado global que no controla—.
+   * The test was not verifying the view: it was verifying that the corpus was
+   * small. It is the same class of coupling that already bit us with the
+   * symptom-based selectors — an assertion depending on global state it does not
+   * control.
    */
   const { rows } = await query<{ header: string; filings: string }>(
     `SELECT header, count(*)::text AS filings
@@ -348,7 +349,7 @@ await check("unmapped_headers arma la cola de trabajo del mapeo", async () => {
 
   // Y la vista global sigue existiendo y ordenando por impacto.
   const stats = await corpusStats();
-  assert(stats.topUnmapped.length > 0, "la vista global no devolvió nada");
+  assert(stats.topUnmapped.length > 0, "the global view returned nothing");
 });
 
 // ---------------------------------------------------------------------------
@@ -362,14 +363,14 @@ await check("borrar el filing arrastra todo lo suyo", async () => {
     "SELECT count(*) AS count FROM corpus.loans WHERE accession = $1",
     [ACCESSION],
   );
-  eq(Number(loans[0]!.count), 0, "préstamos huérfanos");
+  eq(Number(loans[0]!.count), 0, "orphaned loans");
 
   const { rows: obs } = await query<{ count: string }>(
     `SELECT count(*) AS count FROM corpus.observations o
        LEFT JOIN corpus.loans l ON l.id = o.loan_id
       WHERE l.id IS NULL`,
   );
-  eq(Number(obs[0]!.count), 0, "observations huérfanas");
+  eq(Number(obs[0]!.count), 0, "orphaned observations");
 });
 
 // ---------------------------------------------------------------------------

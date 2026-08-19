@@ -1,14 +1,14 @@
 /**
- * Escritura y lectura del corpus cosechado.
+ * Writing and reading the harvested corpus.
  *
- * La invariante que importa: escribir un filing y volver a leerlo tiene que
- * devolver exactamente el mismo `HarvestResult`. Eso permite que el mock cargue
- * desde la base sin distinguir de dónde vinieron los datos, y que el test de
- * conformidad sea un roundtrip.
+ * The invariant that matters: writing a filing and reading it back has to return
+ * exactly the same `HarvestResult`. That lets the mock load from the database
+ * without distinguishing where the data came from, and lets the conformance test
+ * be a roundtrip.
  *
- * Recosechar el mismo filing lo REEMPLAZA en vez de duplicarlo. Es el
- * comportamiento correcto: cuando el mapeo mejora —esta semana mejoró cuatro
- * veces— querés reprocesar el corpus, no acumular versiones.
+ * Re-harvesting the same filing REPLACES it instead of duplicating it. That is
+ * the correct behaviour: when the mapping improves —this week it improved four
+ * times— you want to reprocess the corpus, not accumulate versions.
  */
 
 import { TAXONOMY_VERSION } from "../harvest/normalize/definitions.js";
@@ -27,7 +27,7 @@ import type { MetricKey } from "../harvest/normalize/columnMap.js";
 export interface SaveReport {
   accession: string;
   loans: number;
-  /** Filas de propiedad guardadas. Antes se contaban y se tiraban. */
+  /** Property rows stored. They used to be counted and thrown away. */
   properties: number;
   observations: number;
   facts: number;
@@ -35,11 +35,11 @@ export interface SaveReport {
 }
 
 /**
- * Guarda un HarvestResult completo, en una transacción.
+ * Stores a complete HarvestResult, in one transaction.
  *
- * Los facts canónicos se calculan acá y no se reciben: derivarlos en el punto
- * de escritura garantiza que la base nunca tenga un fact que no corresponda a
- * sus observations.
+ * Canonical facts are computed here rather than received: deriving them at the
+ * point of writing guarantees the database never holds a fact that does not
+ * correspond to its observations.
  */
 export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
   return withTransaction(async (client) => {
@@ -51,7 +51,7 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
     );
     const replaced = existing.rowCount! > 0;
 
-    // ON DELETE CASCADE limpia préstamos, observations y facts.
+    // ON DELETE CASCADE cleans up loans, observations and facts.
     if (replaced) {
       await client.query("DELETE FROM corpus.filings WHERE accession = $1", [accession]);
     }
@@ -72,16 +72,16 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
         JSON.stringify(result.columnsMapped),
         JSON.stringify(result.columnsUnmapped),
         /**
-         * La versión de la taxonomía va adentro de stats.
+         * The taxonomy version goes inside stats.
          *
-         * Sirve para saber qué filings quedaron cosechados con un mapeo viejo,
-         * que es la única forma robusta de decidir qué recosechar cuando el
-         * mapeo mejora. Intentamos tres criterios por síntoma —"sin loan_ref",
-         * "sin loan_ref usable", "rangos disjuntos"— y los tres fallaron por la
-         * misma razón: cada arreglo cambia el síntoma, y el selector queda ciego
-         * justo a lo que acaba de romperse.
+         * It exists to tell which filings were harvested with an old mapping,
+         * which is the only robust way to decide what to re-harvest when the
+         * mapping improves. We tried three symptom-based criteria —"no
+         * loan_ref", "no usable loan_ref", "disjoint ranges"— and all three
+         * failed for the same reason: every fix changes the symptom, and the
+         * selector goes blind to precisely what just broke.
          *
-         * La versión no depende de si el resultado se ve sano.
+         * The version does not depend on whether the result looks healthy.
          */
         JSON.stringify({ ...result.stats, taxonomyVersion: TAXONOMY_VERSION }),
       ],
@@ -90,14 +90,14 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
     /**
      * Tres inserciones por lote, no una por fila.
      *
-     * La primera versión hacía un round-trip por observation y otro por fact. Un
-     * filing con 40 préstamos y 90 métricas cada uno son ~7.000 idas y vueltas a
-     * Postgres; sobre 219 filings, más de un millón. Con la base en localhost eso
-     * son doce de los dieciocho minutos que tardaba el lote, y el tiempo no está
-     * en la red ni en el parseo: está en la latencia de ida y vuelta.
+     * The first version did one round-trip per observation and another per
+     * fact. A filing with 40 loans and 90 metrics each is ~7,000 round-trips to
+     * Postgres; over 219 filings, more than a million. With the database on
+     * localhost that was twelve of the eighteen minutes the batch took, and the
+     * time is not in the network nor the parsing: it is in round-trip latency.
      *
-     * Multi-row INSERT lo baja a tres consultas por filing (más los trozos que
-     * haga falta partir por el límite de 65.535 parámetros de Postgres).
+     * Multi-row INSERT brings it down to three queries per filing (plus whatever
+     * chunks are needed to stay under Postgres's 65,535 parameter limit).
      */
     const loanIds = await insertLoans(client, accession, result.properties);
 
@@ -116,18 +116,19 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
     const observationCount = stored.length;
 
     /**
-     * Las propiedades van DESPUÉS de los préstamos porque necesitan sus ids.
+     * Properties go AFTER the loans because they need their ids.
      *
-     * `loanIds` está indexado por `row_index`, que es la fila del préstamo, y las
-     * propiedades traen `loanRef` —el "3" de "3.01"—, que es el número que publica
-     * el emisor. No son lo mismo, así que se arma un índice por loan_ref.
+     * `loanIds` is indexed by `row_index`, which is the loan's row, and the
+     * properties carry `loanRef` —the "3" of "3.01"— which is the number the
+     * issuer publishes. They are not the same, so an index by loan_ref is
+     * built.
      */
     const porRef = new Map<string, number>();
     for (const prop of result.properties) {
       const ref = prop.observations.find((o) => o.metric_key === "loan_id")?.value;
       const id = loanIds.get(prop.row_index);
       if (ref && id !== undefined) {
-        /** "3.00" y "3" son el mismo préstamo: se indexa por la parte entera. */
+        /** "3.00" and "3" are the same loan: indexed by the integer part. */
         const n = Number(String(ref).trim());
         if (Number.isFinite(n)) porRef.set(String(Math.trunc(n)), id);
       }
@@ -156,14 +157,14 @@ export async function saveHarvest(result: HarvestResult): Promise<SaveReport> {
 /**
  * Inserta las filas de propiedad de un filing.
  *
- * Cada una trae la dirección, la ciudad y el estado de UNA propiedad que garantiza
- * un préstamo. El harvester las descartaba: sobre los tres fixtures son 138 filas,
- * las 138 con estado.
+ * Each one carries the address, city and state of ONE property securing a loan.
+ * The harvester used to discard them: across the three fixtures that is 138 rows,
+ * all 138 with a state.
  *
- * `loan_id` puede quedar en NULL y eso es deliberado. Si un emisor numera distinto y
- * la propiedad no ata a ningún préstamo, entra igual y queda contada; borrarla
- * dejaría el mismo agujero silencioso que este cambio viene a cerrar. El monitor
- * puede preguntar cuántas quedaron huérfanas.
+ * `loan_id` may end up NULL and that is deliberate. If an issuer numbers
+ * differently and the property ties to no loan, it goes in anyway and gets
+ * counted; deleting it would leave the same silent gap this change exists to
+ * close. The monitor can ask how many were left orphaned.
  */
 async function insertProperties(
   client: PoolClient,
@@ -217,10 +218,10 @@ async function insertProperties(
 }
 
 /**
- * Inserta todos los préstamos de un filing en una consulta.
+ * Inserts all the loans of a filing in one query.
  *
- * Devuelve el id de base indexado por `row_index`, que es la clave estable del
- * préstamo dentro del Annex A y lo que después usan las observations.
+ * Returns the database id indexed by `row_index`, which is the loan's stable key
+ * within the Annex A and what the observations use afterwards.
  */
 async function insertLoans(
   client: PoolClient,
@@ -231,7 +232,7 @@ async function insertLoans(
   if (props.length === 0) return ids;
 
   const COLS = 10;
-  const CHUNK = Math.floor(60_000 / COLS); // margen sobre el límite de 65.535
+  const CHUNK = Math.floor(60_000 / COLS); // headroom under the 65,535 limit
 
   for (let start = 0; start < props.length; start += CHUNK) {
     const slice = props.slice(start, start + CHUNK);
@@ -280,11 +281,12 @@ interface StoredObservation extends HarvestedObservation {
 }
 
 /**
- * Inserta las observations de un filing entero, en trozos.
+ * Inserts an entire filing's observations, in chunks.
  *
- * El `RETURNING` trae la clave natural —loan_id, metric_key, source_header— para
- * poder reasociar cada id de base con su observation en memoria. Sin eso habría
- * que volver a consultar, que es justo lo que estamos evitando.
+ * The `RETURNING` brings back the natural key —loan_id, metric_key,
+ * source_header— so each database id can be reassociated with its in-memory
+ * observation. Without it we would have to query again, which is exactly what we
+ * are avoiding.
  */
 async function insertObservations(
   client: PoolClient,
@@ -293,14 +295,14 @@ async function insertObservations(
   if (rows.length === 0) return [];
 
   /**
-   * Deduplicar dentro del lote, no solo contra la base.
+   * Deduplicate within the batch, not only against the database.
    *
-   * `ON CONFLICT DO UPDATE` falla con "cannot affect row a second time" si la
-   * misma clave aparece dos veces en el MISMO statement. Fila por fila eso nunca
-   * pasaba —cada INSERT veía la fila anterior ya escrita—. Al agrupar, sí.
+   * `ON CONFLICT DO UPDATE` fails with "cannot affect row a second time" if the
+   * same key appears twice in the SAME statement. Row by row that never happened
+   * —each INSERT saw the previous row already written. Batched, it does.
    *
-   * Gana la de mayor confianza, que es el mismo criterio que usa la promoción a
-   * facts. Empatadas, la primera.
+   * The highest confidence wins, which is the same criterion promotion to facts
+   * uses. On a tie, the first one.
    */
   const byKey = new Map<string, { loanId: number; obs: HarvestedObservation }>();
   for (const row of rows) {
@@ -360,18 +362,18 @@ async function insertObservations(
 }
 
 /**
- * Promueve las observations a facts canónicos, en una consulta por filing.
+ * Promotes observations to canonical facts, in one query per filing.
  *
- * La lógica de promoción no cambió: por préstamo y métrica gana la de mayor
- * confianza, y queda registrado contra cuántas candidatas compitió.
+ * The promotion logic did not change: per loan and metric the highest confidence
+ * wins, and it is recorded how many candidates it competed against.
  */
 /**
- * Las celdas sin mapear, para que el reconciliador tenga contra qué comparar.
+ * The unmapped cells, so the reconciler has something to compare against.
  *
- * Mismo patrón que las otras tres inserciones —multi-row, deduplicado en
- * memoria, troceado por el límite de parámetros de Postgres— por las mismas
- * razones. La clave única es (loan_id, header): si una fila trae dos columnas
- * con el mismo encabezado, gana la primera, que es lo que también hace el mapeo.
+ * Same pattern as the other three inserts —multi-row, deduplicated in memory,
+ * chunked by Postgres's parameter limit— for the same reasons. The unique key is
+ * (loan_id, header): if a row carries two columns with the same header, the first
+ * wins, which is also what the mapping does.
  */
 async function insertUnmappedCells(
   client: PoolClient,
@@ -445,8 +447,8 @@ async function insertFacts(
         obsId: winner.dbId,
         rationale:
           candidates.length === 1
-            ? "único valor disponible"
-            : `confidence ${winner.confidence.toFixed(2)} entre ${candidates.length} candidatos`,
+            ? "only value available"
+            : `confidence ${winner.confidence.toFixed(2)} among ${candidates.length} candidates`,
       });
     }
   }

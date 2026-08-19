@@ -1,30 +1,30 @@
 /**
- * Instantánea del corpus, y qué se movió desde la anterior.
+ * A snapshot of the corpus, and what moved since the previous one.
  *
- *   npm run db:snapshot            compara contra la última y guarda
- *   npm run db:snapshot -- --dry   compara sin guardar
+ *   npm run db:snapshot            compares against the last one and saves
+ *   npm run db:snapshot -- --dry   compares without saving
  *
- * QUÉ PROBLEMA RESUELVE
+ * WHAT PROBLEM IT SOLVES
  *
- * Los hallazgos más valiosos de este proyecto no salieron de razonar: salieron
- * de que un número volvió distinto del esperado.
+ * The most valuable findings in this project did not come from reasoning: they
+ * came from a number coming back different from what was expected.
  *
- *   3.579 → 3.566 préstamos      destapó que el join horizontal cambió
- *   52% → 41% en el share        destapó que promediábamos dos mercados
- *   73% → 95% en las identidades confirmó el escalado del servicio de deuda
+ *   3,579 → 3,566 loans          revealed that the horizontal join had changed
+ *   52% → 41% in the share       revealed we were averaging two markets
+ *   73% → 95% in the identities  confirmed the debt-service scaling
  *
- * Ninguno necesita criterio para DETECTARSE. Los tres lo necesitan para
- * interpretarse. Esa asimetría es la que conviene automatizar: la máquina avisa
- * que algo se movió, la persona decide si importa.
+ * None of them needs judgement to be DETECTED. All three need it to be
+ * interpreted. That asymmetry is the one worth automating: the machine says
+ * something moved, the person decides whether it matters.
  *
- * POR QUÉ NO ES UN TEST
+ * WHY IT IS NOT A TEST
  *
- * Un test afirma que un valor es correcto. Acá no sabemos cuál es el valor
- * correcto —si lo supiéramos no haría falta el corpus—. Lo único que se puede
- * afirmar es que cambió, y que nadie lo explicó.
+ * A test asserts that a value is correct. Here we do not know what the correct
+ * value is —if we did, the corpus would be unnecessary. The only thing that can
+ * be asserted is that it changed, and that nobody explained it.
  *
- * Por eso no falla. Imprime. Un umbral que corta el pipeline por una variación
- * de tres décimas termina desactivado en una semana.
+ * That is why it does not fail. It prints. A threshold that breaks the pipeline
+ * over a three-tenths variation ends up disabled within a week.
  */
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -43,17 +43,17 @@ if (!health.ok) {
 }
 
 interface Metric {
-  /** Etiqueta legible. */
+  /** Human-readable label. */
   label: string;
   value: number | null;
-  /** Cómo formatear: entero, porcentaje, ratio. */
+  /** How to format: integer, percentage, ratio. */
   kind: "count" | "pct" | "ratio";
   /**
-   * Variación relativa a partir de la cual vale la pena mirar.
+   * Relative variation above which it is worth looking.
    *
-   * No es un umbral de error: es de atención. Un conteo de préstamos que se
-   * mueve 1% después de cambiar el mapeo es esperable; uno que se mueve 1% sin
-   * que nadie tocara nada, no.
+   * It is not an error threshold: it is an attention threshold. A loan count
+   * that moves 1% after changing the mapping is expected; one that moves 1% with
+   * nobody having touched anything is not.
    */
   notable: number;
 }
@@ -64,7 +64,7 @@ interface Snapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Qué se mide
+// What is measured
 // ---------------------------------------------------------------------------
 
 const metrics: Record<string, Metric> = {};
@@ -78,7 +78,7 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-// --- tamaño del corpus -------------------------------------------------------
+// --- corpus size --------------------------------------------------------------
 
 const { rows: size } = await query<{
   filings: string; loans: string; observations: string; facts: string; metrics: string;
@@ -90,33 +90,33 @@ const { rows: size } = await query<{
           (SELECT count(DISTINCT metric_key) FROM corpus.facts) AS metrics`,
 );
 const sz = size[0]!;
-add("filings", "emisiones", num(sz.filings), "count", 0.001);
-add("loans", "préstamos", num(sz.loans), "count", 0.002);
+add("filings", "issuances", num(sz.filings), "count", 0.001);
+add("loans", "loans", num(sz.loans), "count", 0.002);
 add("observations", "observations", num(sz.observations), "count", 0.01);
-add("metrics", "métricas distintas", num(sz.metrics), "count", 0.001);
+add("metrics", "distinct metrics", num(sz.metrics), "count", 0.001);
 
 /**
- * Cobertura del identificador.
+ * Identifier coverage.
  *
- * Es la métrica que más silenciosamente se degrada: los préstamos se cosechan
- * bien, nadie ve un error, y después no pegan contra nada. Estuvo en 72% durante
- * toda la sesión sin que lo notáramos.
+ * It is the metric that degrades most silently: the loans harvest fine, nobody
+ * sees an error, and then they join against nothing. It sat at 72% for an entire
+ * session without us noticing.
  */
 const { rows: ids } = await query<{ share: number | null }>(
   `SELECT 1.0 * count(*) FILTER (WHERE loan_ref IS NOT NULL AND loan_ref <> '')
           / NULLIF(count(*), 0) AS share
      FROM corpus.loans`,
 );
-add("loan_ref_coverage", "préstamos con identificador", num(ids[0]?.share), "pct", 0.02);
+add("loan_ref_coverage", "loans with an identifier", num(ids[0]?.share), "pct", 0.02);
 
 const { rows: typed } = await query<{ share: number | null }>(
   `SELECT 1.0 * count(*) FILTER (WHERE property_type IS NOT NULL AND property_type <> '')
           / NULLIF(count(*), 0) AS share
      FROM corpus.loans`,
 );
-add("property_type_coverage", "préstamos con tipo", num(typed[0]?.share), "pct", 0.02);
+add("property_type_coverage", "loans with a type", num(typed[0]?.share), "pct", 0.02);
 
-// --- identidades aritméticas -------------------------------------------------
+// --- arithmetic identities ------------------------------------------------------
 
 const TOL = 0.01;
 const fact = (a: string, k: string) =>
@@ -139,7 +139,7 @@ async function identityShare(joins: string, expected: string, actual: string): P
 
 add(
   "id_debt_yield",
-  "identidad · debt yield",
+  "identity · debt yield",
   await identityShare(
     `${fact("dy", "debt_yield")} ${fact("noi", "noi_underwritten")} ${SENIOR_J}`,
     `noi.value::numeric / NULLIF(${SENIOR}, 0)`,
@@ -150,7 +150,7 @@ add(
 );
 add(
   "id_ltv",
-  "identidad · LTV",
+  "identity · LTV",
   await identityShare(
     `${fact("v", "ltv")} ${SENIOR_J} ${fact("val", "appraised_value")}`,
     `${SENIOR} / NULLIF(val.value::numeric, 0)`,
@@ -161,7 +161,7 @@ add(
 );
 add(
   "id_ncf",
-  "identidad · NCF",
+  "identity · NCF",
   await identityShare(
     `${fact("ncf", "net_cash_flow")} ${fact("noi", "noi_underwritten")} ` +
       `${fact("rep", "underwritten_replacement_reserve")} ${fact("tilc", "underwritten_tilc")}`,
@@ -172,12 +172,12 @@ add(
   0.03,
 );
 
-// --- desempeño y hallazgo ----------------------------------------------------
+// --- performance and finding -----------------------------------------------------
 
 const { rows: perf } = await query<{ n: string }>(
   `SELECT count(*) AS n FROM corpus.performance`,
 );
-add("performance_loans", "préstamos con NOI real", num(perf[0]?.n), "count", 0.02);
+add("performance_loans", "loans with actual NOI", num(perf[0]?.n), "count", 0.02);
 
 const POST = "gap_vs_actual IS NOT NULL AND days_after_origination >= 0";
 const { rows: outcome } = await query<{
@@ -188,16 +188,16 @@ const { rows: outcome } = await query<{
           1.0 * count(*) FILTER (WHERE gap_vs_actual >= 0.05) / NULLIF(count(*), 0) AS share
      FROM corpus.underwriting_outcomes WHERE ${POST}`,
 );
-add("outcome_n", "muestra del hallazgo", num(outcome[0]?.n), "count", 0.02);
-add("outcome_median", "brecha mediana vs real", num(outcome[0]?.median), "pct", 0.15);
+add("outcome_n", "sample behind the finding", num(outcome[0]?.n), "count", 0.02);
+add("outcome_median", "median gap vs actual", num(outcome[0]?.median), "pct", 0.15);
 add("outcome_share", "share ≥5%", num(outcome[0]?.share), "pct", 0.05);
 
 /**
- * Las dos añadas que anclan el contraste.
+ * The two vintages that anchor the contrast.
  *
- * El hallazgo dice que el crecimiento proyectado se mantuvo y el entregado se
- * derrumbó. Si alguna de estas cuatro cifras se mueve sin explicación, el
- * documento hay que reescribirlo.
+ * The finding says projected growth held steady while delivered growth
+ * collapsed. If any of these four figures moves without explanation, the document
+ * has to be rewritten.
  */
 for (const year of [2021, 2024]) {
   const { rows } = await query<{ projected: number | null; growth: number | null; n: string }>(
@@ -207,13 +207,13 @@ for (const year of [2021, 2024]) {
        FROM corpus.underwriting_outcomes
       WHERE ${POST} AND extract(year FROM originated_at) = ${year}`,
   );
-  add(`v${year}_n`, `añada ${year} · n`, num(rows[0]?.n), "count", 0.05);
-  add(`v${year}_projected`, `añada ${year} · proyectó`, num(rows[0]?.projected), "pct", 0.15);
-  add(`v${year}_growth`, `añada ${year} · entregó`, num(rows[0]?.growth), "pct", 0.15);
+  add(`v${year}_n`, `${year} vintage · n`, num(rows[0]?.n), "count", 0.05);
+  add(`v${year}_projected`, `${year} vintage · projected`, num(rows[0]?.projected), "pct", 0.15);
+  add(`v${year}_growth`, `${year} vintage · delivered`, num(rows[0]?.growth), "pct", 0.15);
 }
 
 // ---------------------------------------------------------------------------
-// Comparación
+// Comparison
 // ---------------------------------------------------------------------------
 
 const current: Snapshot = { at: new Date().toISOString(), metrics };
@@ -232,16 +232,16 @@ const fmt = (m: Metric): string => {
 };
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Instantánea del corpus");
+console.log("Corpus snapshot");
 console.log(`${"═".repeat(78)}`);
 
 if (!previous) {
-  console.log(`\n  \x1b[90mPrimera instantánea: no hay contra qué comparar.\x1b[0m\n`);
+  console.log(`\n  \x1b[90mFirst snapshot: there is nothing to compare against.\x1b[0m\n`);
   for (const m of Object.values(metrics)) {
     console.log(`  ${m.label.padEnd(32)} ${fmt(m).padStart(12)}`);
   }
 } else {
-  console.log(`\n  Contra ${previous.at.slice(0, 16).replace("T", " ")}\n`);
+  console.log(`\n  Against ${previous.at.slice(0, 16).replace("T", " ")}\n`);
 
   const moved: Array<{ m: Metric; before: number; after: number; rel: number }> = [];
   const stable: Metric[] = [];
@@ -249,7 +249,7 @@ if (!previous) {
   for (const [key, m] of Object.entries(metrics)) {
     const before = previous.metrics[key]?.value;
     if (before === undefined || before === null || m.value === null) {
-      console.log(`  ${m.label.padEnd(32)} ${fmt(m).padStart(12)}   \x1b[90mnuevo\x1b[0m`);
+      console.log(`  ${m.label.padEnd(32)} ${fmt(m).padStart(12)}   \x1b[90mnew\x1b[0m`);
       continue;
     }
     const rel = before === 0 ? (m.value === 0 ? 0 : 1) : Math.abs(m.value - before) / Math.abs(before);
@@ -258,9 +258,9 @@ if (!previous) {
   }
 
   if (moved.length === 0) {
-    console.log(`  \x1b[32mNada se movió por encima de su umbral de atención.\x1b[0m`);
+    console.log(`  \x1b[32mNothing moved above its attention threshold.\x1b[0m`);
   } else {
-    console.log(`  \x1b[33mSe movieron ${moved.length}:\x1b[0m\n`);
+    console.log(`  \x1b[33m${moved.length} moved:\x1b[0m\n`);
     for (const { m, before, after, rel } of moved) {
       const dir = after > before ? "↑" : "↓";
       const b: Metric = { ...m, value: before };
@@ -270,12 +270,12 @@ if (!previous) {
       );
     }
     console.log(
-      `\n  \x1b[90mUn número que se mueve sin que nadie lo haya explicado es una pregunta,\x1b[0m`,
+      `\n  \x1b[90mA number that moves with nobody having explained it is a question,\x1b[0m`,
     );
-    console.log(`  \x1b[90mno un error. Los tres hallazgos de esta semana salieron de acá.\x1b[0m`);
+    console.log(`  \x1b[90mnot an error. This week's three findings all came from here.\x1b[0m`);
   }
 
-  console.log(`\n  \x1b[90m${stable.length} estables\x1b[0m`);
+  console.log(`\n  \x1b[90m${stable.length} stable\x1b[0m`);
 }
 
 if (!dry) {
@@ -284,13 +284,13 @@ if (!dry) {
   console.log(`\n  → .snapshots/${name}`);
 
   /**
-   * No hay limpieza de archivos viejos, a propósito.
+   * There is no cleanup of old files, deliberately.
    *
-   * La primera versión "limpiaba" escribiendo archivos vacíos, porque no quise
-   * lidiar con permisos de borrado. Eso deja basura que el propio script después
-   * intenta parsear como JSON y rompe. Peor que no hacer nada.
+   * The first version "cleaned up" by writing empty files, because I did not want
+   * to deal with delete permissions. That leaves rubbish the script itself later
+   * tries to parse as JSON and breaks on. Worse than doing nothing.
    *
-   * Un snapshot pesa un par de KB. Cuando molesten, `rm .snapshots/*.json`.
+   * A snapshot is a couple of KB. When they get annoying, `rm .snapshots/*.json`.
    */
 }
 
