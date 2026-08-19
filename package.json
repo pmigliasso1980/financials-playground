@@ -71,6 +71,7 @@
     "check:spanish": "python3 tools/find-spanish.py && python3 tools/find-spanish-idents.py",
     "check:sql": "python3 tools/check-sql.py",
     "check:all": "npm run typecheck && npm run check:spanish && npm run check:sql && npm run api:contract",
+    "check:ratchet": "python3 tools/ratchet.py",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {

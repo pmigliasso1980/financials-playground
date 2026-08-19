@@ -113,9 +113,12 @@ if not paths:
         # Generated and enormous.
         if f == "package-lock.json":
             return True
-        # These two carry the Spanish vocabulary the detector matches on, so
-        # scanning them reports the word list itself as a finding.
-        if f in {"tools/find-spanish.py", "tools/es-blocks.py"}:
+        # These carry the Spanish vocabulary the detectors match on, so scanning
+        # them reports the word list itself as a finding. find-spanish-idents.py
+        # was missing from this set and showed up as 4 suspect lines in its own
+        # report — the detector flagging its own dictionary.
+        if f in {"tools/find-spanish.py", "tools/find-spanish-idents.py",
+                 "tools/es-blocks.py"}:
             return True
         # git ls-files still lists a file deleted in the working tree until the
         # deletion is committed.
