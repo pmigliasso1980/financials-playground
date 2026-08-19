@@ -1,24 +1,24 @@
 /**
- * Cosecha en lote del desempeño del servicer.
+ * Batch harvest of servicer performance.
  *
  *   npm run db:performance
  *   npm run db:performance -- --before 2025-07-01
  *
- * ALCANCE: SOLO LO QUE YA MADURÓ
+ * SCOPE: ONLY WHAT HAS ALREADY MATURED
  *
- * Para comparar suscripción contra resultado hace falta un año completo de
- * operación posterior al cierre. Un deal de 2026 todavía no lo tiene, así que
- * intentarlo solo gasta requests contra SEC.
+ * Comparing underwriting against outcome needs a full year of operation after
+ * closing. A 2026 deal does not have one yet, so trying only burns requests
+ * against SEC.
  *
- * El corte por defecto es el 1 de enero de 2025: los trusts originados antes de
- * esa fecha tienen el ejercicio 2025 cerrado y reportado en el informe de abril
- * de 2026. Sobre el corpus actual eso son los ~31 trusts de la añada 2024.
+ * The default cutoff is 1 January 2025: trusts originated before that date have
+ * the 2025 financial year closed and reported in the April 2026 statement. Over
+ * the current corpus that is the ~31 trusts of the 2024 vintage.
  *
- * QUÉ SE GUARDA Y QUÉ NO
+ * WHAT IS STORED AND WHAT IS NOT
  *
- * Solo préstamos con NOI de año completo medido, unidos a un préstamo que ya
- * está en el corpus. Un préstamo del servicer que no pegue contra el Annex A no
- * se inventa: se cuenta como no coincidente y se reporta.
+ * Only loans with a measured full-year NOI, joined to a loan already in the
+ * corpus. A servicer loan that does not join against the Annex A is not invented:
+ * it is counted as unmatched and reported.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -63,11 +63,11 @@ const { rows: targets } = await query<{
   [ORIGINATED_BEFORE, LIMIT],
 );
 
-console.log(`\nDesempeño del servicer`);
-console.log(`  ${targets.length} trusts originados antes de ${ORIGINATED_BEFORE}\n`);
+console.log(`\nServicer performance`);
+console.log(`  ${targets.length} trusts originated before ${ORIGINATED_BEFORE}\n`);
 
 if (targets.length === 0) {
-  console.log(`  Nada que cosechar. Probá con --before más tarde.\n`);
+  console.log(`  Nothing to harvest. Try --before with a later date.\n`);
   await closePool();
   process.exit(0);
 }
@@ -75,21 +75,21 @@ if (targets.length === 0) {
 const started = Date.now();
 let ok = 0;
 let failed = 0;
-/** Informe parseado y registrado, sin NOI de año completo. Observable, no fallido. */
-let sinNoi = 0;
+/** Report parsed and registered, with no full-year NOI. Observable, not failed. */
+let withoutNoi = 0;
 let totalDelinquent = 0;
-/** Filas de morosidad del informe que no encontraron préstamo: cobertura perdida. */
-let totalSinPegar = 0;
-/** Filas que pegaron sobre un préstamo ya visto: tramos pari passu, no pérdida. */
-let totalColapsadas = 0;
+/** Delinquency rows from the report that found no loan: lost coverage. */
+let totalUnjoined = 0;
+/** Rows landing on an already-seen loan: pari passu tranches, not a loss. */
+let totalCollapsed = 0;
 /**
- * Préstamos en special servicing que NO estaban entre los morosos.
+ * Loans in special servicing that were NOT among the delinquent ones.
  *
- * Es la medida directa de lo que el parser perdía: si es cero, el bloque nuevo
- * no aportaba nada; si es grande y desparejo entre shelves, era la explicación
- * de que BANK marcara 4 veces menos transferencias que BBCMS.
+ * It is the direct measure of what the parser was losing: if it is zero, the new
+ * block added nothing; if it is large and uneven across shelves, it was the
+ * explanation for BANK flagging 4 times fewer transfers than BBCMS.
  */
-let totalEspeciales = 0;
+let totalSpecialOnly = 0;
 let totalMatched = 0;
 let totalUnmatched = 0;
 const problems: string[] = [];
@@ -100,31 +100,30 @@ for (const [i, t] of targets.entries()) {
 
   try {
     /**
-     * Se prueban varios meses hasta conseguir un rendimiento decente.
+     * Several months are tried until the yield is decent.
      *
-     * Abril es el mejor mes en promedio, pero no para todos los trusts: el
-     * ejercicio fiscal del prestatario no siempre cierra en diciembre, y los
-     * administradores no consolidan todos el mismo mes. En la primera corrida
-     * catorce de treinta y un trusts devolvieron entre uno y cuatro préstamos
-     * mientras trece devolvían más de veinte —dos comportamientos distintos que
-     * un solo intento no distingue.
+     * April is the best month on average, but not for every trust: the borrower's
+     * fiscal year does not always close in December, and servicers do not all
+     * consolidate in the same month. On the first run, fourteen of thirty-one
+     * trusts returned between one and four loans while thirteen returned more
+     * than twenty — two different behaviours a single attempt cannot tell apart.
      *
-     * Nos detenemos apenas un mes rinde bien; solo los que rinden mal pagan
-     * requests extra.
+     * We stop as soon as a month yields well; only the poor yielders pay for
+     * extra requests.
      */
     const reports = await findServicerReports(t.cik, { max: 3 });
     if (reports.length === 0) {
-      console.log(`${tag} — ${name} sin 10-D`);
+      console.log(`${tag} — ${name} no 10-D`);
       failed++;
-      problems.push(`${t.company_name}: sin 10-D con EX-99.1`);
+      problems.push(`${t.company_name}: no 10-D with an EX-99.1`);
       continue;
     }
 
     let report = reports[0]!;
     /**
-     * El HTML del informe elegido se guarda: las partes del trust salen de la
-     * carátula, que `parseServicerReport` no devuelve, y bajarlo de nuevo sería
-     * un request contra SEC por algo que ya está en memoria.
+     * The chosen report's HTML is kept: the trust's parties come from the cover
+     * page, which `parseServicerReport` does not return, and downloading it again
+     * would be a request to SEC for something already in memory.
      */
     let html = await fetchText(report.documentUrl);
     let parsed = parseServicerReport(html);
@@ -150,42 +149,43 @@ for (const [i, t] of targets.entries()) {
     }
 
     /**
-     * `minRows: 1` y no 2: la carátula tiene filas sueltas que el umbral del
-     * parser de tablas descarta. Es la misma extracción, con otro piso.
+     * `minRows: 1` and not 2: the cover page has loose rows that the table
+     * parser's threshold discards. Same extraction, different floor.
      */
-    const partes = extractParties(
+    const parties = extractParties(
       extractFromHtml(html, { mergeHeaders: false, minRows: 1 }),
     );
-    const rolDe = (r: string) => partes.find((p) => p.rol === r)?.nombre ?? null;
+    const roleOf = (r: string) => parties.find((p) => p.role === r)?.name ?? null;
 
     /**
-     * El informe se registra ANTES de mirar si dio NOI.
+     * The report is registered BEFORE checking whether it yielded NOI.
      *
-     * Hasta acá el INSERT a `servicer_reports` y el de morosidad estaban después
-     * del `continue` de "sin años completos". Consecuencia: una emisión cuyo
-     * informe se parseó bien pero no dio NOI utilizable salía sin registrarse y
-     * sin guardar su morosidad —aunque el bloque de delincuencia estuviera
-     * parseado, en memoria, dos variables más allá—.
+     * Until now the INSERT into `servicer_reports` and the delinquency one sat
+     * after the "no full years" `continue`. Consequence: an issuance whose report
+     * parsed fine but yielded no usable NOI came out unregistered and with its
+     * delinquency unsaved —even though the delinquency block was parsed, in
+     * memory, two variables away.
      *
-     * Como los análisis gatean con `JOIN corpus.performance` para decir "acá el
-     * evento es observable", el shelf BANK entero quedaba fuera de la pregunta
-     * de morosidad por no tener NOI. Una pregunta pagando la dependencia de otra.
+     * Since the analyses gate on `JOIN corpus.performance` to say "the event is
+     * observable here", the entire BANK shelf fell out of the delinquency
+     * question for having no NOI. One question paying another's dependency.
      *
-     * Registrar siempre es lo que separa "no hubo evento" de "no lo observamos".
-     * Sin eso las dos cosas son la misma fila ausente, que es el confundido que
-     * ya nos mordió con el stock de special servicing y con las añadas jóvenes.
+     * Always registering is what separates "there was no event" from "we did not
+     * observe it". Without that the two are the same absent row, which is the
+     * confounder that already bit us with the special servicing stock and with
+     * the young vintages.
      */
     if (parsed.diagnostics.tablesMatched === 0) {
       failed++;
       console.log(`${tag} — ${name} \x1b[31mformato\x1b[0m`);
       problems.push(
         `${t.company_name} [${report.periodOfReport}, ${attempts} intento(s)]: ` +
-          `NO SE ENCONTRÓ la tabla en ${parsed.diagnostics.tablesScanned} tablas — formato distinto`,
+          `TABLE NOT FOUND across ${parsed.diagnostics.tablesScanned} tables — different format`,
       );
       continue;
     }
 
-    // Índice de los préstamos del corpus por su Loan ID normalizado.
+    // Index of the corpus loans by their normalised Loan ID.
     const { rows: corpusLoans } = await query<{ id: string; loan_ref: string | null }>(
       `SELECT id::text, loan_ref FROM corpus.loans WHERE accession = $1`,
       [t.accession],
@@ -215,8 +215,8 @@ for (const [i, t] of targets.entries()) {
         report.documentName,
         report.documentUrl,
         t.accession,
-        rolDe("master servicer"),
-        rolDe("special servicer"),
+        roleOf("master servicer"),
+        roleOf("special servicer"),
         JSON.stringify({
           rowsFound: parsed.diagnostics.rowsFound,
           loansParsed: parsed.loans.length,
@@ -227,12 +227,13 @@ for (const [i, t] of targets.entries()) {
             (d) => byInt.has(loanInt(d.loanId) ?? ""),
           ).length,
           /**
-           * Para poder preguntar "¿cuántas emisiones declaran cero morosos?"
-           * sobre las 148 en vez de sobre la que tenía a mano.
+           * So the question "how many issuances declare zero delinquencies?"
+           * can be asked over all 148 rather than over the one I had to hand.
            *
-           * BANK 2021-BNK36 dice "No delinquent loans this period" en el
-           * documento; de eso concluí algo sobre un shelf de 24 emisiones. Con
-           * estos tres números la conclusión se puede sacar del corpus entero.
+           * BANK 2021-BNK36 says "No delinquent loans this period" in the
+           * document; from that I concluded something about a shelf of 24
+           * issuances. With these three numbers the conclusion can be drawn from
+           * the whole corpus.
            */
           delinquencyTables: parsed.diagnostics.delinquencyTables,
           delinquencyDataRows: parsed.diagnostics.delinquencyDataRows,
@@ -248,30 +249,31 @@ for (const [i, t] of targets.entries()) {
     );
 
     /**
-     * Morosidad y special servicing, del mismo informe.
+     * Delinquency and special servicing, from the same report.
      *
-     * Va antes que el NOI a propósito: no depende de él, y ponerlo después ya
-     * costó que el shelf BANK quedara fuera del análisis.
+     * It goes before the NOI on purpose: it does not depend on it, and putting it
+     * after already cost the BANK shelf its place in the analysis.
      *
-     * A diferencia del NOI, acá NO se filtra por período posterior al cierre:
-     * el estado de pago es del momento del informe, no de un rango.
+     * Unlike the NOI, there is NO filter here for a period after closing: payment
+     * status is as of the report date, not over a range.
      */
     /**
-     * Tres contadores, no uno.
+     * Three counters, not one.
      *
-     * El lote informaba 341 morosos y la tabla tenía 282, sobre 349 parseadas.
-     * Un solo contador no distingue "no pegó contra el corpus" de "pegó sobre
-     * un préstamo que ya tenía fila" —tramos pari passu que el servicer numera
-     * 1, 1A, 1B y `loanInt` colapsa a propósito—. La diferencia importa: la
-     * primera es cobertura perdida, la segunda es deduplicación correcta.
+     * The batch reported 341 delinquencies and the table had 282, out of 349
+     * parsed. A single counter does not distinguish "did not join against the
+     * corpus" from "joined onto a loan that already had a row" —pari passu
+     * tranches the servicer numbers 1, 1A, 1B and `loanInt` collapses on
+     * purpose. The difference matters: the first is lost coverage, the second is
+     * correct deduplication.
      */
     let delinquent = 0;
-    let sinPegar = 0;
-    const vistos = new Set<string>();
+    let unjoined = 0;
+    const seen = new Set<string>();
     for (const d of parsed.delinquency) {
       const corpusId = byInt.get(loanInt(d.loanId) ?? "");
       if (!corpusId) {
-        sinPegar++;
+        unjoined++;
         continue;
       }
       await query(
@@ -295,21 +297,22 @@ for (const [i, t] of targets.entries()) {
         ],
       );
       delinquent++;
-      vistos.add(corpusId);
+      seen.add(corpusId);
     }
     totalDelinquent += delinquent;
-    totalSinPegar += sinPegar;
-    totalColapsadas += delinquent - vistos.size;
+    totalUnjoined += unjoined;
+    totalCollapsed += delinquent - seen.size;
 
     /**
-     * El bloque de especialmente administrados, que el parser no leía.
+     * The specially serviced block, which the parser was not reading.
      *
-     * Un préstamo puede estar en special servicing pagando al día: aparece acá
-     * y no entre los morosos. El upsert NO pisa `months_delinquent` porque ese
-     * dato solo existe en el otro bloque — si lo pisara con NULL, arreglar el
-     * numerador rompería la identidad que valida la tabla entera.
+     * A loan can be in special servicing while paying on time: it appears here and
+     * not among the delinquent ones. The upsert does NOT overwrite
+     * `months_delinquent` because that datum only exists in the other block — if
+     * it overwrote it with NULL, fixing the numerator would break the identity
+     * that validates the whole table.
      */
-    let especiales = 0;
+    let specialOnly = 0;
     for (const s of parsed.specialServicing) {
       const corpusId = byInt.get(loanInt(s.loanId) ?? "");
       if (!corpusId) continue;
@@ -322,33 +325,34 @@ for (const [i, t] of targets.entries()) {
            transfer_date = coalesce(EXCLUDED.transfer_date, corpus.delinquency.transfer_date),
            resolution_code = coalesce(EXCLUDED.resolution_code, corpus.delinquency.resolution_code),
            source = CASE WHEN corpus.delinquency.source = 'delinquency'
-                         THEN 'ambos' ELSE 'special' END`,
+                         THEN 'both' ELSE 'special' END`,
         [
           report.accession, corpusId, s.prosId, report.periodOfReport || null,
           s.transferDate, s.resolutionCode,
         ],
       );
-      if (!vistos.has(corpusId)) especiales++;
-      vistos.add(corpusId);
+      if (!seen.has(corpusId)) specialOnly++;
+      seen.add(corpusId);
     }
-    totalEspeciales += especiales;
+    totalSpecialOnly += specialOnly;
 
     /**
-     * Sin NOI utilizable ya no es un fracaso: es un informe registrado que
-     * aporta morosidad y no aporta NOI. Se sigue reportando —el rendimiento
-     * bajo puede ser un formato a soportar— pero la emisión queda observable.
+     * No usable NOI is no longer a failure: it is a registered report that
+     * contributes delinquency and does not contribute NOI. It is still reported
+     * —a low yield may be a format worth supporting— but the issuance stays
+     * observable.
      */
     if (usable.length === 0) {
-      sinNoi++;
+      withoutNoi++;
       console.log(
         `${tag} \x1b[90m○\x1b[0m ${name} \x1b[90msin NOI\x1b[0m  ` +
-          `${String(delinquent).padStart(3)} morosos de ${String(corpusLoans.length).padStart(3)} del pool` +
+          `${String(delinquent).padStart(3)} delinquent of ${String(corpusLoans.length).padStart(3)} in the pool` +
           `${attempts > 1 ? ` \x1b[90m(${attempts} meses)\x1b[0m` : ""}`,
       );
       problems.push(
         `${t.company_name} [${report.periodOfReport}, ${attempts} intento(s)]: ` +
-          `tabla ubicada, ${parsed.diagnostics.rowsFound} filas, ninguna con año completo ` +
-          `(${parsed.diagnostics.droppedNoDates} sin fechas) — registrado igual, ${delinquent} filas de morosidad`,
+          `table located, ${parsed.diagnostics.rowsFound} rows, none with a full year ` +
+          `(${parsed.diagnostics.droppedNoDates} with no dates) — registered anyway, ${delinquent} delinquency rows`,
       );
       continue;
     }
@@ -383,42 +387,43 @@ for (const [i, t] of targets.entries()) {
     ok++;
 
     /**
-     * Un join que falla tiene que decir POR QUÉ.
+     * A failing join has to say WHY.
      *
-     * "33 sin pegar" es un síntoma con al menos tres causas distintas y un
-     * arreglo distinto para cada una:
+     * "33 unmatched" is a symptom with at least three different causes and a
+     * different fix for each:
      *
-     *   - el corpus no tiene Loan ID para ese filing   → falta mapear la columna
-     *   - los rangos no se superponen                   → otra numeración
-     *   - se superponen parcialmente                    → préstamos dados de baja
+     *   - the corpus has no Loan ID for that filing  → the column needs mapping
+     *   - the ranges do not overlap                   → a different numbering
+     *   - they overlap partially                      → loans paid off or removed
      *
-     * Sin distinguirlas, veinte trusts que aportan cero se ven todos iguales y
-     * uno termina persiguiendo la hipótesis equivocada. Es el mismo problema que
-     * ya tuvimos con "no se encontraron trusts" cuando faltaba el User-Agent.
+     * Without distinguishing them, twenty trusts contributing zero all look the
+     * same and you end up chasing the wrong hypothesis. It is the same problem we
+     * had with "no trusts found" when the User-Agent was missing.
      */
     const rate = usable.length ? matched / usable.length : 0;
     let diagnosis = "";
     if (matched === 0 && usable.length > 0) {
       if (byInt.size === 0) {
         /**
-         * Dos causas distintas producen un índice vacío, y la primera versión
-         * las confundía: decía "el corpus no tiene Loan ID (83 de 83 filas con
-         * loan_ref)", que se contradice a sí misma.
+         * Two different causes produce an empty index, and the first version
+         * confused them: it said "the corpus has no Loan ID (83 of 83 rows with
+         * loan_ref)", which contradicts itself.
          *
-         * O no hay identificador, o lo hay pero no arranca con un número —el
-         * servicer numera 1, 2, 3 y el Annex A puede usar códigos como "B16-01"
-         * o "A-1"—. La segunda necesita ver los valores reales, no un conteo.
+         * Either there is no identifier, or there is one but it does not start
+         * with a number —the servicer numbers 1, 2, 3 and the Annex A may use
+         * codes like "B16-01" or "A-1". The second needs to see the real values,
+         * not a count.
          */
         const withRef = corpusLoans.filter((l) => l.loan_ref?.trim());
         if (withRef.length === 0) {
           diagnosis =
-            ` \x1b[31m✗ sin identificador\x1b[0m ` +
-            `\x1b[90m(0 de ${corpusLoans.length} filas)\x1b[0m`;
+            ` \x1b[31m✗ no identifier\x1b[0m ` +
+            `\x1b[90m(0 of ${corpusLoans.length} rows)\x1b[0m`;
         } else {
           const sample = withRef.slice(0, 3).map((l) => `"${l.loan_ref}"`).join(", ");
           diagnosis =
-            ` \x1b[31m✗ identificador no numérico\x1b[0m ` +
-            `\x1b[90m(${withRef.length} filas: ${sample})\x1b[0m`;
+            ` \x1b[31m✗ non-numeric identifier\x1b[0m ` +
+            `\x1b[90m(${withRef.length} rows: ${sample})\x1b[0m`;
         }
       } else {
         const corpusKeys = [...byInt.keys()].map(Number).sort((a, b) => a - b);
@@ -427,20 +432,20 @@ for (const [i, t] of targets.entries()) {
           .filter(Number.isFinite)
           .sort((a, b) => a - b);
         diagnosis =
-          ` \x1b[31m✗ rangos disjuntos\x1b[0m \x1b[90m(corpus ${corpusKeys[0]}-${corpusKeys[corpusKeys.length - 1]}, ` +
+          ` \x1b[31m✗ disjoint ranges\x1b[0m \x1b[90m(corpus ${corpusKeys[0]}-${corpusKeys[corpusKeys.length - 1]}, ` +
           `servicer ${servKeys[0]}-${servKeys[servKeys.length - 1]})\x1b[0m`;
       }
-      problems.push(`${t.company_name}: join vacío —${diagnosis.replace(/\x1b\[[0-9;]*m/g, "").trim()}`);
+      problems.push(`${t.company_name}: empty join —${diagnosis.replace(/\x1b\[[0-9;]*m/g, "").trim()}`);
     }
-    const flag = diagnosis || (rate < 0.9 ? " \x1b[33m⚠ join parcial\x1b[0m" : "");
-    // El rendimiento —cuántas filas del informe terminaron siendo utilizables—
-    // es lo que separa a los trusts que rinden 20 de los que rinden 2.
+    const flag = diagnosis || (rate < 0.9 ? " \x1b[33m⚠ partial join\x1b[0m" : "");
+    // The yield —how many report rows ended up usable— is what separates the
+    // trusts that return 20 from those that return 2.
     const y = parsed.diagnostics.rowsFound
       ? Math.round((usable.length / parsed.diagnostics.rowsFound) * 100)
       : 0;
     const yieldTag = y < 50 ? `\x1b[33m${String(y).padStart(3)}%\x1b[0m` : `\x1b[90m${String(y).padStart(3)}%\x1b[0m`;
     console.log(
-      `${tag} ✓ ${name} ${String(matched).padStart(3)} préstamos  ` +
+      `${tag} ✓ ${name} ${String(matched).padStart(3)} loans  ` +
         `${yieldTag} de ${String(parsed.diagnostics.rowsFound).padStart(3)} filas` +
         `${attempts > 1 ? ` \x1b[90m(${attempts} meses)\x1b[0m` : ""}` +
         `${unmatched > 0 ? ` · ${unmatched} sin pegar` : ""}${flag}`,
@@ -457,26 +462,26 @@ const mins = ((Date.now() - started) / 60_000).toFixed(1);
 
 console.log(`\n${"─".repeat(70)}`);
 console.log(
-  `  ${ok} con NOI · ${sinNoi} registrados sin NOI · ${failed} fallidos · ${mins} min`,
+  `  ${ok} with NOI · ${withoutNoi} registered without NOI · ${failed} failed · ${mins} min`,
 );
-console.log(`  ${totalMatched} préstamos con NOI real${totalUnmatched > 0 ? ` · ${totalUnmatched} sin pegar` : ""}`);
+console.log(`  ${totalMatched} loans with actual NOI${totalUnmatched > 0 ? ` · ${totalUnmatched} unmatched` : ""}`);
 console.log(
-  `  ${totalDelinquent} filas de morosidad pegadas` +
-    `${totalSinPegar > 0 ? ` · ${totalSinPegar} sin pegar \x1b[90m(cobertura perdida)\x1b[0m` : ""}` +
-    `${totalColapsadas > 0 ? ` · ${totalColapsadas} colapsadas \x1b[90m(tramos del mismo préstamo)\x1b[0m` : ""}`,
-);
-console.log(
-  `  \x1b[90mla tabla queda con ${totalDelinquent - totalColapsadas} filas del bloque de morosidad\x1b[0m`,
+  `  ${totalDelinquent} delinquency rows joined` +
+    `${totalUnjoined > 0 ? ` · ${totalUnjoined} unmatched \x1b[90m(lost coverage)\x1b[0m` : ""}` +
+    `${totalCollapsed > 0 ? ` · ${totalCollapsed} collapsed \x1b[90m(tranches of the same loan)\x1b[0m` : ""}`,
 );
 console.log(
-  `  ${totalEspeciales > 0 ? "\x1b[1m" : ""}${totalEspeciales} préstamos en special servicing que NO estaban entre los morosos\x1b[0m` +
-    `\n  \x1b[90m← eventos que el pipeline contaba como cero antes de leer el segundo bloque\x1b[0m`,
+  `  \x1b[90mthe table ends up with ${totalDelinquent - totalCollapsed} rows from the delinquency block\x1b[0m`,
+);
+console.log(
+  `  ${totalSpecialOnly > 0 ? "\x1b[1m" : ""}${totalSpecialOnly} loans in special servicing that were NOT among the delinquent ones\x1b[0m` +
+    `\n  \x1b[90m← events the pipeline counted as zero before reading the second block\x1b[0m`,
 );
 
 if (problems.length > 0) {
-  console.log(`\n  No se pudieron cosechar:`);
+  console.log(`\n  Could not be harvested:`);
   for (const p of problems.slice(0, 12)) console.log(`    ${p}`);
-  if (problems.length > 12) console.log(`    ... y ${problems.length - 12} más`);
+  if (problems.length > 12) console.log(`    ... and ${problems.length - 12} more`);
 }
 
 const { rows: coverage } = await query<{ total: string; with_uw: string; with_all: string }>(
@@ -487,12 +492,12 @@ const { rows: coverage } = await query<{ total: string; with_uw: string; with_al
 );
 const c = coverage[0];
 if (c) {
-  console.log(`\n  En la vista de resultados:`);
-  console.log(`    ${c.total} préstamos con NOI real`);
-  console.log(`    ${c.with_uw} también con NOI suscrito  \x1b[90m(medición de Griffin)\x1b[0m`);
-  console.log(`    ${c.with_all} con las tres cifras       \x1b[90m(proyectado vs. entregado)\x1b[0m`);
+  console.log(`\n  In the outcomes view:`);
+  console.log(`    ${c.total} loans with actual NOI`);
+  console.log(`    ${c.with_uw} also with underwritten NOI  \x1b[90m(Griffin's measurement)\x1b[0m`);
+  console.log(`    ${c.with_all} with all three figures      \x1b[90m(projected vs delivered)\x1b[0m`);
 }
 
-console.log(`\n  Siguiente:  npm run db:outcomes\n`);
+console.log(`\n  Next:  npm run db:outcomes\n`);
 
 await closePool();

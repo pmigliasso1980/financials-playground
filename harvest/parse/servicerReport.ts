@@ -776,10 +776,10 @@ export function describeServicerHeaders(
  * del valor parseado es lo único que dejó verlo.
  */
 export interface TrustParty {
-  rol: string;
-  nombre: string;
-  /** La fila del documento de donde salió, para poder desconfiar del parseo. */
-  crudo: string;
+  role: string;
+  name: string;
+  /** The document row it came from, so the parsing can be distrusted. */
+  raw: string;
 }
 
 const ROLES: Array<[string, RegExp]> = [
@@ -886,9 +886,9 @@ export function extractParties(tables: ExtractedTable[]): TrustParty[] {
         if (!nombre) continue;
         vistos.add(rol);
         out.push({
-          rol,
-          nombre: (canonicalParty(nombre) ?? nombre).slice(0, 80),
-          crudo: row.map((x) => norm(x)).filter(Boolean).join(" | ").slice(0, 120),
+          role: rol,
+          name: (canonicalParty(nombre) ?? nombre).slice(0, 80),
+          raw: row.map((x) => norm(x)).filter(Boolean).join(" | ").slice(0, 120),
         });
       }
     }

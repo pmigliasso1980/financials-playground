@@ -235,8 +235,8 @@ for (const report of reports) {
       console.log(`\n  \x1b[33mNo se encontró ninguna parte en la carátula\x1b[0m`);
     }
     for (const p of partes) {
-      console.log(`\n  \x1b[1m${p.rol}\x1b[0m  →  ${p.nombre}`);
-      console.log(`    \x1b[90m${p.crudo}\x1b[0m`);
+      console.log(`\n  \x1b[1m${p.role}\x1b[0m  →  ${p.name}`);
+      console.log(`    \x1b[90m${p.raw}\x1b[0m`);
     }
     continue;
   }
