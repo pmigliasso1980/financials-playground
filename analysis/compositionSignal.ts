@@ -1,38 +1,38 @@
 /**
- * ¿La composición de propiedades distingue emisiones, o es ruido de pool chico?
+ * Does property composition distinguish issuances, or is it small-pool noise?
  *
  *   npm run db:composition-signal
- *   npm run db:composition-signal -- --anada 2025
+ *   npm run db:composition-signal -- --vintage 2025
  *
- * POR QUÉ ESTA PREGUNTA, Y POR QUÉ AHORA
+ * WHY THIS QUESTION, AND WHY NOW
  *
- * `db:page --todas` mostró que la tabla de métricas no distingue nada: 84 de 168
- * mediciones fuera del rango intercuartil, exactamente el 50% que predice el
- * azar, z = 0,00. Ninguna de las seis métricas se aparta.
+ * `db:page --all` showed that the metrics table distinguishes nothing: 84 of 168
+ * measurements outside the interquartile range, exactly the 50% chance predicts,
+ * z = 0.00. None of the six metrics departs.
  *
- * La conclusión tentadora es "entonces lo que informa es la composición". Pero
- * eso no se midió, y dar vuelta la página apoyándose en la mitad no verificada
- * de una disyunción es el atajo que esta sesión ya cobró varias veces.
+ * The tempting conclusion is "then what informs is the composition". But that was
+ * not measured, and turning the page by leaning on the unverified half of a
+ * disjunction is the shortcut this session has already charged for several times.
  *
- * EL NULO TIENE QUE DESCONTAR EL TAMAÑO DEL POOL
+ * THE NULL HAS TO DISCOUNT POOL SIZE
  *
- * Un pool de 15 préstamos se aparta de la mezcla promedio por puro muestreo
- * mucho más que uno de 70. Comparar la distancia cruda entre emisiones premiaría
- * a las chicas por ser chicas.
+ * A pool of 15 loans departs from the average mix by pure sampling far more than
+ * one of 70. Comparing raw distance between issuances would reward the small ones
+ * for being small.
  *
- * Así que el nulo es explícito: si los préstamos de esta emisión se hubieran
- * sacado al azar del universo de la cohorte, ¿qué distancia esperaríamos? Se
- * simula con multinomial de n extracciones sobre las proporciones de la cohorte,
- * y la distancia observada se compara contra esa distribución.
+ * So the null is explicit: if this issuance's loans had been drawn at random from
+ * the cohort's universe, what distance would we expect? It is simulated with a
+ * multinomial of n draws over the cohort's proportions, and the observed distance
+ * is compared against that distribution.
  *
- * La distancia es variación total —la mitad de la suma de las diferencias
- * absolutas— que se lee directo: 0,20 significa que hay que mover el 20% del
- * pool para llegar a la mezcla de la cohorte.
+ * The distance is total variation —half the sum of the absolute differences—
+ * which reads directly: 0.20 means you have to move 20% of the pool to reach the
+ * cohort's mix.
  *
- * QUÉ RESPONDE Y QUÉ NO
+ * WHAT IT ANSWERS AND WHAT IT DOES NOT
  *
- * Responde si la mezcla es más distinta de lo que el azar produce. No responde
- * si esa distinción le importa a alguien: una emisión puede diferir de forma
+ * It answers whether the mix is more different than chance produces. It does not
+ * answer whether that distinction matters to anyone: an issuance can differ in a way
  * medible e irrelevante.
  */
 
@@ -48,14 +48,14 @@ if (!health.ok) {
 }
 
 const args = process.argv.slice(2);
-const iA = args.indexOf("--anada");
-const ANADA = iA === -1 ? String(new Date().getFullYear()) : args[iA + 1]!;
+const iA = args.indexOf("--vintage");
+const VINTAGE = iA === -1 ? String(new Date().getFullYear()) : args[iA + 1]!;
 
-/** Fijado antes de mirar. Las simulaciones y la semilla viven en el módulo. */
-const ALFA = 0.05;
+/** Fixed before looking. The simulations and the seed live in the module. */
+const ALPHA = 0.05;
 
 
-/** Las categorías gruesas, las mismas que usa el benchmark. */
+/** The coarse categories, the same ones the benchmark uses. */
 const CANON = `CASE
     WHEN l.property_type ~* 'multifamily|cooperative|garden|low rise|mid rise|student' THEN 'Multifamily'
     WHEN l.property_type ~* 'retail|anchored|single tenant' THEN 'Retail'
@@ -75,12 +75,12 @@ const { rows } = await query<{ accession: string; nombre: string; tipo: string; 
     WHERE l.property_type IS NOT NULL
       AND extract(year FROM f.filed_at) = $1
     GROUP BY l.accession, f.company_name, ${CANON}`,
-  [Number(ANADA)],
+  [Number(VINTAGE)],
 );
 await closePool();
 
 if (rows.length === 0) {
-  console.log(`\n  Sin emisiones en ${ANADA}.\n`);
+  console.log(`\n  No issuances in ${VINTAGE}.\n`);
   process.exit(0);
 }
 
@@ -94,45 +94,44 @@ for (const r of rows) {
 }
 
 console.log(`\n${"═".repeat(78)}`);
-console.log(`¿Distingue la composición? — cohorte ${ANADA}`);
+console.log(`Does composition distinguish? — ${VINTAGE} cohort`);
 console.log(`${"═".repeat(78)}\n`);
 console.log(
-  `\x1b[90m  Nulo: los préstamos de la emisión sacados al azar del resto de la cohorte.\x1b[0m`,
+  `\x1b[90m  Null: the issuance's loans drawn at random from the rest of the cohort.\x1b[0m`,
 );
 console.log(
-  `\x1b[90m  Distancia = variación total. 0,20 = hay que mover el 20% del pool.\x1b[0m\n`,
+  `\x1b[90m  Distance = total variation. 0.20 = you have to move 20% of the pool.\x1b[0m\n`,
 );
-console.log(`  emisión                            pool   distancia   nulo p50   p-valor`);
+console.log(`  issuance                           pool   distance   null p50   p-value`);
 console.log(`  ${"─".repeat(74)}`);
 
-let significativas = 0;
+let significant = 0;
 const detalle: Array<{ nombre: string; d: number; p: number; pool: number }> = [];
 /**
- * LA PONDERACIÓN DE LA REFERENCIA, QUE ELEGÍ SIN PENSARLA.
+ * THE WEIGHTING OF THE REFERENCE, WHICH I CHOSE WITHOUT THINKING.
  *
- * La mezcla de la cohorte se calcula juntando TODOS los préstamos de los pares:
- * está ponderada por préstamo. Con 2026 al doble de su piso de concentración,
- * BANK 2026-BNK52 (70) y Benchmark 2026-B42 (62) aportan el 14% de esos
- * préstamos entre las dos, así que la "mezcla de mercado" es en buena medida la
- * mezcla de esas dos emisiones.
+ * The cohort's mix is computed by pooling ALL the peers' loans: it is weighted by
+ * loan. With 2026 at double its concentration floor, BANK 2026-BNK52 (70) and
+ * Benchmark 2026-B42 (62) contribute 14% of those loans between them, so the
+ * "market mix" is largely the mix of those two issuances.
  *
- * La alternativa es ponderar por emisión: promediar los vectores de composición
- * de cada par, con cada emisión pesando igual. Ninguna de las dos es obviamente
- * correcta —depende de si "el mercado" es un conjunto de préstamos o de deals—
- * pero la conclusión del producto no debería depender de cuál elegí sin pensar.
+ * The alternative is weighting by issuance: averaging each peer's composition
+ * vector, with every issuance weighing the same. Neither is obviously correct —it
+ * depends on whether "the market" is a set of loans or of deals— but the product's
+ * conclusion should not depend on which one I picked without thinking.
  *
- * Se computan las dos y se comparan los conjuntos de emisiones significativas.
+ * Both are computed and the sets of significant issuances compared.
  */
-const porEmisionSig = new Set<string>();
-const porPrestamoSig = new Set<string>();
+const perIssuanceSig = new Set<string>();
+const perLoanSig = new Set<string>();
 
 for (const [accession, e] of porEmision) {
   /**
-   * La referencia excluye a la propia emisión.
+   * The reference excludes the issuance itself.
    *
-   * Incluirla achica la distancia justamente en las emisiones grandes, que son
-   * las que más pesan en el promedio: el sesgo iría en contra de encontrar señal
-   * donde más datos hay.
+   * Including it shrinks the distance precisely for the large issuances, which are
+   * the ones weighing most in the average: the bias would run against finding
+   * signal where there is the most data.
    */
   const resto = new Map<string, number>();
   let totalResto = 0;
@@ -146,7 +145,7 @@ for (const [accession, e] of porEmision) {
   const p = tipos.map((t) => (e.conteo.get(t) ?? 0) / Math.max(1, e.total));
   const dObs = totalVariation(p, q);
 
-  /** La misma referencia, con cada emisión pesando igual en vez de por préstamo. */
+  /** The same reference, with each issuance weighing equally rather than by loan. */
   const otras = [...porEmision].filter(([acc]) => acc !== accession);
   const qEmision = tipos.map((t) => {
     const suma = otras.reduce(
@@ -160,19 +159,19 @@ for (const [accession, e] of porEmision) {
   const porPrestamo = apart(p, q, e.total);
   const nuloP50 = porPrestamo.nullMedian;
   const pVal = porPrestamo.p;
-  if (pVal < ALFA) {
-    significativas++;
-    porPrestamoSig.add(e.nombre);
+  if (pVal < ALPHA) {
+    significant++;
+    perLoanSig.add(e.nombre);
   }
 
   /**
-   * El nulo se resimula adentro de `apart`: cambiar la referencia cambia también
-   * qué distancias produce el azar.
+   * The null is re-simulated inside `apart`: changing the reference also changes
+   * which distances chance produces.
    */
-  if (apart(p, qEmision, e.total).p < ALFA) porEmisionSig.add(e.nombre);
+  if (apart(p, qEmision, e.total).p < ALPHA) perIssuanceSig.add(e.nombre);
   detalle.push({ nombre: e.nombre, d: dObs, p: pVal, pool: e.total });
 
-  const marca = pVal < ALFA ? "\x1b[32m" : "\x1b[90m";
+  const marca = pVal < ALPHA ? "\x1b[32m" : "\x1b[90m";
   console.log(
     `  ${e.nombre.slice(0, 32).padEnd(34)} ${String(e.total).padStart(4)}   ` +
       `${dObs.toFixed(3).padStart(9)}   ${nuloP50.toFixed(3).padStart(8)}   ` +
@@ -183,70 +182,70 @@ for (const [accession, e] of porEmision) {
 console.log(`\n${"─".repeat(78)}\n`);
 
 const n = porEmision.size;
-const esperadas = n * ALFA;
+const expected = n * ALPHA;
 console.log(
-  `  \x1b[1m${significativas} de ${n} emisiones con mezcla más distinta que el azar (p < ${ALFA})\x1b[0m`,
+  `  \x1b[1m${significant} of ${n} issuances with a mix more different than chance (p < ${ALPHA})\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mPor azar se esperarían ${esperadas.toFixed(1)} con ${n} pruebas al ${pct(ALFA)}.\x1b[0m`,
-);
-
-/**
- * El contraste que decide, y no es "hay significativas".
- *
- * Con 28 pruebas al 5% se esperan 1,4 falsos positivos. Encontrar 2 no dice
- * nada; encontrar 20 sí. La comparación es contra ese esperado, no contra cero —
- * el mismo error que cometí al leer el 50% de la tabla de métricas como señal.
- */
-console.log(
-  significativas > esperadas * 3
-    ? `\n  \x1b[32mLa composición distingue.\x1b[0m ${significativas} contra ${esperadas.toFixed(1)} esperadas por azar es\n` +
-        `  una diferencia que el muestreo no explica: la mezcla de propiedades es\n` +
-        `  información sobre la emisión y merece el lugar principal de la página.`
-    : `\n  \x1b[31mLa composición tampoco distingue.\x1b[0m ${significativas} contra ${esperadas.toFixed(1)} esperadas está\n` +
-        `  dentro de lo que producen ${n} pruebas al ${pct(ALFA)}. Si ni las métricas ni la mezcla\n` +
-        `  separan una emisión de su cohorte, la comparación contra la cohorte no es un\n` +
-        `  producto, y la pregunta a hacerle a estos datos es otra.`,
+  `  \x1b[90mBy chance you would expect ${expected.toFixed(1)} with ${n} tests at ${pct(ALPHA)}.\x1b[0m`,
 );
 
 /**
- * ¿Depende la conclusión de la ponderación que elegí sin pensarla?
+ * The contrast that decides, and it is not "there are significant ones".
  *
- * Si los dos conjuntos coinciden, la decisión no importaba y queda descartada.
- * Si difieren, el hallazgo que sostiene la página depende de una elección
- * arbitraria y hay que justificarla o reportar las dos.
+ * With 28 tests at 5% you expect 1.4 false positives. Finding 2 says nothing;
+ * finding 20 does. The comparison is against that expectation, not against zero —
+ * the same error I made reading the metrics table's 50% as signal.
  */
-const soloPrestamo = [...porPrestamoSig].filter((x) => !porEmisionSig.has(x));
-const soloEmision = [...porEmisionSig].filter((x) => !porPrestamoSig.has(x));
+console.log(
+  significant > expected * 3
+    ? `\n  \x1b[32mComposition distinguishes.\x1b[0m ${significant} against ${expected.toFixed(1)} expected by chance is\n` +
+        `  a difference sampling does not explain: the property mix is information\n` +
+        `  about the issuance and deserves the main place on the page.`
+    : `\n  \x1b[31mComposition does not distinguish either.\x1b[0m ${significant} against ${expected.toFixed(1)} expected is\n` +
+        `  within what ${n} tests at ${pct(ALPHA)} produce. If neither the metrics nor the mix\n` +
+        `  separate an issuance from its cohort, comparing against the cohort is not a\n` +
+        `  product, and the question to ask this data is a different one.`,
+);
+
+/**
+ * Does the conclusion depend on the weighting I chose without thinking?
+ *
+ * If the two sets coincide, the decision did not matter and is ruled out. If they
+ * differ, the finding holding up the page depends on an arbitrary choice and it has
+ * to be justified or both reported.
+ */
+const onlyPerLoan = [...perLoanSig].filter((x) => !perIssuanceSig.has(x));
+const onlyPerIssuance = [...perIssuanceSig].filter((x) => !perLoanSig.has(x));
 
 console.log(`\n${"─".repeat(78)}\n`);
-console.log(`  \x1b[1mPonderación de la referencia: por préstamo contra por emisión\x1b[0m\n`);
+console.log(`  \x1b[1mWeighting of the reference: by loan against by issuance\x1b[0m\n`);
 console.log(
-  `    por préstamo (lo que usa la página)   ${porPrestamoSig.size} significativas`,
+  `    by loan (what the page uses)         ${perLoanSig.size} significant`,
 );
-console.log(`    por emisión (cada deal pesa igual)   ${porEmisionSig.size} significativas`);
+console.log(`    by issuance (each deal equal)        ${perIssuanceSig.size} significant`);
 console.log(
-  `    \x1b[90mcoinciden en ${[...porPrestamoSig].filter((x) => porEmisionSig.has(x)).length}\x1b[0m`,
+  `    \x1b[90mcoinciden en ${[...perLoanSig].filter((x) => perIssuanceSig.has(x)).length}\x1b[0m`,
 );
-if (soloPrestamo.length === 0 && soloEmision.length === 0) {
+if (onlyPerLoan.length === 0 && onlyPerIssuance.length === 0) {
   console.log(
-    `\n    \x1b[32mMismo conjunto.\x1b[0m La ponderación no cambia la conclusión y la decisión\n` +
-      `    queda descartada como fuente de duda.`,
+    `\n    \x1b[32mSame set.\x1b[0m The weighting does not change the conclusion and the decision\n` +
+      `    is ruled out as a source of doubt.`,
   );
 } else {
   console.log(
-    `\n    \x1b[33mDifieren.\x1b[0m El hallazgo depende de una elección que hice sin pensarla.`,
+    `\n    \x1b[33mThey differ.\x1b[0m The finding depends on a choice I made without thinking.`,
   );
-  for (const x of soloPrestamo) console.log(`      \x1b[90msolo por préstamo: ${x}\x1b[0m`);
-  for (const x of soloEmision) console.log(`      \x1b[90msolo por emisión:  ${x}\x1b[0m`);
+  for (const x of onlyPerLoan) console.log(`      \x1b[90mby loan only:     ${x}\x1b[0m`);
+  for (const x of onlyPerIssuance) console.log(`      \x1b[90mby issuance only: ${x}\x1b[0m`);
 }
 
 const top = [...detalle].sort((a, b) => a.p - b.p || b.d - a.d).slice(0, 5);
-console.log(`\n  Las cinco más distintas:\n`);
+console.log(`\n  The five most different:\n`);
 for (const t of top) {
   console.log(
     `    ${t.nombre.slice(0, 36).padEnd(38)} d = ${t.d.toFixed(3)}  p = ${t.p.toFixed(4)}  ` +
-      `\x1b[90m${t.pool} préstamos\x1b[0m`,
+      `\x1b[90m${t.pool} loans\x1b[0m`,
   );
 }
 console.log();

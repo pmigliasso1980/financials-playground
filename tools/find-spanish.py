@@ -21,7 +21,7 @@ essentially do not.
 
   python3 tools/find-spanish.py [paths...]     # default: the source tree
 """
-import re, sys, pathlib
+import re, subprocess, sys, pathlib
 
 ACCENT = re.compile(r'[áéíóúüñÁÉÍÓÚÜÑ¿¡]')
 WORDS = r"""de la el los las del que para con por una uno un es son se no al lo su sus
@@ -48,19 +48,44 @@ SKIP = {"package-lock.json"}
 
 paths = [pathlib.Path(a) for a in sys.argv[1:]]
 if not paths:
-    root = pathlib.Path(".")
-    # Everything that ships, not only the code. package.json's description sat in
-    # Spanish through the whole migration because the sweep only covered .ts, .sql,
-    # .html and .md — the detector was correct about every file it looked at, and
-    # the file list was the thing that was wrong. Same failure shape as tsconfig's
-    # include: the instrument was fine, its scope was not.
-    pats = ["db/*.ts", "db/migrations/*.sql", "api/*.ts", "api/*.html", "mcp/*.ts",
-            "analysis/*.ts", "harvest/*.ts", "harvest/*/*.ts", "docs/*.md", "*.md",
-            "*.json", "*.yml", "*.yaml", "*.sh", "scripts/*.sh", ".gitignore"]
-    # tools/ is excluded from the default sweep: these two files contain the
-    # Spanish vocabulary the detector matches on, so scanning them reports the
-    # word list as a finding. Pass them explicitly if you want to check them.
-    paths = sorted({p for g in pats for p in root.glob(g) if p.name not in SKIP})
+    # THE FILE LIST WAS THE WEAK POINT, TWICE.
+    #
+    # This used to be a list of glob patterns of what to include. Pablo found
+    # package.json in Spanish, so json/yml/sh were added; then he found
+    # .env.example, which is a dotfile and matched none of them. Both times the
+    # detector was right about every file it read and wrong about which files
+    # those were.
+    #
+    # An include list has to be right about everything that exists now and
+    # everything added later. An exclude list only has to be right about the few
+    # things that genuinely should not be scanned. So it now walks what git
+    # tracks and skips a short, explicit list — and anything new is covered by
+    # default rather than by remembering.
+    tracked = subprocess.run(
+        ["git", "ls-files"], capture_output=True, text=True, check=True
+    ).stdout.split("\n")
+
+    def skip(f: str) -> bool:
+        if not f:
+            return True
+        # Real SEC documents used as parsing fixtures. They are source data:
+        # translating them would destroy the thing the tests verify against.
+        if f.startswith("harvest/fixtures/"):
+            return True
+        # Generated and enormous.
+        if f == "package-lock.json":
+            return True
+        # These two carry the Spanish vocabulary the detector matches on, so
+        # scanning them reports the word list itself as a finding.
+        if f in {"tools/find-spanish.py", "tools/es-blocks.py"}:
+            return True
+        # git ls-files still lists a file deleted in the working tree until the
+        # deletion is committed.
+        if not pathlib.Path(f).exists():
+            return True
+        return False
+
+    paths = [pathlib.Path(f) for f in tracked if not skip(f)]
 
 total = 0
 for p in paths:
