@@ -18,3 +18,7 @@ src/generated/
 # Corpus snapshots, for comparing between runs.
 .snapshots/
 out/
+
+# Python bytecode from tools/
+__pycache__/
+*.pyc
