@@ -1,20 +1,20 @@
 /**
- * Abre un préstamo y muestra de qué columna salió cada número.
+ * Opens one loan and shows which column each number came from.
  *
- *   npm run db:explain                 los peores casos de las identidades
- *   npm run db:explain -- 1234         un préstamo puntual por id interno
+ *   npm run db:explain                 the worst identity failures
+ *   npm run db:explain -- 1234         one specific loan by internal id
  *
- * PARA QUÉ SIRVE
+ * WHAT IT IS FOR
  *
- * Cuando una identidad no cierra hay dos posibilidades y desde el agregado no se
- * distinguen: o mapeamos la columna equivocada, o el emisor calcula sobre una
- * base distinta a la que suponemos. Las dos se resuelven igual —mirando el
- * encabezado original de cada valor— y por eso las observations guardan
- * `source_header` desde el principio.
+ * When an identity does not close there are two possibilities and the aggregate
+ * cannot tell them apart: either we mapped the wrong column, or the issuer
+ * computes on a different base from the one we assume. Both are resolved the same
+ * way —by looking at each value's original header— which is why observations have
+ * stored `source_header` from the beginning.
  *
- * Este script es el uso concreto de esa decisión: reconstruye el renglón del
- * Annex A tal como estaba, con el nombre de columna que el emisor le puso al
- * lado del valor que nosotros guardamos.
+ * This script is the concrete use of that decision: it reconstructs the Annex A
+ * row as it was, with the column name the issuer gave it beside the value we
+ * stored.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -28,7 +28,7 @@ if (!health.ok) {
 
 const arg = process.argv[2];
 
-/** Métricas que participan de las identidades que no cierran. */
+/** Metrics involved in the identities that do not close. */
 const RELEVANT = [
   "loan_amount", "appraised_value", "noi_underwritten", "net_cash_flow",
   "debt_yield", "debt_yield_whole_loan", "debt_yield_total_debt",
@@ -44,8 +44,8 @@ const money = (v: string) => {
 };
 
 /**
- * Elige los préstamos donde la identidad del debt yield falla más fuerte.
- * Se usa esa porque involucra las tres métricas sospechosas a la vez.
+ * Picks the loans where the debt yield identity fails hardest.
+ * That one is used because it involves all three suspect metrics at once.
  */
 async function worstOffenders(limit = 3): Promise<string[]> {
   const { rows } = await query<{ id: string }>(
@@ -65,13 +65,13 @@ async function worstOffenders(limit = 3): Promise<string[]> {
 const ids = arg ? [arg] : await worstOffenders();
 
 if (ids.length === 0) {
-  console.error("\n✗ Sin préstamos para inspeccionar.\n");
+  console.error("\n✗ No loans to inspect.\n");
   await closePool();
   process.exit(1);
 }
 
 console.log(`\n${"═".repeat(78)}`);
-console.log(arg ? `Préstamo ${arg}` : "Peores desvíos de la identidad del debt yield");
+console.log(arg ? `Loan ${arg}` : "Worst deviations from the debt yield identity");
 console.log(`${"═".repeat(78)}`);
 
 for (const id of ids) {
@@ -87,23 +87,23 @@ for (const id of ids) {
 
   const m = meta[0];
   if (!m) {
-    console.log(`\n  \x1b[31mNo existe el préstamo ${id}.\x1b[0m`);
+    console.log(`\n  \x1b[31mLoan ${id} does not exist.\x1b[0m`);
     continue;
   }
 
   console.log(`\n${"─".repeat(78)}`);
   console.log(`  ${m.company_name}`);
   console.log(
-    `  loan ${m.loan_ref ?? "?"} · ${m.property_name ?? "(sin nombre)"} · ${m.property_type ?? "sin tipo"}`,
+    `  loan ${m.loan_ref ?? "?"} · ${m.property_name ?? "(no name)"} · ${m.property_type ?? "no type"}`,
   );
-  console.log(`  \x1b[90mid interno ${id} · ${m.accession}\x1b[0m\n`);
+  console.log(`  \x1b[90minternal id ${id} · ${m.accession}\x1b[0m\n`);
 
   /**
-   * Las observations, no los facts.
+   * The observations, not the facts.
    *
-   * Un fact es el valor ya promovido: si dos columnas mapearon a la misma
-   * métrica, quedó una sola. Acá queremos ver todas las candidatas con su
-   * encabezado, porque el error puede ser justamente cuál ganó la promoción.
+   * A fact is the already-promoted value: if two columns mapped to the same
+   * metric, only one survived. Here we want to see every candidate with its
+   * header, because the error may be precisely which one won the promotion.
    */
   const { rows: obs } = await query<{
     metric_key: string; value: string; source_header: string; confidence: string | null;
@@ -116,7 +116,7 @@ for (const id of ids) {
   );
 
   if (obs.length === 0) {
-    console.log(`    \x1b[90msin observations de las métricas relevantes\x1b[0m`);
+    console.log(`    \x1b[90mno observations for the relevant metrics\x1b[0m`);
     continue;
   }
 
@@ -125,13 +125,13 @@ for (const id of ids) {
     const dup = o.metric_key === last;
     last = o.metric_key;
     const key = dup ? "".padEnd(26) : o.metric_key.padEnd(26);
-    const marker = dup ? "\x1b[33m  ↳ también\x1b[0m " : "";
+    const marker = dup ? "\x1b[33m  ↳ also\x1b[0m " : "";
     console.log(
       `    ${key} ${money(o.value).padStart(16)}   ${marker}\x1b[90m← "${o.source_header}"\x1b[0m`,
     );
   }
 
-  // --- la aritmética, explícita -------------------------------------------
+  // --- the arithmetic, spelled out ----------------------------------------
 
   const get = (k: string) => {
     const hit = obs.find((o) => o.metric_key === k);
@@ -147,40 +147,40 @@ for (const id of ids) {
   if (noi !== null && amt !== null && dy !== null && amt !== 0) {
     const computed = noi / amt;
     console.log(
-      `    debt yield calculado  ${(computed * 100).toFixed(1)}%   \x1b[90m(NOI ${money(String(noi))} / saldo ${money(String(amt))})\x1b[0m`,
+      `    debt yield computed   ${(computed * 100).toFixed(1)}%   \x1b[90m(NOI ${money(String(noi))} / balance ${money(String(amt))})\x1b[0m`,
     );
-    console.log(`    debt yield publicado  ${(dy * 100).toFixed(1)}%`);
+    console.log(`    debt yield published  ${(dy * 100).toFixed(1)}%`);
     if (dy !== 0) {
       const implied = noi / dy;
       console.log(
-        `    \x1b[33msaldo implícito       ${money(String(implied))}\x1b[0m  ` +
-          `\x1b[90m← el que haría cerrar la cuenta\x1b[0m`,
+        `    \x1b[33mimplied balance       ${money(String(implied))}\x1b[0m  ` +
+          `\x1b[90m← the one that would make it close\x1b[0m`,
       );
       const factor = implied / amt;
       console.log(
-        `    \x1b[90mfactor contra el saldo que guardamos: ${factor.toFixed(1)}x\x1b[0m`,
+        `    \x1b[90mfactor against the balance we stored: ${factor.toFixed(1)}x\x1b[0m`,
       );
     }
   }
   if (val !== null && ltvPub !== null && ltvPub !== 0) {
     const implied = val * ltvPub;
     console.log(
-      `\n    saldo implícito por LTV  ${money(String(implied))}   ` +
-        `\x1b[90m(tasación ${money(String(val))} × LTV ${(ltvPub * 100).toFixed(1)}%)\x1b[0m`,
+      `\n    balance implied by LTV   ${money(String(implied))}   ` +
+        `\x1b[90m(appraised ${money(String(val))} × LTV ${(ltvPub * 100).toFixed(1)}%)\x1b[0m`,
     );
     if (amt !== null && amt !== 0) {
-      console.log(`    \x1b[90mfactor contra el saldo que guardamos: ${(implied / amt).toFixed(1)}x\x1b[0m`);
+      console.log(`    \x1b[90mfactor against the balance we stored: ${(implied / amt).toFixed(1)}x\x1b[0m`);
     }
   }
 }
 
 /**
- * Los encabezados con "balance" que NO estamos mapeando.
+ * The headers containing "balance" that we are NOT mapping.
  *
- * Si el saldo implícito no coincide con el que guardamos, lo más probable es que
- * el emisor publique varios saldos —del trust, del préstamo completo, original,
- * a la fecha de corte— y estemos leyendo uno distinto al que usa para sus
- * ratios. Esta lista dice cuáles hay disponibles.
+ * If the implied balance does not match the one we stored, the most likely
+ * explanation is that the issuer publishes several balances —trust, whole loan,
+ * original, as of the cut-off date— and we are reading a different one from the
+ * one used for its ratios. This list says which are available.
  */
 const { rows: balances } = await query<{ source_header: string; n: string }>(
   `SELECT source_header, count(*) AS n
@@ -192,7 +192,7 @@ const { rows: balances } = await query<{ source_header: string; n: string }>(
 
 if (balances.length > 0) {
   console.log(`\n${"─".repeat(78)}`);
-  console.log(`Encabezados de saldo que aparecen en el corpus\n`);
+  console.log(`Balance headers that appear in the corpus\n`);
   for (const b of balances) {
     console.log(`  ${String(b.n).padStart(6)}  ${b.source_header}`);
   }
@@ -213,23 +213,23 @@ if (unmapped.length > 0) {
 }
 
 // ---------------------------------------------------------------------------
-// Filings sin Loan ID
+// Filings with no Loan ID
 // ---------------------------------------------------------------------------
 
 /**
- * Por qué ~30 emisiones no pegan contra el informe del servicer.
+ * Why ~30 issuances do not join against the servicer report.
  *
- * El lote reportó "el corpus no tiene Loan ID (0 de 106 filas con loan_ref)" en
- * casi todas las añadas 2020-2021. Cero de todas, no algunas: la columna existe
- * en el documento pero se llama de una forma que nuestro patrón no reconoce.
+ * The batch reported "the corpus has no Loan ID (0 of 106 rows with loan_ref)"
+ * for almost every 2020-2021 vintage. Zero of all of them, not some: the column
+ * exists in the document but is named in a way our pattern does not recognise.
  *
- * En vez de adivinar el nombre, lo pedimos: `columns_unmapped` guarda los
- * encabezados que el mapeo no supo interpretar, filing por filing. La columna de
- * identificador está ahí, con su nombre real.
+ * Rather than guessing the name, we ask for it: `columns_unmapped` stores the
+ * headers the mapping could not interpret, filing by filing. The identifier
+ * column is there, under its real name.
  *
- * Es la misma decisión que ya pagó dos veces —guardar el header original de cada
- * observación, guardar los que no mapean— y la razón por la que un error de
- * mapeo se diagnostica con una consulta en vez de con una descarga.
+ * It is the same decision that has already paid off twice —storing each
+ * observation's original header, storing the ones that do not map— and the reason
+ * a mapping error is diagnosed with a query instead of a download.
  */
 const { rows: noId } = await query<{ filings: string; loans: string }>(
   `SELECT count(DISTINCT f.accession) AS filings, count(l.id) AS loans
@@ -243,13 +243,13 @@ const { rows: noId } = await query<{ filings: string; loans: string }>(
 const ni = noId[0];
 if (ni && Number(ni.filings) > 0) {
   console.log(`\n${"─".repeat(78)}`);
-  console.log(`Filings sin Loan ID`);
+  console.log(`Filings with no Loan ID`);
   console.log(`${"─".repeat(78)}\n`);
   console.log(
-    `  ${ni.filings} emisiones y ${ni.loans} préstamos no tienen identificador usable.`,
+    `  ${ni.filings} issuances and ${ni.loans} loans have no usable identifier.`,
   );
   console.log(
-    `  \x1b[90mNo pueden unirse contra el informe del servicer: el desempeño se pierde.\x1b[0m\n`,
+    `  \x1b[90mThey cannot be joined against the servicer report: the performance is lost.\x1b[0m\n`,
   );
 
   const { rows: candidates } = await query<{ header: string; filings: string }>(
@@ -265,47 +265,47 @@ if (ni && Number(ni.filings) > 0) {
   );
 
   if (candidates.length > 0) {
-    console.log(`  Encabezados sin mapear que podrían ser el identificador:\n`);
+    console.log(`  Unmapped headers that could be the identifier:\n`);
     for (const c of candidates) {
       console.log(`  ${String(c.filings).padStart(4)} filings  ${c.header}`);
     }
     console.log(
-      `\n  \x1b[90mEl que aparezca en todas es el candidato: agregarle un patrón a la\x1b[0m`,
+      `\n  \x1b[90mThe one appearing in all of them is the candidate: adding a pattern to\x1b[0m`,
     );
-    console.log(`  \x1b[90mmétrica loan_id recupera esos ${ni.loans} préstamos de una.\x1b[0m`);
+    console.log(`  \x1b[90mthe loan_id metric recovers those ${ni.loans} loans at once.\x1b[0m`);
   } else {
     console.log(
-      `  \x1b[33mNingún encabezado sin mapear parece un identificador.\x1b[0m`,
+      `  \x1b[33mNo unmapped header looks like an identifier.\x1b[0m`,
     );
     console.log(
-      `  \x1b[90mPuede que esos Annex A directamente no publiquen uno, y haya que unir\x1b[0m`,
+      `  \x1b[90mThose Annex A documents may simply not publish one, and the join would\x1b[0m`,
     );
-    console.log(`  \x1b[90mpor otra clave —nombre de propiedad, saldo— o por orden de fila.\x1b[0m`);
+    console.log(`  \x1b[90mhave to use another key —property name, balance— or row order.\x1b[0m`);
   }
 }
 
 /**
- * De qué columna sacan su ratio las emisiones que fallan enteras.
+ * Which column the issuances that fail entirely take their ratio from.
  *
- * POR QUÉ ESTA SECCIÓN EXISTE APARTE
+ * WHY THIS SECTION EXISTS SEPARATELY
  *
- * El resto de este archivo ordena por magnitud del desvío, y ahí siempre ganan
- * los mega-préstamos: un Tysons Corner con factor 288x tapa a quince emisiones
- * de 2020 que fallan por mucho menos pero fallan *todas sus filas*.
+ * The rest of this file sorts by the size of the deviation, and there the
+ * mega-loans always win: a Tysons Corner with a 288x factor buries fifteen 2020
+ * issuances that fail by far less but fail *every one of their rows*.
  *
- * Son dos poblaciones distintas y se arreglan distinto. Un préstamo suelto que
- * falla es un saldo que no capturamos; una emisión donde no cierra ni una fila
- * es que la columna del ratio no significa lo que creemos.
+ * They are two different populations and they are fixed differently. A single
+ * loan that fails is a balance we did not capture; an issuance where not one row
+ * closes means the ratio column does not mean what we think.
  *
- * QUÉ BUSCAR EN LA SALIDA
+ * WHAT TO LOOK FOR IN THE OUTPUT
  *
- * MSC 2021-L5 publica "Total Mortgage Debt UW NOI Debt Yield" —el denominador
- * incluye la deuda subordinada— y nosotros lo guardamos como si fuera el debt
- * yield sénior. Ese ratio no puede cerrar contra ningún saldo sénior: no está
- * mal el saldo, está mal a qué métrica mapeamos la columna.
+ * MSC 2021-L5 publishes "Total Mortgage Debt UW NOI Debt Yield" —the denominator
+ * includes the subordinate debt— and we stored it as if it were the senior debt
+ * yield. That ratio cannot close against any senior balance: the balance is not
+ * wrong, what is wrong is which metric we mapped the column to.
  *
- * Si los encabezados de estas emisiones son los normales, la hipótesis cae y el
- * problema vuelve a ser de saldos.
+ * If the headers of these issuances are the normal ones, the hypothesis falls and
+ * the problem is about balances again.
  */
 const SENIOR_X = "(amt.value::numeric + coalesce(npp.value::numeric, 0))";
 const factJoin = (alias: string, key: string) =>
@@ -334,12 +334,12 @@ const { rows: brokenHeaders } = await query<{
      JOIN corpus.loans l ON l.id = o.loan_id
      JOIN corpus.filings f ON f.accession = l.accession
     WHERE l.accession IN (SELECT accession FROM bad)
-      -- balance_pari_passu_non_trust va en esta lista porque es la otra mitad
-      -- del denominador: SENIOR = loan_amount + pari passu no-trust. Sin él la
-      -- sección explica una identidad mostrando solo tres de sus cuatro
-      -- entradas, que fue exactamente el agujero cuando CF 2020-CF4 apareció
-      -- rota: los tres encabezados visibles eran normales y el cambio estaba en
-      -- el que no se mostraba.
+      -- balance_pari_passu_non_trust is in this list because it is the other
+      -- half of the denominator: SENIOR = loan_amount + non-trust pari passu.
+      -- Without it the section explains an identity while showing only three of
+      -- its four inputs, which was exactly the gap when CF 2020-CF4 turned up
+      -- broken: the three visible headers were normal and the change was in the
+      -- one not being shown.
       AND o.metric_key IN ('debt_yield', 'loan_amount', 'ltv', 'noi_underwritten',
                            'balance_pari_passu_non_trust')
     GROUP BY 1, 2, 3
@@ -348,7 +348,7 @@ const { rows: brokenHeaders } = await query<{
 
 if (brokenHeaders.length > 0) {
   console.log(`\n${"─".repeat(78)}`);
-  console.log("Emisiones donde no cierra ninguna fila: de dónde sale cada número");
+  console.log("Issuances where not one row closes: where each number comes from");
   console.log(`${"─".repeat(78)}\n`);
 
   let lastCompany = "";
@@ -366,38 +366,37 @@ if (brokenHeaders.length > 0) {
     /total\s*(mortgage\s*)?debt|whole\s*loan|subordinate|combined/i.test(r.source_header),
   );
   console.log(
-    `\n  \x1b[33m${suspicious.length} de ${brokenHeaders.length} encabezados nombran un saldo\x1b[0m`,
+    `\n  \x1b[33m${suspicious.length} of ${brokenHeaders.length} headers name a balance\x1b[0m`,
   );
-  console.log(`  \x1b[33mdistinto del sénior (total debt, whole loan, subordinada).\x1b[0m`);
+  console.log(`  \x1b[33mother than the senior one (total debt, whole loan, subordinate).\x1b[0m`);
   console.log(
-    `\n  \x1b[90mSi son muchos, el problema es a qué métrica mapeamos la columna, no\x1b[0m`,
+    `\n  \x1b[90mIf there are many, the problem is which metric we mapped the column to,\x1b[0m`,
   );
-  console.log(`  \x1b[90mqué saldo usamos de denominador.\x1b[0m`);
+  console.log(`  \x1b[90mnot which balance we use as denominator.\x1b[0m`);
 }
 
 /**
- * Qué columna sin mapear arreglaría más préstamos.
+ * Which unmapped column would fix the most loans.
  *
- * LA VERSIÓN BARATA DEL RECONCILIADOR
+ * THE CHEAP VERSION OF THE RECONCILER
  *
- * Cuando un debt yield no cierra, la aritmética ya nos dice cuánto tendría que
- * valer el saldo. Lo que falta es saber de qué columna sacarlo, y hasta ahora
- * eso lo hacía un humano leyendo la lista de encabezados sin mapear y adivinando
- * cuál podría ser.
+ * When a debt yield does not close, the arithmetic already tells us what the
+ * balance would have to be. What is missing is knowing which column to take it
+ * from, and until now that was a human reading the list of unmapped headers and
+ * guessing which one it might be.
  *
- * La versión completa compararía el saldo implícito contra el valor de cada
- * celda sin mapear de esa misma fila y contestaría sola. Requiere guardar las
- * celdas que hoy descartamos.
+ * The full version would compare the implied balance against the value of every
+ * unmapped cell in that same row and answer on its own. It requires storing the
+ * cells we discard today.
  *
- * Esta versión no requiere nada nuevo: `columns_unmapped` ya guarda los
- * encabezados por emisión, así que se puede cruzar contra los préstamos que
- * fallan y ordenar por cuántos arreglaría cada uno. No prueba que la columna sea
- * la correcta —eso lo prueba recosechar y volver a correr las identidades— pero
- * convierte "leé 87 encabezados y adiviná" en una lista de tres candidatos
- * ordenada por rendimiento.
+ * This version requires nothing new: `columns_unmapped` already stores the
+ * headers per issuance, so it can be crossed against the failing loans and sorted
+ * by how many each would fix. It does not prove the column is the right one
+ * —that is proved by re-harvesting and re-running the identities— but it turns
+ * "read 87 headers and guess" into a list of three candidates ordered by yield.
  */
 const { rows: candidates2 } = await query<{
-  header: string; loans: string; filings: string; ejemplos: string;
+  header: string; loans: string; filings: string; examples: string;
 }>(
   `WITH per_loan AS (
      SELECT l.accession, l.id,
@@ -409,21 +408,21 @@ const { rows: candidates2 } = await query<{
       WHERE dy.value IS NOT NULL AND noi.value IS NOT NULL AND amt.value IS NOT NULL
         AND amt.value::numeric <> 0 AND dy.value::numeric <> 0
    ),
-   fallan AS (
+   failing AS (
      SELECT accession, count(*) AS n FROM per_loan WHERE ok IS NOT TRUE GROUP BY 1
    )
    SELECT header,
           sum(fa.n)::text AS loans,
           count(*)::text  AS filings,
-          string_agg(DISTINCT left(f.company_name, 22), ' · ' ORDER BY left(f.company_name, 22)) AS ejemplos
-     FROM fallan fa
+          string_agg(DISTINCT left(f.company_name, 22), ' · ' ORDER BY left(f.company_name, 22)) AS examples
+     FROM failing fa
      JOIN corpus.filings f ON f.accession = fa.accession,
           jsonb_array_elements_text(f.columns_unmapped) AS header
     WHERE (header ILIKE '%balance%' OR header ILIKE '%pari passu%'
            OR header ILIKE '%senior note%' OR header ILIKE '%companion%')
-      -- Un filtro por nombre deja entrar banderas y flujos: "Pari Passu (Y/N)"
-      -- encabezó el ranking con 166 préstamos y no arregla ningún saldo, porque
-      -- es un booleano. Buscamos montos.
+      -- A name filter lets flags and flows in: "Pari Passu (Y/N)" topped the
+      -- ranking with 166 loans and fixes no balance at all, because it is a
+      -- boolean. We are looking for amounts.
       AND header NOT ILIKE '%(y/n)%' AND header NOT ILIKE '%control%'
       AND header NOT ILIKE '%debt service%' AND header NOT ILIKE '%per unit%'
       AND header NOT ILIKE '%per sf%' AND header NOT ILIKE '%\%%'
@@ -434,25 +433,25 @@ const { rows: candidates2 } = await query<{
 
 if (candidates2.length > 0) {
   console.log(`\n${"─".repeat(78)}`);
-  console.log("Columnas sin mapear, ordenadas por préstamos que arreglarían");
+  console.log("Unmapped columns, ordered by the loans they would fix");
   console.log(`${"─".repeat(78)}\n`);
   for (const c of candidates2) {
-    console.log(`  ${String(c.loans).padStart(4)} préstamos · ${String(c.filings).padStart(2)} emisiones  \x1b[1m${c.header}\x1b[0m`);
-    console.log(`       \x1b[90m${c.ejemplos.slice(0, 66)}\x1b[0m`);
+    console.log(`  ${String(c.loans).padStart(4)} loans · ${String(c.filings).padStart(2)} issuances  \x1b[1m${c.header}\x1b[0m`);
+    console.log(`       \x1b[90m${c.examples.slice(0, 66)}\x1b[0m`);
   }
   console.log(
-    `\n  \x1b[90mEl número es cuántos préstamos que hoy fallan están en emisiones donde\x1b[0m`,
+    `\n  \x1b[90mThe number is how many currently failing loans are in issuances where\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mesa columna existe. Es una cota superior, no una promesa: la prueba es\x1b[0m`,
+    `  \x1b[90mthat column exists. It is an upper bound, not a promise: the proof is\x1b[0m`,
   );
-  console.log(`  \x1b[90mmapearla, recosechar y ver si las identidades suben.\x1b[0m`);
+  console.log(`  \x1b[90mmapping it, re-harvesting and seeing whether the identities rise.\x1b[0m`);
 }
 
 console.log(`\n${"─".repeat(78)}`);
 console.log(
-  `\n  \x1b[90mSi el saldo implícito coincide con una columna que no estamos mapeando,\x1b[0m`,
+  `\n  \x1b[90mIf the implied balance matches a column we are not mapping,\x1b[0m`,
 );
-console.log(`  \x1b[90mel arreglo es cambiar a qué columna apunta loan_amount.\x1b[0m\n`);
+console.log(`  \x1b[90mthe fix is to change which column loan_amount points at.\x1b[0m\n`);
 
 await closePool();
