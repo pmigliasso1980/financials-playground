@@ -66,18 +66,18 @@ console.log(
 );
 console.log(`\x1b[90m  before running: bias ${pct(VINTAGE_BIAS)} · dispersion ${MAX_DISPERSION}x · minimum n ${MIN_N}.\x1b[0m\n`);
 
-interface Fila {
+interface Row {
   vintage: string;
   n_total: string;
-  n_con: string;
-  saldo_con: number | null;
-  saldo_sin: number | null;
-  noi_con: number | null;
-  noi_sin: number | null;
-  ltv_con: number | null;
-  ltv_sin: number | null;
-  office_con: number | null;
-  office_sin: number | null;
+  n_with: string;
+  balance_with: number | null;
+  balance_without: number | null;
+  noi_with: number | null;
+  noi_without: number | null;
+  ltv_with: number | null;
+  ltv_without: number | null;
+  office_with: number | null;
+  office_without: number | null;
 }
 
 /**
@@ -86,20 +86,20 @@ interface Fila {
  * historical figures the underwriter already had in front of them, so it does not
  * measure an outcome and does not count as coverage either.
  */
-const { rows } = await query<Fila>(
+const { rows } = await query<Row>(
   `WITH base AS (
      SELECT l.id,
             extract(year FROM f.filed_at)::int AS vintage,
             coalesce(sen.value::numeric,
-                     amt.value::numeric + coalesce(npp.value::numeric, 0)) AS saldo,
+                     amt.value::numeric + coalesce(npp.value::numeric, 0)) AS balance,
             noi.value::numeric AS noi,
             ltv.value::numeric AS ltv,
-            (l.property_type ILIKE '%office%')::int AS es_office,
+            (l.property_type ILIKE '%office%')::int AS is_office,
             EXISTS (
               SELECT 1 FROM corpus.performance p
                WHERE p.loan_id = l.id
                  AND (p.noi_start - f.filed_at) >= 0
-            ) AS con_desempeno
+            ) AS has_performance
        FROM corpus.loans l
        JOIN corpus.filings f ON f.accession = l.accession
        LEFT JOIN corpus.facts amt ON amt.loan_id = l.id AND amt.metric_key = 'loan_amount'
@@ -117,21 +117,21 @@ const { rows } = await query<Fila>(
    )
    SELECT vintage::text AS vintage,
           count(*)::text AS n_total,
-          count(*) FILTER (WHERE con_desempeno)::text AS n_con,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY saldo)
-            FILTER (WHERE con_desempeno)      AS saldo_con,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY saldo)
-            FILTER (WHERE NOT con_desempeno)  AS saldo_sin,
+          count(*) FILTER (WHERE has_performance)::text AS n_with,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY balance)
+            FILTER (WHERE has_performance)      AS balance_with,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY balance)
+            FILTER (WHERE NOT has_performance)  AS balance_without,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY noi)
-            FILTER (WHERE con_desempeno)      AS noi_con,
+            FILTER (WHERE has_performance)      AS noi_with,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY noi)
-            FILTER (WHERE NOT con_desempeno)  AS noi_sin,
+            FILTER (WHERE NOT has_performance)  AS noi_without,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY ltv)
-            FILTER (WHERE con_desempeno)      AS ltv_con,
+            FILTER (WHERE has_performance)      AS ltv_with,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY ltv)
-            FILTER (WHERE NOT con_desempeno)  AS ltv_sin,
-          avg(es_office) FILTER (WHERE con_desempeno)     AS office_con,
-          avg(es_office) FILTER (WHERE NOT con_desempeno) AS office_sin
+            FILTER (WHERE NOT has_performance)  AS ltv_without,
+          avg(is_office) FILTER (WHERE has_performance)     AS office_with,
+          avg(is_office) FILTER (WHERE NOT has_performance) AS office_without
      FROM base
     GROUP BY vintage
     ORDER BY vintage`,
@@ -173,7 +173,7 @@ if (perfRows === 0) {
     `  \x1b[90mThis is not a problem with this check: there is nothing to measure bias against.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90m\`corpus.performance\` referencia \`loans(id)\` con ON DELETE CASCADE, y\x1b[0m`,
+    `  \x1b[90m\`corpus.performance\` references \`loans(id)\` with ON DELETE CASCADE, and\x1b[0m`,
   );
   console.log(
     `  \x1b[90m\`--refresh-stale\` deletes the loans before rewriting them. Every\x1b[0m`,
@@ -181,7 +181,7 @@ if (perfRows === 0) {
   console.log(
     `  \x1b[90mAnnex A re-harvest takes the accumulated performance with it.\x1b[0m\n`,
   );
-  console.log(`  Reconstruir con:  \x1b[1mnpm run db:performance\x1b[0m\n`);
+  console.log(`  Rebuild with:  \x1b[1mnpm run db:performance\x1b[0m\n`);
   await closePool();
   process.exit(0);
 }
@@ -223,32 +223,32 @@ const ratios: Array<{ vintage: string; ratio: number; n: number }> = [];
 
 for (const r of rows) {
   const nTotal = Number(r.n_total);
-  const nCon = Number(r.n_con);
-  const cob = nTotal > 0 ? nCon / nTotal : 0;
+  const nWith = Number(r.n_with);
+  const cov = nTotal > 0 ? nWith / nTotal : 0;
   const ratio =
-    r.saldo_con !== null && r.saldo_sin !== null && Number(r.saldo_sin) !== 0
-      ? Number(r.saldo_con) / Number(r.saldo_sin)
+    r.balance_with !== null && r.balance_without !== null && Number(r.balance_without) !== 0
+      ? Number(r.balance_with) / Number(r.balance_without)
       : NaN;
 
-  const chico = nCon < MIN_N;
+  const small = nWith < MIN_N;
   const biased = !Number.isNaN(ratio) && Math.abs(ratio - 1) > VINTAGE_BIAS;
-  const marca = chico ? "\x1b[90m" : biased ? "\x1b[33m" : "";
-  const fin = marca ? "\x1b[0m" : "";
+  const mark = small ? "\x1b[90m" : biased ? "\x1b[33m" : "";
+  const end = mark ? "\x1b[0m" : "";
 
   console.log(
-    `  ${marca}${r.vintage}   ${String(nTotal).padStart(4)}    ${String(nCon).padStart(5)}  ` +
-      `${pct(cob).padStart(4)}   ${money(r.saldo_con).padStart(6)} / ${money(r.saldo_sin).padEnd(6)} ` +
+    `  ${mark}${r.vintage}   ${String(nTotal).padStart(4)}    ${String(nWith).padStart(5)}  ` +
+      `${pct(cov).padStart(4)}   ${money(r.balance_with).padStart(6)} / ${money(r.balance_without).padEnd(6)} ` +
       `${Number.isNaN(ratio) ? " — " : `${ratio.toFixed(2)}x`}   ` +
-      `${money(r.noi_con).padStart(6)} / ${money(r.noi_sin).padEnd(6)}  ` +
-      `${r.ltv_con === null ? "—" : pct(Number(r.ltv_con))}/${r.ltv_sin === null ? "—" : pct(Number(r.ltv_sin))}` +
-      `${chico ? "  (n bajo)" : biased ? "  ← biased" : ""}${fin}`,
+      `${money(r.noi_with).padStart(6)} / ${money(r.noi_without).padEnd(6)}  ` +
+      `${r.ltv_with === null ? "—" : pct(Number(r.ltv_with))}/${r.ltv_without === null ? "—" : pct(Number(r.ltv_without))}` +
+      `${small ? "  (low n)" : biased ? "  ← biased" : ""}${end}`,
   );
 
-  if (!chico && !Number.isNaN(ratio)) ratios.push({ vintage: r.vintage, ratio, n: nCon });
+  if (!small && !Number.isNaN(ratio)) ratios.push({ vintage: r.vintage, ratio, n: nWith });
 }
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Veredicto");
+console.log("Verdict");
 console.log(`${"─".repeat(78)}\n`);
 
 if (ratios.length < 2) {
@@ -334,14 +334,14 @@ if (ratios.length < 2) {
  */
 const BAND_MIN = 10_000_000;
 const BAND_MAX = 30_000_000;
-const CAIDA_MINIMA = 0.05;
+const MIN_FALL = 0.05;
 
-const { rows: estrato } = await query<{
-  vintage: string; n: string; entregado: number | null; proyectado: number | null;
+const { rows: strata } = await query<{
+  vintage: string; n: string; delivered: number | null; proyectado: number | null;
 }>(
   `SELECT extract(year FROM originated_at)::int::text AS vintage,
           count(*)::text AS n,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY growth_delivered) AS entregado,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY growth_delivered) AS delivered,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY gap_vs_trailing)  AS proyectado
      FROM corpus.underwriting_outcomes
     WHERE days_after_origination >= 0
@@ -361,32 +361,32 @@ console.log(
 );
 console.log(`\x1b[90m  of the bias, because size no longer varies.\x1b[0m\n`);
 
-if (estrato.length < 2) {
+if (strata.length < 2) {
   console.log(
     `  \x1b[33mFewer than two vintages with n ≥ 20 in the band. Not enough to compare.\x1b[0m\n`,
   );
 } else {
   console.log(`  vintage   n    delivered NOI    projected over historical`);
   console.log(`  ${"─".repeat(56)}`);
-  for (const e of estrato) {
+  for (const e of strata) {
     console.log(
       `  ${e.vintage}   ${String(e.n).padStart(3)}      ` +
-        `${e.entregado === null ? "—" : pct(Number(e.entregado), 1).padStart(6)}` +
+        `${e.delivered === null ? "—" : pct(Number(e.delivered), 1).padStart(6)}` +
         `             ${e.proyectado === null ? "—" : pct(Number(e.proyectado), 1).padStart(6)}`,
     );
   }
 
-  const primero = estrato[0]!;
-  const ultimo = estrato[estrato.length - 1]!;
-  const fall = Number(primero.entregado) - Number(ultimo.entregado);
+  const first = strata[0]!;
+  const last = strata[strata.length - 1]!;
+  const fall = Number(first.delivered) - Number(last.delivered);
 
   console.log(
     `\n  Fall within the band: ${pct(fall, 1)} ` +
-      `(de ${primero.vintage} a ${ultimo.vintage})`,
+      `(from ${first.vintage} to ${last.vintage})`,
   );
-  console.log(`  Umbral de supervivencia fijado antes: ${pct(CAIDA_MINIMA, 0)}\n`);
+  console.log(`  Survival threshold fixed in advance: ${pct(MIN_FALL, 0)}\n`);
 
-  if (fall >= CAIDA_MINIMA) {
+  if (fall >= MIN_FALL) {
     console.log(`  \x1b[32mTHE FINDING SURVIVES STRATIFICATION.\x1b[0m`);
     console.log(
       `  \x1b[90mComparing loans of equivalent size, delivered growth still falls.\x1b[0m`,
@@ -398,7 +398,7 @@ if (estrato.length < 2) {
       `  \x1b[90mwas composition— but the direction and the ordering are not an artefact.\x1b[0m\n`,
     );
   } else {
-    console.log(`  \x1b[31mEL HALLAZGO NO SOBREVIVE.\x1b[0m`);
+    console.log(`  \x1b[31mTHE FINDING DOES NOT SURVIVE.\x1b[0m`);
     console.log(
       `  \x1b[90mAt constant size the fall vanishes: the series 11.5% → 1.0% was\x1b[0m`,
     );

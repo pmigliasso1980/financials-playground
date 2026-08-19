@@ -66,9 +66,9 @@ const METRICS: Array<{ key: string; label: string; min: number; max: number; fmt
   { key: "dscr", label: "DSCR", min: 0.1, max: 20, fmt: (v) => v.toFixed(2) },
   { key: "ltv", label: "LTV", min: 0.01, max: 2, fmt: (v) => pct(v, 1) },
   { key: "debt_yield", label: "Debt yield", min: 0.01, max: 1, fmt: (v) => pct(v, 1) },
-  { key: "loan_amount", label: "Saldo", min: 1e5, max: 1e10, fmt: (v) => `${(v / 1e6).toFixed(1)}M` },
+  { key: "loan_amount", label: "Balance", min: 1e5, max: 1e10, fmt: (v) => `${(v / 1e6).toFixed(1)}M` },
   { key: "occupancy", label: "Occupancy", min: 0.1, max: 1.01, fmt: (v) => pct(v, 1) },
-  { key: "term_original", label: "Plazo (meses)", min: 12, max: 480, fmt: (v) => v.toFixed(0) },
+  { key: "term_original", label: "Term (months)", min: 12, max: 480, fmt: (v) => v.toFixed(0) },
 ];
 
 console.log(`\n${"═".repeat(78)}`);
@@ -99,13 +99,13 @@ interface Resultado {
   shift: number;
   monotona: boolean;
   /** How much it would shift by pure sampling if the vintages were exchangeable. */
-  nuloMediana: number | null;
+  nullMedian: number | null;
   pValor: number;
 }
 
 /** Fixed seed: a p-value that changes between runs cannot be quoted. */
-function rng(semilla: number) {
-  let s = semilla >>> 0;
+function rng(seed: number) {
+  let s = seed >>> 0;
   return () => {
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
@@ -114,11 +114,11 @@ function rng(semilla: number) {
 const results: Resultado[] = [];
 
 for (const m of METRICS) {
-  const { rows } = await query<{ vintage: string; mediana: string | null; n: string; valores: number[] }>(
+  const { rows } = await query<{ vintage: string; median: string | null; n: string; values: number[] }>(
     `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
-            percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS mediana,
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS median,
             count(*)::text AS n,
-            array_agg(fa.value::numeric) AS valores
+            array_agg(fa.value::numeric) AS values
        FROM corpus.facts fa
        JOIN corpus.loans l ON l.id = fa.loan_id
        JOIN corpus.filings f ON f.accession = l.accession
@@ -131,19 +131,19 @@ for (const m of METRICS) {
     [m.key],
   );
 
-  const porAnada = new Map(rows.map((r) => [r.vintage, Number(r.mediana)]));
-  const valores = cols.map((c) => porAnada.get(c) ?? null);
-  const presentes = valores.filter((v): v is number => v !== null);
+  const byVintage = new Map(rows.map((r) => [r.vintage, Number(r.median)]));
+  const values = cols.map((c) => byVintage.get(c) ?? null);
+  const present = values.filter((v): v is number => v !== null);
 
-  if (presentes.length < 3) {
-    console.log(`  ${m.label.padEnd(17)}` + `\x1b[90m  sin muestra suficiente\x1b[0m`);
+  if (present.length < 3) {
+    console.log(`  ${m.label.padEnd(17)}` + `\x1b[90m  no sufficient sample\x1b[0m`);
     continue;
   }
 
-  const alto = Math.max(...presentes);
-  const bajo = Math.min(...presentes);
-  const centro = presentes.slice().sort((a, b) => a - b)[Math.floor(presentes.length / 2)]!;
-  const shift = centro !== 0 ? (alto - bajo) / Math.abs(centro) : 0;
+  const high = Math.max(...present);
+  const low = Math.min(...present);
+  const center = present.slice().sort((a, b) => a - b)[Math.floor(present.length / 2)]!;
+  const shift = center !== 0 ? (high - low) / Math.abs(center) : 0;
 
   /**
    * Monotone or not: a large shift that zigzags is composition noise; one that
@@ -152,9 +152,9 @@ for (const m of METRICS) {
    */
   let subiendo = true;
   let bajando = true;
-  for (let i = 1; i < presentes.length; i++) {
-    if (presentes[i]! < presentes[i - 1]!) subiendo = false;
-    if (presentes[i]! > presentes[i - 1]!) bajando = false;
+  for (let i = 1; i < present.length; i++) {
+    if (present[i]! < present[i - 1]!) subiendo = false;
+    if (present[i]! > present[i - 1]!) bajando = false;
   }
   const monotona = subiendo || bajando;
 
@@ -177,46 +177,46 @@ for (const m of METRICS) {
    * null, the p-value's precision is not what decides.
    */
   const REPLICAS = 600;
-  const bolsa = rows.flatMap((r) => (r.valores ?? []).map(Number)).filter(Number.isFinite);
-  const tamanos = rows
-    .filter((r) => porAnada.has(r.vintage))
+  const pool = rows.flatMap((r) => (r.values ?? []).map(Number)).filter(Number.isFinite);
+  const sizes = rows
+    .filter((r) => byVintage.has(r.vintage))
     .map((r) => Number(r.n));
 
-  let nuloMediana: number | null = null;
+  let nullMedian: number | null = null;
   let pValor = 1;
 
-  if (bolsa.length > 0 && tamanos.length >= 3) {
+  if (pool.length > 0 && sizes.length >= 3) {
     const rand = rng(0xC0FFEE);
-    const simulados: number[] = [];
+    const simulated: number[] = [];
     for (let k = 0; k < REPLICAS; k++) {
-      const medianas: number[] = [];
-      for (const n of tamanos) {
+      const medians: number[] = [];
+      for (const n of sizes) {
         // Sampling with replacement from the common pool: the exchangeability hypothesis.
-        const muestra: number[] = [];
-        for (let i = 0; i < n; i++) muestra.push(bolsa[Math.floor(rand() * bolsa.length)]!);
-        muestra.sort((a, b) => a - b);
-        const mid = muestra.length >> 1;
-        medianas.push(
-          muestra.length % 2 ? muestra[mid]! : (muestra[mid - 1]! + muestra[mid]!) / 2,
+        const sample: number[] = [];
+        for (let i = 0; i < n; i++) sample.push(pool[Math.floor(rand() * pool.length)]!);
+        sample.sort((a, b) => a - b);
+        const mid = sample.length >> 1;
+        medians.push(
+          sample.length % 2 ? sample[mid]! : (sample[mid - 1]! + sample[mid]!) / 2,
         );
       }
-      const c = medianas.slice().sort((a, b) => a - b)[Math.floor(medianas.length / 2)]!;
-      simulados.push(c !== 0 ? (Math.max(...medianas) - Math.min(...medianas)) / Math.abs(c) : 0);
+      const c = medians.slice().sort((a, b) => a - b)[Math.floor(medians.length / 2)]!;
+      simulated.push(c !== 0 ? (Math.max(...medians) - Math.min(...medians)) / Math.abs(c) : 0);
     }
-    simulados.sort((a, b) => a - b);
-    nuloMediana = simulados[Math.floor(simulados.length / 2)]!;
-    pValor = simulados.filter((x) => x >= shift).length / simulados.length;
+    simulated.sort((a, b) => a - b);
+    nullMedian = simulated[Math.floor(simulated.length / 2)]!;
+    pValor = simulated.filter((x) => x >= shift).length / simulated.length;
   }
 
-  results.push({ label: m.label, shift, monotona, nuloMediana, pValor });
+  results.push({ label: m.label, shift, monotona, nullMedian, pValor });
 
   const color =
     shift > TOLERABLE_SHIFT ? "\x1b[31m" : "\x1b[32m";
   console.log(
     `  ${m.label.padEnd(17)}` +
-      valores.map((v) => (v === null ? "—" : m.fmt(v)).padStart(9)).join("") +
+      values.map((v) => (v === null ? "—" : m.fmt(v)).padStart(9)).join("") +
       `   ${color}${pct(shift).padStart(7)}\x1b[0m` +
-      `  \x1b[90m${nuloMediana === null ? "  —" : pct(nuloMediana).padStart(6)}\x1b[0m` +
+      `  \x1b[90m${nullMedian === null ? "  —" : pct(nullMedian).padStart(6)}\x1b[0m` +
       /**
        * The ratio against the null, which is what the p-value does not say.
        *
@@ -230,10 +230,10 @@ for (const m of METRICS) {
        * criterion would have said "unstable" with 1.5x of margin over the noise.
        */
       `  ${
-        nuloMediana === null || nuloMediana === 0
+        nullMedian === null || nullMedian === 0
           ? "\x1b[90m    —\x1b[0m"
           : (() => {
-              const veces = shift / nuloMediana;
+              const veces = shift / nullMedian;
               return `${veces < 2 ? "\x1b[33m" : "\x1b[90m"}${veces.toFixed(1)}x\x1b[0m`;
             })()
       }` +
@@ -295,7 +295,7 @@ console.log(`  \x1b[90mdirection: a market trend, not composition noise.\x1b[0m`
  * it does not with margin appears.
  */
 const nearNoise = results.filter(
-  (r) => r.nuloMediana !== null && r.nuloMediana > 0 && r.shift / r.nuloMediana < 2,
+  (r) => r.nullMedian !== null && r.nullMedian > 0 && r.shift / r.nullMedian < 2,
 );
 if (nearNoise.length > 0) {
   console.log(
@@ -379,8 +379,8 @@ if (unstable.length === 0) {
  * resultado.
  */
 const BUCKETS: Array<{ label: string; min: number; max: number }> = [
-  { label: "≤ 84 meses", min: 12, max: 84 },
-  { label: "> 84 meses", min: 85, max: 480 },
+  { label: "≤ 84 months", min: 12, max: 84 },
+  { label: "> 84 months", min: 85, max: 480 },
 ];
 
 console.log(`\n${"═".repeat(78)}`);
@@ -416,8 +416,8 @@ for (const b of BUCKETS) {
     const prev = results.find((r) => r.label === m.label);
     if (!prev) continue;
 
-    const { rows } = await query<{ mediana: string | null }>(
-      `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS mediana
+    const { rows } = await query<{ median: string | null }>(
+      `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS median
          FROM corpus.facts fa
          JOIN corpus.loans l ON l.id = fa.loan_id
          JOIN corpus.filings f ON f.accession = l.accession
@@ -434,20 +434,20 @@ for (const b of BUCKETS) {
       [m.key],
     );
 
-    const vals = rows.map((r) => Number(r.mediana)).filter((v) => Number.isFinite(v));
+    const vals = rows.map((r) => Number(r.median)).filter((v) => Number.isFinite(v));
     if (vals.length < 3) {
       console.log(`    ${m.label.padEnd(18)} ${pct(prev.shift).padStart(6)}   \x1b[90m—\x1b[0m`);
       continue;
     }
 
-    const centro = vals.slice().sort((a, b2) => a - b2)[Math.floor(vals.length / 2)]!;
-    const dentro = centro !== 0 ? (Math.max(...vals) - Math.min(...vals)) / Math.abs(centro) : 0;
-    const mejora = prev.shift > 0 ? 1 - dentro / prev.shift : 0;
+    const center = vals.slice().sort((a, b2) => a - b2)[Math.floor(vals.length / 2)]!;
+    const within = center !== 0 ? (Math.max(...vals) - Math.min(...vals)) / Math.abs(center) : 0;
+    const improvement = prev.shift > 0 ? 1 - within / prev.shift : 0;
 
     console.log(
       `    ${m.label.padEnd(18)} ${pct(prev.shift).padStart(6)}   ` +
-        `${(dentro <= TOLERABLE_SHIFT ? "\x1b[32m" : "\x1b[31m")}${pct(dentro).padStart(6)}\x1b[0m` +
-        `   \x1b[90m${mejora > 0 ? `−${pct(mejora)}` : "sin mejora"}\x1b[0m`,
+        `${(within <= TOLERABLE_SHIFT ? "\x1b[32m" : "\x1b[31m")}${pct(within).padStart(6)}\x1b[0m` +
+        `   \x1b[90m${improvement > 0 ? `−${pct(improvement)}` : "no improvement"}\x1b[0m`,
     );
   }
 }

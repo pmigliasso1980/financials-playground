@@ -31,6 +31,16 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # query<{ a: string; b: number | null }>(  `...sql...`
 CALL = re.compile(r'query<\{(?P<type>[^}]*)\}>\(\s*(?P<sql>`(?:[^`\\]|\\.)*`)', re.S)
+# query<Row>(`...sql...`) — a NAMED interface rather than an inline type.
+#
+# This form was invisible to the checker: analysis/bias.ts declares `interface
+# Row` with eleven fields and passes it as query<Row>, so the file reported
+# "1 queries, every type field is selected" while the eleven that mattered were
+# never looked at. And bias.ts is the file where the afterClosing/after_closing
+# bug lived — the checker was built to catch that class and could not see the
+# other query in the same file.
+NAMED = re.compile(r'query<(?P<name>[A-Z]\w*)>\(\s*(?P<sql>`(?:[^`\\]|\\.)*`)', re.S)
+IFACE = re.compile(r'interface\s+(\w+)\s*\{(?P<body>[^}]*)\}', re.S)
 FIELD = re.compile(r'(\w+)\s*:')
 ALIAS = re.compile(r'\bAS\s+"?(\w+)"?', re.I)
 # Qualified columns: `p.loan_id`
@@ -43,11 +53,22 @@ PLAIN = re.compile(r'\bSELECT\s+(.*?)\s+FROM\b', re.I | re.S)
 
 def check(path: pathlib.Path) -> int:
     src = path.read_text(errors="ignore")
+    ifaces = {m.group(1): set(FIELD.findall(m.group("body")))
+              for m in IFACE.finditer(src)}
     bad = unver = ok = 0
-    for m in CALL.finditer(src):
-        fields = set(FIELD.findall(m.group("type")))
-        sql = m.group("sql")
+    calls = [(set(FIELD.findall(m.group("type"))), m.group("sql"), m.start())
+             for m in CALL.finditer(src)]
+    calls += [(ifaces.get(m.group("name"), set()), m.group("sql"), m.start())
+              for m in NAMED.finditer(src) if m.group("name") in ifaces]
+    for fields, sql, start in calls:
         if "${" in sql:
+            unver += 1
+            continue
+        # `SELECT *` or `SELECT o.*`: the column list is the table's, which is
+        # not in this file. Reporting the type's fields as "not selected" would
+        # be a false positive on correct code — db/corpus.ts does this in four
+        # places. Unverifiable, not wrong.
+        if re.search(r'SELECT\s+(\w+\.)?\*', sql, re.I):
             unver += 1
             continue
         # Aliases and qualified columns ONLY.
@@ -63,7 +84,7 @@ def check(path: pathlib.Path) -> int:
             aliases |= {w.lower() for w in re.findall(r'\b(\w+)\b', sel)}
         missing = {f for f in fields if f.lower() not in aliases}
         if missing:
-            line = src[:m.start()].count("\n") + 1
+            line = src[:start].count("\n") + 1
             print(f"  ✗ {path.name}:{line}: type declares {sorted(missing)}"
                   f" — not selected by the query")
             bad += 1
