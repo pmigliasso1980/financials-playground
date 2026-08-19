@@ -7,7 +7,7 @@
  *
  * Each Annex A column is mapped independently: one pattern over the
  * header, without looking at the others. `net_cash_flow` knows nothing about
- * `debt_service_pi`, y ninguno sabe de `dscr_ncf`.
+ * `debt_service_pi`, and neither knows anything about `dscr_ncf`.
  *
  * But the issuer computed them from the same figures, so they have to close
  * against each other:
@@ -160,7 +160,7 @@ const results: IdentityResult[] = [];
  * mapped correctly. Several issuances publish the total in a single column and the
  * reconciler found them by comparing values, not names. When it is there, it is
  * that one: it does not depend on the pari passu having been captured, nor on the Annex
- * publique por separado.
+ * publishing it separately.
  */
 const SENIOR =
   "coalesce(sen.value::numeric, amt.value::numeric + coalesce(npp.value::numeric, 0))";
@@ -174,7 +174,7 @@ const DEBT_SERVICE_SENIOR =
 const DS_JOINS = `${fact("dspi", "debt_service_pi")} ${fact("dsio", "debt_service_io")}`;
 
 const dscrNcf = await checkIdentity(
-  "DSCR (NCF) = NCF / servicio de deuda",
+  "DSCR (NCF) = NCF / debt service",
   "dscr_ncf · net_cash_flow · debt_service_io|pi escalado al senior",
   `${fact("d", "dscr_ncf")} ${fact("ncf", "net_cash_flow")} ${DS_JOINS} ${SENIOR_JOINS}`,
   `ncf.value::numeric / NULLIF(${DEBT_SERVICE_SENIOR}, 0)`,
@@ -183,7 +183,7 @@ const dscrNcf = await checkIdentity(
 if (dscrNcf) results.push(dscrNcf);
 
 const dscrNoi = await checkIdentity(
-  "DSCR (NOI) = NOI suscrito / servicio de deuda",
+  "DSCR (NOI) = underwritten NOI / debt service",
   "dscr · noi_underwritten · debt_service_io|pi escalado al senior",
   `${fact("d", "dscr")} ${fact("noi", "noi_underwritten")} ${DS_JOINS} ${SENIOR_JOINS}`,
   `noi.value::numeric / NULLIF(${DEBT_SERVICE_SENIOR}, 0)`,
@@ -219,7 +219,7 @@ if (ncf) results.push(ncf);
  * Rather than choosing by intuition, every candidate is tried and the one that
  * closes wins. The proportion closing against each one IS the answer as to which
  * each column means, and it is recorded in the output rather than in the
- * cabeza de alguien.
+ * someone's head.
  */
 const BALANCE_CANDIDATES: Array<{ label: string; sql: string; joins: string }> = [
   {
@@ -293,7 +293,7 @@ console.log(
 console.log(`  \x1b[90ma debt structure we do not model yet.\x1b[0m`);
 
 const debtYield = await checkIdentity(
-  "Debt yield = NOI suscrito / saldo",
+  "Debt yield = underwritten NOI / balance",
   `debt_yield · noi_underwritten · ${bestBalance.label}`,
   `${fact("dy", "debt_yield")} ${fact("noi", "noi_underwritten")} ${bestBalance.joins}`,
   `noi.value::numeric / NULLIF(${bestBalance.sql}, 0)`,
@@ -314,7 +314,7 @@ if (ltv) results.push(ltv);
 
 if (results.length === 0) {
   console.error(
-    `  \x1b[33mNinguna identidad tiene muestra suficiente.\x1b[0m\n` +
+    `  \x1b[33mNo identity has a sufficient sample.\x1b[0m\n` +
       `  Did you harvest with the new mapping?  npm run harvest:batch -- --limit 100\n`,
   );
   await closePool();
@@ -349,7 +349,7 @@ if (broken.length === 0 && partial.length === 0) {
     for (const w of r.worst) {
       console.log(
         `  \x1b[90m  loan ${w.loan}: esperado ${w.expected.toFixed(4)}, ` +
-          `publicado ${w.actual.toFixed(4)} (${pct(w.error, 0)} de error)\x1b[0m`,
+          `published ${w.actual.toFixed(4)} (${pct(w.error, 0)} error)\x1b[0m`,
       );
     }
     console.log();
@@ -468,7 +468,7 @@ if (bf) {
    *
    * It is the same principle as the pool sum applied to another table: a corpus
    * missing an entire piece is indistinguishable from a correct one if nobody
-   * pregunta por esa pieza.
+   * asks for that piece.
    */
   const { rows: perf } = await query<{ rows_n: string; loans_n: string }>(
     `SELECT count(*)::text AS rows_n, count(DISTINCT loan_id)::text AS loans_n
@@ -485,7 +485,7 @@ if (bf) {
       `    \x1b[90mA re-harvest with --refresh-stale deletes it: the CASCADE comes from\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mloans(id). Reconstruir con \x1b[0m\x1b[1mnpm run db:performance\x1b[0m`,
+      `    \x1b[90mloans(id). Rebuild with \x1b[0m\x1b[1mnpm run db:performance\x1b[0m`,
     );
   } else {
     console.log(
@@ -518,12 +518,12 @@ if (bf) {
    * is the doubt that remains open about L5.
    */
   const { rows: pool } = await query<{
-    company: string; year: string; suma: string; prestamos: string; total: string;
+    company: string; year: string; value_sum: string; loans: string; total: string;
   }>(
     `SELECT f.company_name AS company,
             extract(year FROM f.filed_at)::int::text AS year,
-            round(sum(ps.value::numeric), 3)::text AS suma,
-            count(*)::text AS prestamos,
+            round(sum(ps.value::numeric), 3)::text AS value_sum,
+            count(*)::text AS loans,
             (SELECT count(*)::text FROM corpus.loans l2
               WHERE l2.accession = f.accession) AS total
        FROM corpus.loans l
@@ -569,8 +569,8 @@ if (bf) {
      * declared that a failure has to say which of its causes it is.
      */
     for (const p of pool) {
-      const s = Number(p.suma);
-      const withCol = Number(p.prestamos);
+      const s = Number(p.value_sum);
+      const withCol = Number(p.loans);
       const tot = Number(p.total);
       const diagnosis =
         withCol < tot
@@ -660,7 +660,7 @@ if (bf) {
  * properties or something proportional to it.
  */
 const { rows: profile } = await query<{
-  grupo: string; n: string; props: number | null; amt: number | null; noi: number | null;
+  group_name: string; n: string; props: number | null; amt: number | null; noi: number | null;
 }>(
   `WITH per_loan AS (
      SELECT l.id,
@@ -675,7 +675,7 @@ const { rows: profile } = await query<{
       WHERE dy.value IS NOT NULL AND noi.value IS NOT NULL AND amt.value IS NOT NULL
         AND amt.value::numeric <> 0 AND dy.value::numeric <> 0
    )
-   SELECT CASE WHEN ok THEN 'cierra' ELSE 'no cierra' END AS grupo,
+   SELECT CASE WHEN ok THEN 'closes' ELSE 'does not close' END AS group_name,
           count(*) AS n,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY props) AS props,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY amt)   AS amt,
@@ -685,18 +685,18 @@ const { rows: profile } = await query<{
 
 if (profile.length === 2) {
   console.log(`\n  Profile of the two groups:\n`);
-  console.log(`    grupo          n   # propiedades         saldo mediano       NOI mediano`);
+  console.log(`    group          n     # properties       median balance        median NOI`);
   for (const r of profile) {
     const money = (v: number | null) =>
       v === null ? "—" : Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
     console.log(
-      `    ${r.grupo.padEnd(10)} ${String(r.n).padStart(5)}   ${(r.props === null ? "—" : Number(r.props).toFixed(1)).padStart(13)}   ` +
+      `    ${r.group_name.padEnd(14)} ${String(r.n).padStart(5)}   ${(r.props === null ? "—" : Number(r.props).toFixed(1)).padStart(13)}   ` +
         `${money(r.amt).padStart(17)}   ${money(r.noi).padStart(15)}`,
     );
   }
 
-  const ok = profile.find((r) => r.grupo === "cierra")!;
-  const bad = profile.find((r) => r.grupo === "no cierra")!;
+  const ok = profile.find((r) => r.group_name === "closes")!;
+  const bad = profile.find((r) => r.group_name === "does not close")!;
   const ratio = Number(ok.amt) / Number(bad.amt);
   console.log();
   if (Number.isFinite(ratio) && (ratio > 50 || ratio < 0.02)) {

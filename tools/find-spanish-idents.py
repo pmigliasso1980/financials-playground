@@ -50,8 +50,12 @@ def skip(f: str) -> bool:
     if not f: return True
     if f.startswith("harvest/fixtures/"): return True     # real SEC docs
     if f == "package-lock.json": return True              # generated
-    if f.startswith("tools/find-spanish"): return True    # carry the vocabulary
-    if f == "tools/es-blocks.py": return True
+    # The whole tools/ directory: these files carry the vocabulary they match
+    # on and quote Spanish examples to document each rule. Naming them one at a
+    # time is what let this very file slip through and flag itself. Verified
+    # before widening: every accented character under tools/ is English prose
+    # quoting an example.
+    if f.startswith("tools/"): return True
     if not pathlib.Path(f).exists(): return True
     return False
 

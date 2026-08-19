@@ -25,6 +25,9 @@ npx tsc --noEmit
 echo "pre-push: SQL syntax"
 python3 tools/check-sql.py > /dev/null
 
+echo "pre-push: SQL aliases match the TS row types"
+python3 tools/check-query-types.py > /dev/null
+
 echo "pre-push: HTML/API contract"
 python3 tools/check-html-contract.py > /dev/null
 

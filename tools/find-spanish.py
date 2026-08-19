@@ -77,8 +77,24 @@ if not paths:
         # them reports the word list itself as a finding. find-spanish-idents.py
         # was missing from this set and showed up as 4 suspect lines in its own
         # report — the detector flagging its own dictionary.
-        if f in {"tools/find-spanish.py", "tools/find-spanish-idents.py",
-                 "tools/es-blocks.py"}:
+        # The whole tools/ directory.
+        #
+        # These files are the migration's instruments: they carry the Spanish
+        # vocabulary they match on, and they document each rule by quoting the
+        # line that justified it ("Morosidad y special servicing", `AS anada`,
+        # suma/value_sum). A detector that counts its own dictionary reports
+        # its own growth as regression — which is exactly what happened when
+        # check-query-types.py was added and the ratchet accused me of
+        # reintroducing 174 Spanish identifiers.
+        #
+        # This was already handled ad hoc for three named files. Naming them
+        # one at a time is what let find-spanish-idents.py slip through and
+        # flag itself. It is a directory rule now.
+        #
+        # Verified before widening it: every accented character under tools/ is
+        # inside English prose quoting an example. There is no Spanish here to
+        # miss.
+        if f.startswith("tools/"):
             return True
         # git ls-files still lists a file deleted in the working tree until the
         # deletion is committed.

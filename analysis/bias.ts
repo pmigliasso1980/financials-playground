@@ -156,7 +156,7 @@ const { rows: healthRows } = await query<{
 }>(
   `SELECT count(*)::text AS rows,
           count(DISTINCT p.loan_id)::text AS loans,
-          count(*) FILTER (WHERE (p.noi_start - f.filed_at) >= 0)::text AS afterClosing
+          count(*) FILTER (WHERE (p.noi_start - f.filed_at) >= 0)::text AS after_closing
      FROM corpus.performance p
      JOIN corpus.loans l   ON l.id = p.loan_id
      JOIN corpus.filings f ON f.accession = l.accession`,
