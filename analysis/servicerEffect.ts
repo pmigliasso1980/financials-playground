@@ -1,50 +1,49 @@
 /**
- * ¿La brecha entre emisoras es de la emisora o del administrador maestro?
+ * Is the gap between issuers the issuer's or the master servicer's?
  *
  *   npm run db:servicer-effect
  *
  * LA PREGUNTA
  *
- * Ajustado por añada y tercil de DSCR, BANK transfiere a special servicing 4
- * veces menos que BBCMS (SIR 0,39 contra 1,60, intervalos que no se pisan).
- * Sobrevivió cinco intentos de matarlo: el join —que pega al 97,7%—, la
- * población listada, el formato del bloque, los filtros, y el valor crudo
- * verificado en veinte emisiones.
+ * Adjusted for vintage and DSCR tercile, BANK transfers to special servicing 4
+ * times less often than BBCMS (SIR 0.39 against 1.60, non-overlapping intervals).
+ * It survived five attempts to kill it: the join —which matches at 97.7%—, the
+ * listed population, the block format, the filters, and the raw value verified
+ * across twenty issuances.
  *
- * Queda una explicación alternativa. El administrador maestro arma la tabla de
- * morosidad, y decide cuándo un préstamo se transfiere al administrador
- * especial. Si un administrador transfiere con criterio más laxo, sus
- * emisiones marcan más eventos sin que el crédito sea peor.
+ * One alternative explanation remains. The master servicer builds the delinquency
+ * table, and decides when a loan is transferred to the special servicer. If one
+ * servicer transfers on looser criteria, its issuances flag more events without
+ * the credit being any worse.
  *
- * POR QUÉ SE PUEDE PREGUNTAR
+ * WHY THE QUESTION CAN BE ASKED
  *
- * Porque el diseño está cruzado, y eso se verificó ANTES de mirar ningún
- * resultado (`db:coverage`, última sección): Trimont aparece en las ocho
- * emisoras, Midland en seis, KeyBank en cuatro. Si cada emisora usara un
- * administrador propio, las dos variables serían la misma columna con dos
- * nombres y no habría análisis posible.
+ * Because the design is crossed, and that was verified BEFORE looking at any
+ * result (`db:coverage`, last section): Trimont appears under all eight issuers,
+ * Midland under six, KeyBank under four. If each issuer used its own servicer, the
+ * two variables would be the same column under two names and no analysis would be
+ * possible.
  *
- * EL CONTRASTE QUE DECIDE
+ * THE CONTRAST THAT DECIDES
  *
- * BANK y Wells son ambas casi enteramente Trimont —16 de 24 y 10 de 11— y hoy
- * marcan 1,3% contra 4,4%. Si el administrador explicara la brecha, esas dos
- * deberían parecerse. Que no se parezcan es evidencia contra la hipótesis antes
- * de calcular nada, y este script lo mide en vez de razonarlo.
+ * BANK and Wells are both almost entirely Trimont —16 of 24 and 10 of 11— and today
+ * they flag 1.3% against 4.4%. If the servicer explained the gap, those two should
+ * resemble each other. That they do not is evidence against the hypothesis before
+ * computing anything, and this script measures it rather than reasoning about it.
  *
- * CÓMO SE LEE
+ * HOW TO READ IT
  *
- * La dispersión ENTRE emisoras dentro de un mismo administrador contra la
- * dispersión ENTRE administradores dentro de una misma emisora. La que sea
- * mayor es la variable que manda. Es una comparación de rangos, no un modelo:
- * con 151 eventos repartidos en celdas, un modelo daría coeficientes que no se
- * pueden interpretar.
+ * The dispersion BETWEEN issuers within one servicer against the dispersion
+ * BETWEEN servicers within one issuer. Whichever is larger is the variable that
+ * drives it. It is a comparison of ranges, not a model: with 151 events spread
+ * across cells, a model would give coefficients that cannot be interpreted.
  *
- * LO QUE ESTE SCRIPT NO CONTROLA
+ * WHAT THIS SCRIPT DOES NOT CONTROL
  *
- * La añada. Cada celda reporta su mezcla para que se pueda ver si un contraste
- * está montado sobre añadas distintas. No se estandariza porque estratificar
- * celdas de 300 préstamos por añada las deja en 60, y ahí no queda nada que
- * leer. Es una limitación declarada, no resuelta.
+ * The vintage. Each cell reports its mix so you can see whether a contrast is
+ * built on different vintages. It is not standardised because stratifying cells of
+ * 300 loans by vintage leaves them at 60, and there is nothing left to read. It is
+ * a declared limitation, not a solved one.
  */
 
 import { closePool, ping, query } from "../db/client.js";
@@ -56,23 +55,24 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Fijado antes de ver los números: debajo de esto la celda no se lee. */
+/** Fixed before seeing the numbers: below this the cell cannot be read. */
 const MIN_POOL = 150;
 
 /**
- * `--special` corre el mismo test contra el administrador ESPECIAL.
+ * `--special` runs the same test against the SPECIAL servicer.
  *
- * El maestro decide cuándo transferir; el especial es quien recibe el préstamo
- * y lo designa el comprador del B-piece, que tiene apetito propio. Son dos
- * actores distintos y no hay razón para que el resultado sea el mismo.
+ * The master decides when to transfer; the special servicer is who receives the
+ * loan and is appointed by the B-piece buyer, who has an appetite of their own.
+ * They are two different actors and there is no reason for the result to be the
+ * same.
  *
- * Es la misma pregunta con otra columna, así que comparte todo el código: si
- * el test fuera distinto para cada uno, la comparación entre ambos no diría
+ * It is the same question with a different column, so it shares all the code: if
+ * the test were different for each, the comparison between them would say
  * nada.
  */
-const ESPECIAL = process.argv.includes("--special");
-const COLUMNA = ESPECIAL ? "special_servicer" : "master_servicer";
-const ROL = ESPECIAL ? "administrador especial" : "administrador maestro";
+const SPECIAL = process.argv.includes("--special");
+const COLUMNA = SPECIAL ? "special_servicer" : "master_servicer";
+const ROLE = SPECIAL ? "administrador especial" : "administrador maestro";
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
@@ -100,12 +100,12 @@ const SHELF = `
   END`;
 
 /**
- * Un préstamo por fila, con su emisora, su administrador y si transfirió.
+ * One loan per row, with its issuer, its servicer and whether it transferred.
  *
- * Solo emisiones con informe del servicer registrado: en las demás el evento no
- * es observable. El gate es `servicer_reports`, no `performance` — eso se
- * corrigió porque usar la tabla de NOI como proxy de "hay informe" dejaba
- * afuera ocho emisiones cuyo informe se parseó bien pero no dio NOI.
+ * Only issuances with a registered servicer report: in the others the event is not
+ * observable. The gate is `servicer_reports`, not `performance` — that was
+ * corrected because using the NOI table as a proxy for "there is a report" left out
+ * eight issuances whose report parsed fine but yielded no NOI.
  */
 const BASE = `
   SELECT l.id,
@@ -121,7 +121,7 @@ const BASE = `
 `;
 
 console.log(`\n${"═".repeat(78)}`);
-console.log(`¿Emisora o ${ROL}?`);
+console.log(`Issuer or ${ROLE}?`);
 console.log(`${"═".repeat(78)}`);
 
 const { rows: tot } = await query<{ n: string; ev: string }>(
@@ -130,7 +130,7 @@ const { rows: tot } = await query<{ n: string; ev: string }>(
 const nTot = Number(tot[0]!.n);
 const evTot = Number(tot[0]!.ev);
 console.log(
-  `\n\x1b[90m  ${nTot.toLocaleString("en-US")} préstamos con administrador identificado · ` +
+  `\n\x1b[90m  ${nTot.toLocaleString("en-US")} loans with an identified servicer · ` +
     `${evTot} transferencias · tasa base ${pct(evTot / nTot)}\x1b[0m`,
 );
 
@@ -139,16 +139,16 @@ console.log(
 // ---------------------------------------------------------------------------
 
 const { rows: porMaster } = await query<{
-  master: string; emisoras: string; n: string; ev: string;
+  master: string; issuers: string; n: string; ev: string;
 }>(
   `WITH base AS (${BASE})
-   SELECT master, count(DISTINCT shelf)::text AS emisoras,
+   SELECT master, count(DISTINCT shelf)::text AS issuers,
           count(*)::text AS n, sum(evento)::text AS ev
      FROM base GROUP BY master ORDER BY count(*) DESC`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Por ${ROL} (marginal)`);
+console.log(`Por ${ROLE} (marginal)`);
 console.log(`${"─".repeat(78)}\n`);
 console.log(`  administrador             emis.       n   eventos     tasa        IC 95%`);
 console.log(`  ${"─".repeat(72)}`);
@@ -156,31 +156,31 @@ for (const r of porMaster) {
   const n = Number(r.n), ev = Number(r.ev);
   const [lo, hi] = wilson(ev, n);
   console.log(
-    `  ${r.master.slice(0, 24).padEnd(25)} ${String(r.emisoras).padStart(4)} ` +
+    `  ${r.master.slice(0, 24).padEnd(25)} ${String(r.issuers).padStart(4)} ` +
       `${String(n).padStart(7)} ${String(ev).padStart(8)}   ${pct(ev / n).padStart(6)}  ` +
       `[${pct(lo).padStart(5)} , ${pct(hi).padStart(5)}]`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// 2. Las celdas: emisora × administrador
+// 2. Las celdas: issuer × administrador
 // ---------------------------------------------------------------------------
 
 const { rows: celdas } = await query<{
-  shelf: string; master: string; n: string; ev: string; anadas: string;
+  shelf: string; master: string; n: string; ev: string; vintages: string;
 }>(
   `WITH base AS (${BASE})
    SELECT shelf, master, count(*)::text AS n, sum(evento)::text AS ev,
-          string_agg(DISTINCT anada::text, ',' ORDER BY anada::text) AS anadas
+          string_agg(DISTINCT anada::text, ',' ORDER BY anada::text) AS vintages
      FROM base GROUP BY shelf, master
     HAVING count(*) >= ${MIN_POOL}
     ORDER BY master, shelf`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Celdas emisora × ${ROL} (pool ≥ ${MIN_POOL})`);
+console.log(`Celdas issuer × ${ROLE} (pool ≥ ${MIN_POOL})`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  administrador          emisora        n   ev     tasa         IC 95%     añadas`);
+console.log(`  servicer               issuer         n   ev     rate         95% CI    vintages`);
 console.log(`  ${"─".repeat(76)}`);
 
 const porMasterCeldas = new Map<string, Array<{ shelf: string; tasa: number; n: number }>>();
@@ -204,36 +204,37 @@ for (const c of celdas) {
   console.log(
     `  ${etiqueta.padEnd(22)} ${c.shelf.padEnd(10)} ${String(n).padStart(5)} ${String(ev).padStart(4)}  ` +
       `${pct(tasa).padStart(6)}  [${pct(lo).padStart(5)} , ${pct(hi).padStart(5)}]  ` +
-      `\x1b[90m${c.anadas}\x1b[0m`,
+      `\x1b[90m${c.vintages}\x1b[0m`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// 3. El test: ¿qué dispersa más?
+// 3. The test: which disperses more?
 // ---------------------------------------------------------------------------
 
 /**
- * Fijando el administrador, ¿cuánto varían las emisoras? Y al revés.
+ * Holding the servicer fixed, how much do the issuers vary? And the other way
+ * round.
  *
- * Si la brecha fuera del administrador, fijarlo debería aplanar las emisoras.
- * Si es de la emisora, fijar el administrador no cambia nada y lo que se aplana
- * es la otra dirección.
+ * If the gap were the servicer's, fixing it should flatten the issuers. If it is
+ * the issuer's, fixing the servicer changes nothing and what flattens is the other
+ * direction.
  */
 /**
- * La dispersión se mide en PUNTOS PORCENTUALES, no como cociente.
+ * The dispersion is measured in PERCENTAGE POINTS, not as a ratio.
  *
- * La primera versión hacía `max / max(1e-9, min)` y BANK con LNR —0 eventos
- * sobre 261 préstamos— salió como 29.333.333x. Un cociente de tasas no está
- * definido cuando el denominador es cero, y esa guarda convirtió un "no se
- * puede calcular" en un número enorme que además arrastraba la mediana.
+ * The first version did `max / max(1e-9, min)` and BANK with LNR —0 events over
+ * 261 loans— came out as 29,333,333x. A ratio of rates is undefined when the
+ * denominator is zero, and that guard turned a "cannot be computed" into an
+ * enormous number that also dragged the median.
  *
- * Los puntos porcentuales están siempre definidos, se comparan entre celdas sin
- * ambigüedad, y para tasas base de 1-7% son lo que uno quiere leer igual: la
- * diferencia entre 0,6% y 6,3% es de 5,7 puntos, y eso es interpretable
- * mientras que "diez veces" no dice cuánto.
+ * Percentage points are always defined, compare across cells without ambiguity,
+ * and for base rates of 1-7% are what you want to read anyway: the difference
+ * between 0.6% and 6.3% is 5.7 points, and that is interpretable where "ten times"
+ * does not say how much.
  *
- * El cociente se sigue mostrando cuando existe, porque es la forma en que
- * veníamos hablando de esto, pero ya no decide nada.
+ * The ratio is still shown when it exists, because it is how we had been talking
+ * about this, but it no longer decides anything.
  */
 const spread = (xs: number[]) => (xs.length < 2 ? null : Math.max(...xs) - Math.min(...xs));
 const cociente = (xs: number[]) => {
@@ -243,10 +244,10 @@ const cociente = (xs: number[]) => {
 };
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Fijando una variable, ¿cuánto dispersa la otra?");
+console.log("Holding one variable fixed, how much does the other disperse?");
 console.log(`${"─".repeat(78)}\n`);
 
-console.log(`  Con el ADMINISTRADOR (${ESPECIAL ? "especial" : "maestro"}) fijo, dispersión entre emisoras:\n`);
+console.log(`  With the ${SPECIAL ? "special" : "master"} SERVICER fixed, dispersion between issuers:\n`);
 const spreadsMaster: number[] = [];
 for (const [master, xs] of porMasterCeldas) {
   const tasas = xs.map((x) => x.tasa);
@@ -264,7 +265,7 @@ for (const [master, xs] of porMasterCeldas) {
   );
 }
 
-console.log(`\n  Con la EMISORA fija, dispersión entre administradores:\n`);
+console.log(`\n  With the ISSUER fixed, dispersion between servicers:\n`);
 const spreadsShelf: number[] = [];
 for (const [shelf, xs] of porShelfCeldas) {
   const tasas = xs.map((x) => x.tasa);
@@ -290,46 +291,46 @@ const medShelf = mediana(spreadsShelf);
 console.log(`\n${"─".repeat(78)}\n`);
 if (medMaster === null || medShelf === null) {
   console.log(
-    `  \x1b[33mNo hay suficientes celdas con pool ≥ ${MIN_POOL} en las dos direcciones.\x1b[0m`,
+    `  \x1b[33mThere are not enough cells with pool ≥ ${MIN_POOL} in both directions.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mBajar el umbral haría aparecer contrastes montados sobre veinte préstamos.\x1b[0m\n`,
+    `  \x1b[90mLowering the threshold would surface contrasts built on twenty loans.\x1b[0m\n`,
   );
 } else {
   console.log(
-    `  Mediana con administrador fijo: \x1b[1m${(medMaster * 100).toFixed(1)} pp\x1b[0m entre emisoras`,
+    `  Median with the servicer fixed: \x1b[1m${(medMaster * 100).toFixed(1)} pp\x1b[0m between issuers`,
   );
   console.log(
-    `  Mediana con emisora fija:       \x1b[1m${(medShelf * 100).toFixed(1)} pp\x1b[0m entre administradores`,
+    `  Median with the issuer fixed:   \x1b[1m${(medShelf * 100).toFixed(1)} pp\x1b[0m between servicers`,
   );
 
   if (medMaster > medShelf * 1.5) {
     console.log(
-      `\n  \x1b[32mLa emisora dispersa más.\x1b[0m Fijar el administrador NO aplana las`,
+      `\n  \x1b[32mThe issuer disperses more.\x1b[0m Fixing the servicer does NOT flatten the`,
     );
     console.log(
-      `  \x1b[90memisoras: la brecha no se explica por quién administra.\x1b[0m`,
+      `  \x1b[90missuers: the gap is not explained by who services it.\x1b[0m`,
     );
   } else if (medShelf > medMaster * 1.5) {
     console.log(
-      `\n  \x1b[31mEl administrador dispersa más.\x1b[0m La brecha entre emisoras es en`,
+      `\n  \x1b[31mThe servicer disperses more.\x1b[0m The gap between issuers is largely`,
     );
     console.log(
-      `  \x1b[90mbuena medida un efecto de quién arma el informe, no de quién suscribe.\x1b[0m`,
+      `  \x1b[90man effect of who builds the report, not of who underwrites.\x1b[0m`,
     );
   } else {
     console.log(
-      `\n  \x1b[33mLas dos dispersan parecido.\x1b[0m No se pueden separar con estas celdas:`,
+      `\n  \x1b[33mBoth disperse similarly.\x1b[0m They cannot be separated with these cells:`,
     );
     console.log(
-      `  \x1b[90mel dato es compatible con las dos historias y con una mezcla de ambas.\x1b[0m`,
+      `  \x1b[90mthe data is compatible with both stories and with a mixture of the two.\x1b[0m`,
     );
   }
   console.log(
-    `\n  \x1b[90mLas añadas de cada celda están en la tabla de arriba. Un contraste entre\x1b[0m`,
+    `\n  \x1b[90mEach cell's vintages are in the table above. A contrast between cells of\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mceldas de añadas distintas hereda el censurado, y eso no está corregido.\x1b[0m\n`,
+    `  \x1b[90mdifferent vintages inherits the censoring, and that is not corrected.\x1b[0m\n`,
   );
 }
 
