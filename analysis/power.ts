@@ -378,12 +378,11 @@ if (mde < CLAIMED_EFFECT) {
  *
  * This script's MDE already flipped once when the corpus grew, and the old version
  * stayed quoted in a document for weeks. A number that depends on the sample and
- * does not say which sample it was measured against cannot be quoted
- * sin riesgo.
+ * does not say which sample it was measured against cannot be quoted safely.
  */
-const estado = await corpusState();
+const state = await corpusState();
 console.log(`${"─".repeat(78)}`);
-console.log(`  \x1b[90m${provenanceStamp(estado)}\x1b[0m`);
+console.log(`  \x1b[90m${provenanceStamp(state)}\x1b[0m`);
 console.log(
   `  \x1b[90mIf this number is quoted anywhere, it goes with this line. See npm run db:provenance.\x1b[0m\n`,
 );

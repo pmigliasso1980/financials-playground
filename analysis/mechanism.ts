@@ -164,7 +164,7 @@ if (rows.length === 0) {
 interface Loan {
   isSeller: boolean;
   event: number;
-  /** null significa "no lo tenemos", y se propaga: nunca se convierte en 0. */
+  /** null means "we do not have it", and it propagates: it never becomes 0. */
   ioShare: number | null;
   reserveBp: number | null;
   projection: number | null;

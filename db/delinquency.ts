@@ -20,7 +20,7 @@
  * independently mapped columns agree over hundreds of rows is the same class of
  * evidence as the Annex A identities.
  *
- * DOS EVENTOS DISTINTOS
+ * TWO DIFFERENT EVENTS
  *
  * Benchmark 2020-B16 has a loan transferred to special servicing that is paying
  * on time. The transfer is the early signal; delinquency, the late symptom.
@@ -45,14 +45,14 @@ if (!health.ok) {
 }
 
 /** Thresholds fixed before looking at the numbers. */
-const IDENTIDAD_MINIMA = 0.9;
-const TOLERANCIA_MESES = 1;
+const MIN_IDENTITY = 0.9;
+const TOLERANCE_MONTHS = 1;
 const JOIN_MAYORITARIO = 0.5;
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Morosidad y special servicing");
+console.log("Delinquency and special servicing");
 console.log(`${"═".repeat(78)}`);
 
 // ---------------------------------------------------------------------------
@@ -60,22 +60,22 @@ console.log(`${"═".repeat(78)}`);
 // ---------------------------------------------------------------------------
 
 const { rows: ident } = await query<{
-  n: string; cierra: string;
+  n: string; closes: string;
 }>(
   `SELECT count(*)::text AS n,
           count(*) FILTER (
             WHERE abs(
               greatest(0, floor((period - paid_through) / 30.44))
               - months_delinquent
-            ) <= ${TOLERANCIA_MESES}
-          )::text AS cierra
+            ) <= ${TOLERANCE_MONTHS}
+          )::text AS closes
      FROM corpus.delinquency
     WHERE period IS NOT NULL AND paid_through IS NOT NULL
       AND months_delinquent IS NOT NULL`,
 );
 
 const n = Number(ident[0]?.n ?? 0);
-const cierra = Number(ident[0]?.cierra ?? 0);
+const closes = Number(ident[0]?.closes ?? 0);
 
 console.log(`\n${"─".repeat(78)}`);
 console.log("Identity: months delinquent ≈ (period − paid through) / 30.44");
@@ -89,37 +89,37 @@ if (n === 0) {
   process.exit(0);
 }
 
-const share = cierra / n;
+const share = closes / n;
 console.log(
-  `  ${cierra} de ${n} cierran dentro de ±${TOLERANCIA_MESES} mes  →  ` +
-    `${share >= IDENTIDAD_MINIMA ? "\x1b[32m" : "\x1b[31m"}${pct(share, 0)}\x1b[0m` +
-    `   (umbral ${pct(IDENTIDAD_MINIMA, 0)})`,
+  `  ${closes} of ${n} close within ±${TOLERANCE_MONTHS} month  →  ` +
+    `${share >= MIN_IDENTITY ? "\x1b[32m" : "\x1b[31m"}${pct(share, 0)}\x1b[0m` +
+    `   (threshold ${pct(MIN_IDENTITY, 0)})`,
 );
 
 const { rows: desvios } = await query<{
-  publica: string; paid: string; periodo: string; esperado: string;
+  published: string; paid: string; period: string; expected: string;
 }>(
-  `SELECT months_delinquent::text AS publica,
+  `SELECT months_delinquent::text AS published,
           paid_through::text AS paid,
-          period::text AS periodo,
-          greatest(0, floor((period - paid_through) / 30.44))::text AS esperado
+          period::text AS period,
+          greatest(0, floor((period - paid_through) / 30.44))::text AS expected
      FROM corpus.delinquency
     WHERE period IS NOT NULL AND paid_through IS NOT NULL
       AND months_delinquent IS NOT NULL
       AND abs(greatest(0, floor((period - paid_through) / 30.44)) - months_delinquent)
-          > ${TOLERANCIA_MESES}
+          > ${TOLERANCE_MONTHS}
     ORDER BY abs(greatest(0, floor((period - paid_through) / 30.44)) - months_delinquent) DESC
     LIMIT 5`,
 );
 
 for (const d of desvios) {
   console.log(
-    `    \x1b[90mpublica ${d.publica.padStart(3)} meses · paid through ${d.paid} · ` +
-      `period ${d.periodo} → ${d.esperado}\x1b[0m`,
+    `    \x1b[90mpublica ${d.published.padStart(3)} months · paid through ${d.paid} · ` +
+      `period ${d.period} → ${d.expected}\x1b[0m`,
   );
 }
 
-if (share < IDENTIDAD_MINIMA) {
+if (share < MIN_IDENTITY) {
   console.log(
     `\n  \x1b[31mTHE IDENTITY DOES NOT CLOSE. No rates are reported.\x1b[0m`,
   );
@@ -155,12 +155,12 @@ function wilson(k: number, total: number): [number, number] {
   return [Math.max(0, (centro - margen) / d), Math.min(1, (centro + margen) / d)];
 }
 
-interface Anada {
-  anada: string; pool: string; morosos: string; special: string; ejecucion: string;
+interface Vintage {
+  vintage: string; pool: string; delinquent: string; special: string; foreclosure: string;
 }
 
-async function tasas(soloJoinMayoritario: boolean): Promise<Anada[]> {
-  const filtro = soloJoinMayoritario
+async function rates(majorityJoinOnly: boolean): Promise<Vintage[]> {
+  const filter = majorityJoinOnly
     ? `AND f.accession IN (
          SELECT l2.accession FROM corpus.loans l2
           GROUP BY l2.accession
@@ -171,19 +171,19 @@ async function tasas(soloJoinMayoritario: boolean): Promise<Anada[]> {
        )`
     : "";
 
-  const { rows } = await query<Anada>(
-    `SELECT extract(year FROM f.filed_at)::int::text AS anada,
+  const { rows } = await query<Vintage>(
+    `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
             count(*)::text AS pool,
-            count(*) FILTER (WHERE d.months_delinquent > 0)::text AS morosos,
+            count(*) FILTER (WHERE d.months_delinquent > 0)::text AS delinquent,
             count(*) FILTER (WHERE d.transfer_date IS NOT NULL)::text AS special,
             count(*) FILTER (WHERE d.foreclosure_date IS NOT NULL
-                                OR d.reo_date IS NOT NULL)::text AS ejecucion
+                                OR d.reo_date IS NOT NULL)::text AS foreclosure
        FROM corpus.loans l
        JOIN corpus.filings f ON f.accession = l.accession
        LEFT JOIN corpus.delinquency d ON d.loan_id = l.id
       WHERE f.accession IN (SELECT deal_accession FROM corpus.servicer_reports
                              WHERE deal_accession IS NOT NULL)
-        ${filtro}
+        ${filter}
       GROUP BY 1 ORDER BY 1`,
   );
   return rows;
@@ -193,7 +193,7 @@ for (const [titulo, solo] of [
   ["All issuances with a servicer report", false],
   [`Only issuances with a join ≥ ${pct(JOIN_MAYORITARIO, 0)}`, true],
 ] as Array<[string, boolean]>) {
-  const rows = await tasas(solo);
+  const rows = await rates(solo);
   console.log(`\n${"─".repeat(78)}`);
   console.log(titulo);
   console.log(`${"─".repeat(78)}\n`);
@@ -205,9 +205,9 @@ for (const [titulo, solo] of [
     const sp = Number(r.special);
     const [lo, hi] = wilson(sp, pool);
     console.log(
-      `  ${r.anada}  ${String(pool).padStart(5)}   ${pct(sp / pool).padStart(6)} (${String(sp).padStart(3)})   ` +
+      `  ${r.vintage}  ${String(pool).padStart(5)}   ${pct(sp / pool).padStart(6)} (${String(sp).padStart(3)})   ` +
         `[${pct(lo).padStart(5)} , ${pct(hi).padStart(5)}]    ` +
-        `${pct(Number(r.morosos) / pool).padStart(6)}  ${pct(Number(r.ejecucion) / pool).padStart(5)}`,
+        `${pct(Number(r.delinquent) / pool).padStart(6)}  ${pct(Number(r.foreclosure) / pool).padStart(5)}`,
     );
   }
 }
@@ -217,31 +217,31 @@ for (const [titulo, solo] of [
  *
  * It is the question that killed the NOI finding, asked before asserting anything.
  */
-const rows = await tasas(false);
+const rows = await rates(false);
 const conIC = rows.map((r) => {
   const pool = Number(r.pool);
   const [lo, hi] = wilson(Number(r.special), pool);
-  return { anada: r.anada, lo, hi, pool };
+  return { vintage: r.vintage, lo, hi, pool };
 });
 
-const distinguibles: string[] = [];
+const distinguishable: string[] = [];
 for (let i = 0; i < conIC.length; i++) {
   for (let j = i + 1; j < conIC.length; j++) {
     const a = conIC[i]!;
     const b = conIC[j]!;
-    if (a.hi < b.lo || b.hi < a.lo) distinguibles.push(`${a.anada} vs ${b.anada}`);
+    if (a.hi < b.lo || b.hi < a.lo) distinguishable.push(`${a.vintage} vs ${b.vintage}`);
   }
 }
 
-const pares = (conIC.length * (conIC.length - 1)) / 2;
+const pairs = (conIC.length * (conIC.length - 1)) / 2;
 console.log(`\n${"─".repeat(78)}`);
-console.log("Veredicto");
+console.log("Verdict");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
-  `  Vintage pairs whose intervals do NOT overlap: ${distinguibles.length} of ${pares}`,
+  `  Vintage pairs whose intervals do NOT overlap: ${distinguishable.length} of ${pairs}`,
 );
-if (distinguibles.length > 0) {
-  console.log(`  \x1b[32m${distinguibles.join(" · ")}\x1b[0m\n`);
+if (distinguishable.length > 0) {
+  console.log(`  \x1b[32m${distinguishable.join(" · ")}\x1b[0m\n`);
   console.log(
     `  \x1b[90mThis variable does distinguish vintages, unlike NOI growth\x1b[0m`,
   );
@@ -268,13 +268,13 @@ if (distinguibles.length > 0) {
  */
 const CONCENTRACION_MAX = 0.5;
 
-const { rows: porEmision } = await query<{
-  anada: string; company: string; pool: string; eventos: string;
+const { rows: byIssuance } = await query<{
+  vintage: string; company: string; pool: string; events: string;
 }>(
-  `SELECT extract(year FROM f.filed_at)::int::text AS anada,
+  `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
           f.company_name AS company,
           count(*)::text AS pool,
-          count(*) FILTER (WHERE d.transfer_date IS NOT NULL)::text AS eventos
+          count(*) FILTER (WHERE d.transfer_date IS NOT NULL)::text AS events
      FROM corpus.loans l
      JOIN corpus.filings f ON f.accession = l.accession
      LEFT JOIN corpus.delinquency d ON d.loan_id = l.id
@@ -289,32 +289,32 @@ console.log(`\n${"─".repeat(78)}`);
 console.log("The vintage, or a few issuances?");
 console.log(`${"─".repeat(78)}\n`);
 
-const porAnada = new Map<string, typeof porEmision>();
-for (const r of porEmision) {
-  const list = porAnada.get(r.anada) ?? [];
+const byVintage = new Map<string, typeof byIssuance>();
+for (const r of byIssuance) {
+  const list = byVintage.get(r.vintage) ?? [];
   list.push(r);
-  porAnada.set(r.anada, list);
+  byVintage.set(r.vintage, list);
 }
 
-for (const [anada, lista] of [...porAnada].sort()) {
-  const total = lista.reduce((a, r) => a + Number(r.eventos), 0);
-  const top = lista[0]!;
-  const shareTop = Number(top.eventos) / total;
+for (const [vintage, list] of [...byVintage].sort()) {
+  const total = list.reduce((a, r) => a + Number(r.events), 0);
+  const top = list[0]!;
+  const shareTop = Number(top.events) / total;
   const alerta = shareTop > CONCENTRACION_MAX;
 
   console.log(
-    `  \x1b[1m${anada}\x1b[0m  ${total} eventos en ${lista.length} emisiones` +
+    `  \x1b[1m${vintage}\x1b[0m  ${total} events in ${list.length} issuances` +
       (alerta ? `  \x1b[31m← concentrado\x1b[0m` : ""),
   );
-  for (const r of lista.slice(0, 3)) {
-    const p = Number(r.eventos) / total;
+  for (const r of list.slice(0, 3)) {
+    const p = Number(r.events) / total;
     console.log(
-      `      ${String(r.eventos).padStart(3)} de ${String(r.pool).padStart(3)} ` +
-        `(${pct(Number(r.eventos) / Number(r.pool)).padStart(5)} del deal · ` +
+      `      ${String(r.events).padStart(3)} of ${String(r.pool).padStart(3)} ` +
+        `(${pct(Number(r.events) / Number(r.pool)).padStart(5)} of the deal · ` +
         `${pct(p, 0).padStart(4)} of the vintage)  \x1b[90m${r.company.slice(0, 38)}\x1b[0m`,
     );
   }
-  if (lista.length > 3) console.log(`      \x1b[90m… and ${lista.length - 3} more issuances\x1b[0m`);
+  if (list.length > 3) console.log(`      \x1b[90m… and ${list.length - 3} more issuances\x1b[0m`);
   console.log();
 }
 
@@ -346,12 +346,12 @@ for (const [anada, lista] of [...porAnada].sort()) {
  * and shows whether the peak survives the adjustment.
  */
 const { rows: timing } = await query<{
-  anada: string; n: string; p25: number | null; mediana: number | null;
-  p75: number | null; edad: number | null; pool: string;
+  vintage: string; n: string; p25: number | null; median: number | null;
+  p75: number | null; age: number | null; pool: string;
 }>(
   `WITH ev AS (
-     SELECT extract(year FROM f.filed_at)::int AS anada,
-            (d.transfer_date - f.filed_at) / 30.44 AS meses_al_evento,
+     SELECT extract(year FROM f.filed_at)::int AS vintage,
+            (d.transfer_date - f.filed_at) / 30.44 AS months_to_event,
             (CURRENT_DATE - f.filed_at) / 365.25 AS edad_anos
        FROM corpus.delinquency d
        JOIN corpus.loans l ON l.id = d.loan_id
@@ -360,21 +360,21 @@ const { rows: timing } = await query<{
         AND d.transfer_date >= f.filed_at
    ),
    po AS (
-     SELECT extract(year FROM f.filed_at)::int AS anada, count(*) AS pool
+     SELECT extract(year FROM f.filed_at)::int AS vintage, count(*) AS pool
        FROM corpus.loans l JOIN corpus.filings f ON f.accession = l.accession
       WHERE f.accession IN (SELECT deal_accession FROM corpus.servicer_reports
                              WHERE deal_accession IS NOT NULL)
       GROUP BY 1
    )
-   SELECT ev.anada::text AS anada,
+   SELECT ev.vintage::text AS vintage,
           count(*)::text AS n,
-          percentile_cont(0.25) WITHIN GROUP (ORDER BY meses_al_evento) AS p25,
-          percentile_cont(0.50) WITHIN GROUP (ORDER BY meses_al_evento) AS mediana,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY meses_al_evento) AS p75,
-          max(ev.edad_anos) AS edad,
+          percentile_cont(0.25) WITHIN GROUP (ORDER BY months_to_event) AS p25,
+          percentile_cont(0.50) WITHIN GROUP (ORDER BY months_to_event) AS median,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY months_to_event) AS p75,
+          max(ev.edad_anos) AS age,
           max(po.pool)::text AS pool
-     FROM ev JOIN po ON po.anada = ev.anada
-    GROUP BY ev.anada ORDER BY ev.anada`,
+     FROM ev JOIN po ON po.vintage = ev.vintage
+    GROUP BY ev.vintage ORDER BY ev.vintage`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
@@ -385,24 +385,24 @@ console.log(`  ${"─".repeat(74)}`);
 
 for (const t of timing) {
   const pool = Number(t.pool);
-  const edad = Number(t.edad);
-  const tasa = pool > 0 && edad > 0 ? (Number(t.n) / (pool * edad)) * 1000 : 0;
+  const age = Number(t.age);
+  const tasa = pool > 0 && age > 0 ? (Number(t.n) / (pool * age)) * 1000 : 0;
   console.log(
-    `  ${t.anada}  ${String(t.n).padStart(3)}   ` +
-      `${(t.p25 ?? 0).toFixed(0).padStart(3)}    ${(t.mediana ?? 0).toFixed(0).padStart(3)}    ` +
-      `${(t.p75 ?? 0).toFixed(0).padStart(3)}   ${edad.toFixed(1)}a          ${tasa.toFixed(1).padStart(5)}`,
+    `  ${t.vintage}  ${String(t.n).padStart(3)}   ` +
+      `${(t.p25 ?? 0).toFixed(0).padStart(3)}    ${(t.median ?? 0).toFixed(0).padStart(3)}    ` +
+      `${(t.p75 ?? 0).toFixed(0).padStart(3)}   ${age.toFixed(1)}a          ${tasa.toFixed(1).padStart(5)}`,
   );
 }
 
-const medianas = timing
-  .filter((t) => t.mediana !== null)
-  .map((t) => ({ anada: t.anada, m: Number(t.mediana) }));
-if (medianas.length >= 2) {
-  const lento = medianas.reduce((a, b) => (a.m > b.m ? a : b));
-  const rapido = medianas.reduce((a, b) => (a.m < b.m ? a : b));
+const medians = timing
+  .filter((t) => t.median !== null)
+  .map((t) => ({ vintage: t.vintage, m: Number(t.median) }));
+if (medians.length >= 2) {
+  const slowest = medians.reduce((a, b) => (a.m > b.m ? a : b));
+  const fastest = medians.reduce((a, b) => (a.m < b.m ? a : b));
   console.log(
-    `\n  Fastest to fail: \x1b[1m${rapido.anada}\x1b[0m at ${rapido.m.toFixed(0)} months · ` +
-      `slowest: ${lento.anada} at ${lento.m.toFixed(0)}`,
+    `\n  Fastest to fail: \x1b[1m${fastest.vintage}\x1b[0m at ${fastest.m.toFixed(0)} months · ` +
+      `slowest: ${slowest.vintage} at ${slowest.m.toFixed(0)}`,
   );
   console.log(
     `\n  \x1b[90mIf the vintage with the most events is also the fastest to produce them,\x1b[0m`,
@@ -440,19 +440,19 @@ if (medianas.length >= 2) {
  * months observed, both with little time for anything to have been resolved. The
  * rest are shown for reference with the warning attached.
  */
-const VENTANA_MESES = 24;
+const WINDOW_MONTHS = 24;
 
 const { rows: fija } = await query<{
-  anada: string; pool: string; eventos: string; edad: number;
+  vintage: string; pool: string; events: string; age: number;
 }>(
-  `SELECT extract(year FROM f.filed_at)::int::text AS anada,
+  `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
           count(*)::text AS pool,
           count(*) FILTER (
             WHERE d.transfer_date IS NOT NULL
               AND d.transfer_date >= f.filed_at
-              AND (d.transfer_date - f.filed_at) <= ${VENTANA_MESES} * 30.44
-          )::text AS eventos,
-          max((CURRENT_DATE - f.filed_at) / 365.25) AS edad
+              AND (d.transfer_date - f.filed_at) <= ${WINDOW_MONTHS} * 30.44
+          )::text AS events,
+          max((CURRENT_DATE - f.filed_at) / 365.25) AS age
      FROM corpus.loans l
      JOIN corpus.filings f ON f.accession = l.accession
      LEFT JOIN corpus.delinquency d ON d.loan_id = l.id
@@ -462,32 +462,32 @@ const { rows: fija } = await query<{
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Incidencia a edad fija: transferencias en los primeros ${VENTANA_MESES} meses`);
+console.log(`Incidence at fixed age: transfers in the first ${WINDOW_MONTHS} months`);
 console.log(`${"─".repeat(78)}\n`);
 console.log(`  vintage  pool   events   incidence          95% CI        age`);
 console.log(`  ${"─".repeat(66)}`);
 
-const fijos = fija
-  .filter((r) => Number(r.edad) * 12 >= VENTANA_MESES)
+const fixed = fija
+  .filter((r) => Number(r.age) * 12 >= WINDOW_MONTHS)
   .map((r) => {
     const pool = Number(r.pool);
-    const k = Number(r.eventos);
+    const k = Number(r.events);
     const [lo, hi] = wilson(k, pool);
-    return { anada: r.anada, pool, k, lo, hi, edad: Number(r.edad) };
+    return { vintage: r.vintage, pool, k, lo, hi, age: Number(r.age) };
   });
 
-for (const r of fijos) {
-  const viejo = r.edad > 4;
+for (const r of fixed) {
+  const viejo = r.age > 4;
   console.log(
-    `  ${r.anada}  ${String(r.pool).padStart(5)}   ${String(r.k).padStart(5)}     ` +
+    `  ${r.vintage}  ${String(r.pool).padStart(5)}   ${String(r.k).padStart(5)}     ` +
       `${pct(r.k / r.pool).padStart(6)}    [${pct(r.lo).padStart(5)} , ${pct(r.hi).padStart(5)}]   ` +
-      `${r.edad.toFixed(1)}a` +
+      `${r.age.toFixed(1)}a` +
       (viejo ? `  \x1b[90m← emptied by resolution\x1b[0m` : ""),
   );
 }
 
-const a23 = fijos.find((r) => r.anada === "2023");
-const a24 = fijos.find((r) => r.anada === "2024");
+const a23 = fixed.find((r) => r.vintage === "2023");
+const a24 = fixed.find((r) => r.vintage === "2024");
 
 console.log(`\n  \x1b[1mThe clean comparison: 2023 against 2024\x1b[0m`);
 if (a23 && a24) {
@@ -540,12 +540,12 @@ if (a23 && a24) {
  *   similar profile + different outcome  → it is about underwriting
  *   worse profile in 2023                → it is composition, there is no news
  */
-const { rows: perfil } = await query<{
-  anada: string; n: string; ltv: number | null; dscr: number | null;
+const { rows: profile } = await query<{
+  vintage: string; n: string; ltv: number | null; dscr: number | null;
   dy: number | null; office: number | null; retail: number | null;
   hotel: number | null; multi: number | null;
 }>(
-  `SELECT extract(year FROM f.filed_at)::int::text AS anada,
+  `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
           count(*)::text AS n,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY ltv.value::numeric)  AS ltv,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY dscr.value::numeric) AS dscr,
@@ -574,17 +574,17 @@ console.log(`${"─".repeat(78)}\n`);
 console.log(`  vintage   n     LTV    DSCR   debt yield    office  retail  hotel  multi`);
 console.log(`  ${"─".repeat(74)}`);
 
-for (const r of perfil) {
+for (const r of profile) {
   console.log(
-    `  ${r.anada}  ${String(r.n).padStart(5)}   ${pct(Number(r.ltv ?? 0), 0).padStart(4)}   ` +
+    `  ${r.vintage}  ${String(r.n).padStart(5)}   ${pct(Number(r.ltv ?? 0), 0).padStart(4)}   ` +
       `${(Number(r.dscr ?? 0)).toFixed(2).padStart(5)}   ${pct(Number(r.dy ?? 0)).padStart(6)}      ` +
       `${pct(Number(r.office ?? 0), 0).padStart(5)}   ${pct(Number(r.retail ?? 0), 0).padStart(5)}  ` +
       `${pct(Number(r.hotel ?? 0), 0).padStart(5)}  ${pct(Number(r.multi ?? 0), 0).padStart(5)}`,
   );
 }
 
-const p23 = perfil.find((r) => r.anada === "2023");
-const p24 = perfil.find((r) => r.anada === "2024");
+const p23 = profile.find((r) => r.vintage === "2023");
+const p24 = profile.find((r) => r.vintage === "2024");
 
 if (p23 && p24) {
   /**
@@ -604,10 +604,10 @@ if (p23 && p24) {
   );
   console.log(
     `    DSCR     ${Number(p23.dscr ?? 0).toFixed(2)} vs ${Number(p24.dscr ?? 0).toFixed(2)}` +
-      `     ${peorDscr ? "\x1b[33m← 2023 con menos cobertura\x1b[0m" : "\x1b[90msin diferencia relevante\x1b[0m"}`,
+      `     ${peorDscr ? "\x1b[33m← 2023 with less coverage\x1b[0m" : "\x1b[90mno relevant difference\x1b[0m"}`,
   );
   console.log(
-    `    oficina  ${pct(Number(p23.office ?? 0), 1)} vs ${pct(Number(p24.office ?? 0), 1)}` +
+    `    office   ${pct(Number(p23.office ?? 0), 1)} vs ${pct(Number(p24.office ?? 0), 1)}` +
       `   ${masOffice ? "\x1b[33m← 2023 more exposed\x1b[0m" : "\x1b[90mno relevant difference\x1b[0m"}`,
   );
 
@@ -655,7 +655,7 @@ if (p23 && p24) {
  * The last row standardises: the rate 2023 would have with 2024's asset mix. If
  * reweighting dissolves the gap, it was composition.
  */
-const TIPOS: Array<[string, string]> = [
+const TYPES: Array<[string, string]> = [
   ["oficina", "%office%"],
   ["retail", "%retail%"],
   ["hotel", "%hospitality%"],
@@ -664,21 +664,21 @@ const TIPOS: Array<[string, string]> = [
 ];
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Within each asset type: 2023 against 2024 at ${VENTANA_MESES} months`);
+console.log(`Within each asset type: 2023 against 2024 at ${WINDOW_MONTHS} months`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  tipo            2023: n    tasa        2024: n    tasa      cociente`);
+console.log(`  type            2023: n    tasa        2024: n    tasa      cociente`);
 console.log(`  ${"─".repeat(72)}`);
 
-const porTipo: Array<{ tipo: string; n23: number; k23: number; n24: number; k24: number }> = [];
+const byType: Array<{ type: string; n23: number; k23: number; n24: number; k24: number }> = [];
 
-for (const [nombre, patron] of TIPOS) {
-  const { rows } = await query<{ anada: string; pool: string; ev: string }>(
-    `SELECT extract(year FROM f.filed_at)::int::text AS anada,
+for (const [name, pattern] of TYPES) {
+  const { rows } = await query<{ vintage: string; pool: string; ev: string }>(
+    `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
             count(*)::text AS pool,
             count(*) FILTER (
               WHERE d.transfer_date IS NOT NULL
                 AND d.transfer_date >= f.filed_at
-                AND (d.transfer_date - f.filed_at) <= ${VENTANA_MESES} * 30.44
+                AND (d.transfer_date - f.filed_at) <= ${WINDOW_MONTHS} * 30.44
             )::text AS ev
        FROM corpus.loans l
        JOIN corpus.filings f ON f.accession = l.accession
@@ -688,23 +688,23 @@ for (const [nombre, patron] of TIPOS) {
         AND f.accession IN (SELECT deal_accession FROM corpus.servicer_reports
                              WHERE deal_accession IS NOT NULL)
       GROUP BY 1 ORDER BY 1`,
-    [patron],
+    [pattern],
   );
 
-  const r23 = rows.find((r) => r.anada === "2023");
-  const r24 = rows.find((r) => r.anada === "2024");
+  const r23 = rows.find((r) => r.vintage === "2023");
+  const r24 = rows.find((r) => r.vintage === "2024");
   const n23 = Number(r23?.pool ?? 0), k23 = Number(r23?.ev ?? 0);
   const n24 = Number(r24?.pool ?? 0), k24 = Number(r24?.ev ?? 0);
   if (n23 < 20 || n24 < 20) {
-    console.log(`  ${nombre.padEnd(14)} \x1b[90mn insuficiente (${n23} / ${n24})\x1b[0m`);
+    console.log(`  ${name.padEnd(14)} \x1b[90mn insuficiente (${n23} / ${n24})\x1b[0m`);
     continue;
   }
-  porTipo.push({ tipo: nombre, n23, k23, n24, k24 });
+  byType.push({ type: name, n23, k23, n24, k24 });
 
   const t23 = k23 / n23, t24 = k24 / n24;
   const coc = t24 > 0 ? t23 / t24 : NaN;
   console.log(
-    `  ${nombre.padEnd(14)} ${String(n23).padStart(4)}  ${pct(t23).padStart(6)}` +
+    `  ${name.padEnd(14)} ${String(n23).padStart(4)}  ${pct(t23).padStart(6)}` +
       `      ${String(n24).padStart(4)}  ${pct(t24).padStart(6)}` +
       `     ${Number.isNaN(coc) ? "  —  " : `${coc.toFixed(1)}x`}`,
   );
@@ -716,15 +716,15 @@ for (const [nombre, patron] of TIPOS) {
  * 2023's per-type rates are applied to 2024's weights. If the result comes close
  * to 2024's crude rate, the gap was composition.
  */
-if (porTipo.length >= 3) {
-  const pool24 = porTipo.reduce((a, t) => a + t.n24, 0);
-  const estandarizada = porTipo.reduce(
+if (byType.length >= 3) {
+  const pool24 = byType.reduce((a, t) => a + t.n24, 0);
+  const estandarizada = byType.reduce(
     (a, t) => a + (t.k23 / t.n23) * (t.n24 / pool24),
     0,
   );
-  const cruda24 = porTipo.reduce((a, t) => a + t.k24, 0) / pool24;
+  const cruda24 = byType.reduce((a, t) => a + t.k24, 0) / pool24;
   const cruda23 =
-    porTipo.reduce((a, t) => a + t.k23, 0) / porTipo.reduce((a, t) => a + t.n23, 0);
+    byType.reduce((a, t) => a + t.k23, 0) / byType.reduce((a, t) => a + t.n23, 0);
 
   console.log(`\n  \x1b[1mStandardising 2023 to 2024's asset mix\x1b[0m`);
   console.log(`    2023 cruda          ${pct(cruda23)}`);
@@ -768,7 +768,7 @@ if (porTipo.length >= 3) {
  * about the asset type, and the whole chain of conclusions falls apart.
  */
 const { rows: mf } = await query<{
-  company: string; pool: string; eventos: string; ltv: number | null;
+  company: string; pool: string; events: string; ltv: number | null;
   dscr: number | null; tasa: number | null;
 }>(
   `SELECT f.company_name AS company,
@@ -776,8 +776,8 @@ const { rows: mf } = await query<{
           count(*) FILTER (
             WHERE d.transfer_date IS NOT NULL
               AND d.transfer_date >= f.filed_at
-              AND (d.transfer_date - f.filed_at) <= ${VENTANA_MESES} * 30.44
-          )::text AS eventos,
+              AND (d.transfer_date - f.filed_at) <= ${WINDOW_MONTHS} * 30.44
+          )::text AS events,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY ltv.value::numeric)  AS ltv,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY dscr.value::numeric) AS dscr,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY ir.value::numeric)   AS tasa
@@ -798,7 +798,7 @@ const { rows: mf } = await query<{
     ORDER BY count(*) FILTER (
       WHERE d.transfer_date IS NOT NULL
         AND d.transfer_date >= f.filed_at
-        AND (d.transfer_date - f.filed_at) <= ${VENTANA_MESES} * 30.44
+        AND (d.transfer_date - f.filed_at) <= ${WINDOW_MONTHS} * 30.44
     ) DESC`,
 );
 
@@ -808,24 +808,24 @@ console.log(`${"─".repeat(78)}\n`);
 console.log(`  events / pool     LTV    DSCR   rate     issuance`);
 console.log(`  ${"─".repeat(72)}`);
 
-const totalEv = mf.reduce((a, r) => a + Number(r.eventos), 0);
-let acumulado = 0;
+const totalEvents = mf.reduce((a, r) => a + Number(r.events), 0);
+let cumulative = 0;
 
-for (const r of mf.filter((x) => Number(x.eventos) > 0)) {
-  acumulado += Number(r.eventos);
+for (const r of mf.filter((x) => Number(x.events) > 0)) {
+  cumulative += Number(r.events);
   console.log(
-    `  ${String(r.eventos).padStart(3)} / ${String(r.pool).padEnd(4)}      ` +
+    `  ${String(r.events).padStart(3)} / ${String(r.pool).padEnd(4)}      ` +
       `${pct(Number(r.ltv ?? 0), 0).padStart(4)}   ${Number(r.dscr ?? 0).toFixed(2)}   ` +
       `${pct(Number(r.tasa ?? 0), 2).padStart(6)}   \x1b[90m${r.company.slice(0, 34)}\x1b[0m`,
   );
 }
 
-const conEventos = mf.filter((x) => Number(x.eventos) > 0).length;
-const top2 = mf.slice(0, 2).reduce((a, r) => a + Number(r.eventos), 0);
-const shareTop2 = totalEv > 0 ? top2 / totalEv : 0;
+const withEvents = mf.filter((x) => Number(x.events) > 0).length;
+const top2 = mf.slice(0, 2).reduce((a, r) => a + Number(r.events), 0);
+const shareTop2 = totalEvents > 0 ? top2 / totalEvents : 0;
 
 console.log(
-  `\n  ${totalEv} events across ${conEventos} issuances · the worst two contribute ${pct(shareTop2, 0)}`,
+  `\n  ${totalEvents} events across ${withEvents} issuances · the worst two contribute ${pct(shareTop2, 0)}`,
 );
 
 if (shareTop2 > 0.5) {
@@ -838,7 +838,7 @@ if (shareTop2 > 0.5) {
   );
   console.log(`  \x1b[90mtampoco se sostiene.\x1b[0m\n`);
 } else {
-  console.log(`\n  \x1b[32mSpread across ${conEventos} issuances.\x1b[0m`);
+  console.log(`\n  \x1b[32mSpread across ${withEvents} issuances.\x1b[0m`);
   console.log(
     `  \x1b[90mNot a one-off deal. Look at LTV, DSCR and rate: if those issuances carry\x1b[0m`,
   );

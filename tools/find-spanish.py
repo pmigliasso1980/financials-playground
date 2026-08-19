@@ -60,10 +60,50 @@ def _stems() -> set[str]:
     body = src.split('STEMS = """')[1].split('""".split()')[0]
     return set(body.split())
 
+# NOT wrapped in try/except any more.
+#
+# It was, and that made this file degrade in silence: if find-spanish-idents.py
+# could not be read, STEM_RE became None, the content-stem rule switched itself
+# off, and the tool went on reporting a confident total computed with a weaker
+# rule than the one it documents. Running a copy of this file from /tmp gave
+# 3,764 where the real answer is 4,557 — no warning, no error, just a smaller
+# number. A checker allowed to quietly become a weaker checker is the same
+# failure this whole gate exists to catch.
 try:
     STEM_RE = re.compile(r'\b(' + '|'.join(sorted(_stems())) + r')\b', re.I)
-except Exception:
-    STEM_RE = None
+except Exception as e:
+    raise SystemExit(
+        f"tools/find-spanish.py: cannot load the shared vocabulary from find-spanish-idents.py"
+        f" ({e}).\nRefusing to run with a weaker rule than advertised."
+    )
+
+# Words that do not stand alone in English source, so ONE is enough.
+#
+# WHY A THIRD RULE
+#
+# Sweeping identifiers in db/delinquency.ts took `eventos` to `events` and both
+# detectors went to zero for the file — while it still printed "Incidencia a
+# edad fija: transferencias en los primeros N meses" to the terminal. The
+# rename had removed the very stem that was flagging the surrounding prose. So
+# the sweep can make Spanish INVISIBLE to the gate, which is the worst possible
+# direction for a tool whose job is to say when the job is done.
+#
+# What survived the rename is the glue: `de`, `en`, `los`, `del`, `dentro`.
+# Those never reach two distinct words on a line, but they also never appear
+# alone in English code — with two exceptions that are masked below.
+HIGH_SIGNAL = """de del los las para con por una que en dentro sin cierran
+incidencia transferencias primeros menos cobertura diferencia relevante peor
+mejor aunque mientras cuando donde porque entre desde hasta cada entonces
+segun entre entonces""".split()
+HIGH_RE = re.compile(r'\b(' + '|'.join(sorted(set(HIGH_SIGNAL))) + r')\b', re.I)
+
+# The two real false positives, measured on files already verified clean:
+#   "en-US"  — Number.toLocaleString locale tags, all over the print helpers
+#   "DE"     — Delaware, in the census-division state lists in api/comps.ts
+# Masked rather than removed from the list, because `en` and `de` are exactly
+# the words that survive an identifier rename and are worth catching.
+MASK = re.compile(r'"[a-z]{2}-[A-Z]{2}"|\b[A-Z]{2}\b')
+
 
 def scan(path: pathlib.Path):
     out = []
@@ -78,7 +118,10 @@ def scan(path: pathlib.Path):
         if STEM_RE is not None:
             stems = {m.group(1).lower() for m in STEM_RE.finditer(line)}
             if stems:
-                out.append((n, line, ",".join(sorted(stems)[:4])))
+                out.append((n, line, ",".join(sorted(stems)[:4]))); continue
+        high = {m.group(1).lower() for m in HIGH_RE.finditer(MASK.sub(" ", line))}
+        if high:
+            out.append((n, line, ",".join(sorted(high)[:4])))
     return out
 
 # package-lock.json is generated and enormous; scanning it says nothing.

@@ -26,12 +26,47 @@ columnas fila filas dato datos numero numeros nada algo solo tambien asi aunque
 mientras entonces ademas cual cuales quien cuanto cuantos"""
 WORD = re.compile(r'\b(' + '|'.join(_W.split()) + r')\b', re.I)
 
+# The same content stems find-spanish.py reads, from the same single source.
+#
+# This tool decides WHICH LINES I hand over for translation. find-spanish.py
+# decides whether the file is done. When the two disagree, the second one is
+# right and the first one has already silently skipped a block — which is how
+# benchmark.ts ended up with half-translated comments earlier in this
+# migration, and how db/delinquency.ts came back "(no Spanish)" from here while
+# the gate reported 74 lines.
+#
+# A splice tool with a weaker detector than the gate cannot finish a file. They
+# read one list.
+def _stems() -> set[str]:
+    src = (pathlib.Path(__file__).parent / "find-spanish-idents.py").read_text()
+    return set(src.split('STEMS = """')[1].split('""".split()')[0].split())
+
+# NOT wrapped in try/except any more.
+#
+# It was, and that made this file degrade in silence: if find-spanish-idents.py
+# could not be read, STEM became None, the content-stem rule switched itself
+# off, and the tool went on reporting a confident total computed with a weaker
+# rule than the one it documents. Running a copy of this file from /tmp gave
+# 3,764 where the real answer is 4,557 — no warning, no error, just a smaller
+# number. A checker allowed to quietly become a weaker checker is the same
+# failure this whole gate exists to catch.
+try:
+    STEM = re.compile(r'\b(' + '|'.join(sorted(_stems())) + r')\b', re.I)
+except Exception as e:
+    raise SystemExit(
+        f"tools/es-blocks.py: cannot load the shared vocabulary from find-spanish-idents.py"
+        f" ({e}).\nRefusing to run with a weaker rule than advertised."
+    )
+
+
 class ES:
     @staticmethod
     def search(line):
         if ACCENT.search(line):
             return True
-        return len({m.group(1).lower() for m in WORD.finditer(line)}) >= 2
+        if len({m.group(1).lower() for m in WORD.finditer(line)}) >= 2:
+            return True
+        return STEM is not None and STEM.search(line) is not None
 path = pathlib.Path(sys.argv[1])
 gap = int(sys.argv[2]) if len(sys.argv) > 2 else 2
 lines = path.read_text().split("\n")
