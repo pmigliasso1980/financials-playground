@@ -6,7 +6,7 @@
  * WHY THIS IS THE STRONGEST VERIFICATION WE HAVE
  *
  * Each Annex A column is mapped independently: one pattern over the
- * encabezado, sin mirar las otras. `net_cash_flow` no sabe nada de
+ * header, without looking at the others. `net_cash_flow` knows nothing about
  * `debt_service_pi`, y ninguno sabe de `dscr_ncf`.
  *
  * But the issuer computed them from the same figures, so they have to close
@@ -27,9 +27,9 @@
  * discarded whole were mapped: without `debt_service_pi` we had the DSCR but not
  * its parts, so there was nothing to check it against.
  *
- * SOBRE LA TOLERANCIA
+ * ON THE TOLERANCE
  *
- * No se exige igualdad exacta. Los emisores redondean —el DSCR se publica con
+ * Exact equality is not required. Issuers round —the DSCR is published to
  * two decimals, and 1.45 can come from anything between 1.445 and 1.455— so the
  * default tolerance is 1%. What matters is not the individual case but the
  * proportion: if 95% of loans close, the mapping is right and the remaining 5%
@@ -55,7 +55,7 @@ console.log(`${"═".repeat(78)}`);
 console.log(
   `\n\x1b[90m  Each metric is mapped on its own, without looking at the others. That they\x1b[0m`,
 );
-console.log(`\x1b[90m  es evidencia de que el mapeo es correcto. Tolerancia ${pct(TOLERANCE, 0)}.\x1b[0m\n`);
+console.log(`\x1b[90m  close against each other is evidence the mapping is correct. Tolerance ${pct(TOLERANCE, 0)}.\x1b[0m\n`);
 
 /** A numeric fact for one metric, ready to join. */
 const fact = (alias: string, key: string) =>
@@ -151,7 +151,7 @@ const results: IdentityResult[] = [];
  *      loan 24:  381.529 × 106,6 = 40,7M → 84.349.369 / 40,7M = 2,07  (pub. 2,07)
  *
  *    Three loans from three different issuers, with different factors, giving the
- *    valor publicado al segundo decimal. No es coincidencia.
+ *    published value to the second decimal. That is not a coincidence.
  */
 /**
  * The senior balance: the published column if it exists, the sum if not.
@@ -159,7 +159,7 @@ const results: IdentityResult[] = [];
  * Building the senior balance by summing two metrics depends on BOTH having been
  * mapped correctly. Several issuances publish the total in a single column and the
  * reconciler found them by comparing values, not names. When it is there, it is
- * esa: no depende de que el pari passu se haya capturado, ni de que el Annex lo
+ * that one: it does not depend on the pari passu having been captured, nor on the Annex
  * publique por separado.
  */
 const SENIOR =
@@ -192,7 +192,7 @@ const dscrNoi = await checkIdentity(
 if (dscrNoi) results.push(dscrNoi);
 
 /**
- * La resta que define el NCF.
+ * The subtraction that defines NCF.
  *
  * It is the identity that motivated mapping the discarded blocks: we had NOI and
  * NCF but neither of the two subtrahends, so the difference between them was a
@@ -218,7 +218,7 @@ if (ncf) results.push(ncf);
  *
  * Rather than choosing by intuition, every candidate is tried and the one that
  * closes wins. The proportion closing against each one IS the answer as to which
- * significa cada columna, y queda registrada en la salida en vez de en la
+ * each column means, and it is recorded in the output rather than in the
  * cabeza de alguien.
  */
 const BALANCE_CANDIDATES: Array<{ label: string; sql: string; joins: string }> = [
@@ -336,7 +336,7 @@ const partial = results.filter((r) => r.share >= 0.7 && r.share < 0.9);
 
 console.log();
 if (broken.length === 0 && partial.length === 0) {
-  console.log(`  \x1b[32mTodas cierran por encima del 90%.\x1b[0m`);
+  console.log(`  \x1b[32mAll of them close above 90%.\x1b[0m`);
   console.log(
     `  Independently mapped metrics satisfy the relationships the issuer used`,
   );
@@ -344,7 +344,7 @@ if (broken.length === 0 && partial.length === 0) {
 } else {
   for (const r of [...broken, ...partial]) {
     const sev = r.share < 0.7 ? "\x1b[31m" : "\x1b[33m";
-    console.log(`  ${sev}${r.label}\x1b[0m cierra solo en ${pct(r.share, 0)} de ${r.n}.`);
+    console.log(`  ${sev}${r.label}\x1b[0m closes on only ${pct(r.share, 0)} of ${r.n}.`);
     console.log(`  \x1b[90m  metrics: ${r.formula}\x1b[0m`);
     for (const w of r.worst) {
       console.log(
@@ -355,7 +355,7 @@ if (broken.length === 0 && partial.length === 0) {
     console.log();
   }
   console.log(
-    `  \x1b[90mUna identidad que no cierra es un error de mapeo o un supuesto equivocado\x1b[0m`,
+    `  \x1b[90mAn identity that does not close is a mapping error or a wrong assumption\x1b[0m`,
   );
   console.log(
     `  \x1b[90mabout how the issuer computes. Both have to be understood before\x1b[0m`,
@@ -373,10 +373,10 @@ if (broken.length === 0 && partial.length === 0) {
  * The four failing identities fail in the same proportion (73-75%) and on the same
  * loans, with repeated error factors of ~280x. That rules out rounding and rules
  * out one metric being confused with another: it is scale, or
- * es que estamos leyendo la fila equivocada.
+ * is that we are reading the wrong row.
  *
- * Si las fallas se concentran en pocos filings, el problema es de formato —un
- * emisor que publica en miles, o una columna distinta con el mismo nombre— y se
+ * If the failures concentrate in a few filings, the problem is format —an issuer
+ * publishing in thousands, or a different column with the same name— and it is
  * fixed in the mapping. If they are spread evenly across all filings, the problem
  * is per loan and we have to find what those loans have in common.
  *
@@ -388,7 +388,7 @@ console.log(`Where they fail`);
 console.log(`${"─".repeat(78)}\n`);
 
 /**
- * La sonda usa el denominador ganador, no `loan_amount` suelto.
+ * The probe uses the winning denominator, not `loan_amount` on its own.
  *
  * It used to use only the trust balance and reported 865 broken loans spread over
  * 99 filings, with the conclusion "the problem is per loan". That was true —the
@@ -434,7 +434,7 @@ const profileFailing = failCount[0]?.n ?? "0";
 
 const bf = byFiling[0];
 if (bf) {
-  console.log(`  Tomando "debt yield = NOI / saldo" como sonda:\n`);
+  console.log(`  Using "debt yield = NOI / balance" as the probe:\n`);
   console.log(`    filings evaluados        ${String(bf.filings).padStart(4)}`);
   console.log(`    all its loans OK        ${String(bf.clean).padStart(4)}`);
   console.log(`    ninguno OK               ${String(bf.broken).padStart(4)}`);
@@ -445,12 +445,12 @@ if (bf) {
   const failing = Number(profileFailing);
 
   /**
-   * Nombrar las emisiones que fallan enteras, no contarlas.
+   * Naming the issuances that fail entirely, not counting them.
    *
    * "15 issuances with none OK" is a concentrated signal —a convention we do not
    * model, not noise— and the count does not let you chase it. It is the same error
    * this file points out elsewhere: a diagnostic that reports magnitude
-   * en vez de identidad obliga a escribir una consulta a mano para actuar.
+   * instead of identity forces someone to write a query by hand to act on it.
    */
   /**
    * The performance table exists.
@@ -466,15 +466,15 @@ if (bf) {
    * the pool shares summed to 100%. The only thing missing was half the finding
    * —the actual-outcome side— and nothing said so.
    *
-   * Es el mismo principio que la suma del pool aplicado a otra tabla: un corpus
-   * al que le falta una pieza entera es indistinguible de uno correcto si nadie
+   * It is the same principle as the pool sum applied to another table: a corpus
+   * missing an entire piece is indistinguishable from a correct one if nobody
    * pregunta por esa pieza.
    */
-  const { rows: perf } = await query<{ filas: string; prestamos: string }>(
-    `SELECT count(*)::text AS filas, count(DISTINCT loan_id)::text AS prestamos
+  const { rows: perf } = await query<{ rows_n: string; loans_n: string }>(
+    `SELECT count(*)::text AS rows_n, count(DISTINCT loan_id)::text AS loans_n
        FROM corpus.performance`,
   );
-  const perfRows = Number(perf[0]?.filas ?? 0);
+  const perfRows = Number(perf[0]?.rows_n ?? 0);
 
   console.log(`\n  \x1b[1mPost-closing performance\x1b[0m`);
   if (perfRows === 0) {
@@ -482,40 +482,40 @@ if (bf) {
       `    \x1b[31mEMPTY. The finding cannot be reproduced in this state.\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mUna recosecha con --refresh-stale la borra: el CASCADE viene de\x1b[0m`,
+      `    \x1b[90mA re-harvest with --refresh-stale deletes it: the CASCADE comes from\x1b[0m`,
     );
     console.log(
       `    \x1b[90mloans(id). Reconstruir con \x1b[0m\x1b[1mnpm run db:performance\x1b[0m`,
     );
   } else {
     console.log(
-      `    ${perfRows.toLocaleString("en-US")} rows · ${Number(perf[0]!.prestamos).toLocaleString("en-US")} loans`,
+      `    ${perfRows.toLocaleString("en-US")} rows · ${Number(perf[0]!.loans_n).toLocaleString("en-US")} loans`,
     );
   }
 
   /**
-   * Las participaciones del pool tienen que sumar 100%.
+   * The pool shares have to sum to 100%.
    *
    * THE CHECK THAT WAS MISSING: IF LOANS ARE LOST, NOBODY FINDS OUT
    *
    * Every other check in this file looks at loans that are present.
-   * Ninguna detecta los que faltan: si el parser descarta la mitad de las filas,
-   * la otra mitad sigue cerrando sus identidades, sus valores siguen siendo
-   * razonables y los chequeos de sanidad siguen pasando. El corpus no tiene
-   * forma de saber que le falta algo.
+   * None of them detects what is missing: if the parser discards half the rows,
+   * the other half still closes its identities, its values still look reasonable
+   * and the sanity checks still pass. The corpus has no way of knowing something
+   * is missing.
    *
    * It happened with Morgan Stanley 2021-L5. It dropped from 65 to 19 loans
    * between two harvests and was only noticed because the corpus total moved by 46
-   * estaba mirando por otro motivo.
+   * was looking for another reason.
    *
-   * `% of Initial Pool Balance` resuelve esto: el emisor publica la
+   * `% of Initial Pool Balance` solves this: the issuer publishes
    * each loan's share of the pool, and by construction they sum to one. If an
    * issuance sums to 0.30, two thirds of its loans are missing, and there is no
    * need to know how many it should have or to consult any external source.
    *
    * It also distinguishes the cause. A sum going over 1 is the opposite: rows
    * counted twice, or property rows taken for loans — which
-   * es la duda que queda abierta sobre L5—.
+   * is the doubt that remains open about L5.
    */
   const { rows: pool } = await query<{
     company: string; year: string; suma: string; prestamos: string; total: string;
@@ -542,20 +542,20 @@ if (bf) {
       WHERE ps.value IS NOT NULL`,
   );
 
-  const evaluadas = Number(poolTotal[0]?.n ?? 0);
-  console.log(`\n  \x1b[1mLa suma de participaciones del pool\x1b[0m`);
+  const evaluated = Number(poolTotal[0]?.n ?? 0);
+  console.log(`\n  \x1b[1mThe sum of the pool shares\x1b[0m`);
   console.log(
     `  \x1b[90mIt detects lost loans, which no other check sees.\x1b[0m\n`,
   );
 
-  if (evaluadas === 0) {
+  if (evaluated === 0) {
     console.log(`    \x1b[33mNo filing has pool_share mapped.\x1b[0m`);
   } else if (pool.length === 0) {
     console.log(
-      `    \x1b[32mLas ${evaluadas} emisiones con pool_share suman 100% ± 3%.\x1b[0m`,
+      `    \x1b[32mThe ${evaluated} issuances with pool_share sum to 100% ± 3%.\x1b[0m`,
     );
   } else {
-    console.log(`    ${pool.length} de ${evaluadas} emisiones no suman 100%:\n`);
+    console.log(`    ${pool.length} of ${evaluated} issuances do not sum to 100%:\n`);
     /**
      * The sum alone does not say which of the two causes it is.
      *
@@ -570,16 +570,16 @@ if (bf) {
      */
     for (const p of pool) {
       const s = Number(p.suma);
-      const con = Number(p.prestamos);
+      const withCol = Number(p.prestamos);
       const tot = Number(p.total);
-      const dx =
-        con < tot
-          ? `\x1b[33mparcial: ${con}/${tot} con la columna\x1b[0m`
+      const diagnosis =
+        withCol < tot
+          ? `\x1b[33mpartial: ${withCol}/${tot} carry the column\x1b[0m`
           : s < 1
-            ? "faltan filas del Annex A"
+            ? "rows missing from the Annex A"
             : "rows counted twice";
       console.log(
-        `    ${p.year}  ${p.company.slice(0, 36).padEnd(36)} ${pct(s, 1).padStart(7)}  ${String(con).padStart(3)}/${String(tot).padEnd(3)}  \x1b[90m${dx}\x1b[0m`,
+        `    ${p.year}  ${p.company.slice(0, 36).padEnd(36)} ${pct(s, 1).padStart(7)}  ${String(withCol).padStart(3)}/${String(tot).padEnd(3)}  \x1b[90m${diagnosis}\x1b[0m`,
       );
     }
     console.log(
@@ -612,7 +612,7 @@ if (bf) {
     );
 
     if (worst.length > 0) {
-      console.log(`\n  \x1b[33mEmisiones donde no cierra ninguno:\x1b[0m\n`);
+      console.log(`\n  \x1b[33mIssuances where none of them close:\x1b[0m\n`);
       for (const w of worst) {
         console.log(
           `    ${w.year}  ${w.company.slice(0, 46).padEnd(46)} ${String(w.loans).padStart(4)} loans`,
@@ -627,13 +627,13 @@ if (bf) {
   }
   console.log();
   /**
-   * Cuando el residuo es chico, decirlo.
+   * When the residue is small, say so.
    *
    * This section was written when one row in four failed and it served to decide
    * where to look. With the correct denominator 27 of 3,528 remain, and the text
    * still said "there is some of both" —sending someone to investigate a solved
    * problem. A diagnostic that does not switch off when its cause is fixed
-   * es ruido con formato de alerta.
+   * is noise formatted as an alert.
    */
   if (failing > 0 && failing < 60) {
     console.log(`  \x1b[32m${failing} loans remain outside tolerance out of thousands.\x1b[0m`);
@@ -646,7 +646,7 @@ if (bf) {
     console.log(`  \x1b[33mAlmost every filing has good and bad loans mixed together.\x1b[0m`);
     console.log(`  The problem is per loan: we have to find what the failing ones share.`);
   } else {
-    console.log(`  \x1b[33mHay de las dos cosas\x1b[0m: filings enteros rotos y filings mezclados.`);
+    console.log(`  \x1b[33mThere is some of both\x1b[0m: whole broken filings and mixed filings.`);
   }
 }
 
@@ -684,7 +684,7 @@ const { rows: profile } = await query<{
 );
 
 if (profile.length === 2) {
-  console.log(`\n  Perfil de los dos grupos:\n`);
+  console.log(`\n  Profile of the two groups:\n`);
   console.log(`    grupo          n   # propiedades         saldo mediano       NOI mediano`);
   for (const r of profile) {
     const money = (v: number | null) =>
@@ -701,17 +701,17 @@ if (profile.length === 2) {
   console.log();
   if (Number.isFinite(ratio) && (ratio > 50 || ratio < 0.02)) {
     console.log(
-      `  \x1b[31mEl saldo mediano difiere ${ratio > 1 ? ratio.toFixed(0) : (1 / ratio).toFixed(0)}x entre grupos.\x1b[0m ` +
+      `  \x1b[31mThe median balance differs ${ratio > 1 ? ratio.toFixed(0) : (1 / ratio).toFixed(0)}x between groups.\x1b[0m ` +
         `The problem is in loan_amount:`,
     );
-    console.log(`  o hay dos columnas distintas con el mismo nombre, o vienen en escalas distintas.`);
+    console.log(`  either there are two different columns with the same name, or they come in different scales.`);
   } else if (Number(bad.props) > Number(ok.props)) {
     console.log(
       `  \x1b[33mThe failing ones have more properties (${Number(bad.props).toFixed(1)} against ${Number(ok.props).toFixed(1)}).\x1b[0m`,
     );
     console.log(`  Balance and NOI would be published at different levels on the multi-property ones.`);
   } else {
-    console.log(`  \x1b[90mNo hay una diferencia obvia de perfil. Hay que mirar casos a mano.\x1b[0m`);
+    console.log(`  \x1b[90mNo obvious profile difference. Individual cases have to be looked at by hand.\x1b[0m`);
   }
 }
 
@@ -733,7 +733,7 @@ if (total > 0) {
 
 console.log(`\n${"─".repeat(78)}`);
 console.log(
-  `\n  \x1b[90mNinguna de estas comprobaciones necesita una fuente externa: el documento\x1b[0m`,
+  `\n  \x1b[90mNone of these checks needs an external source: the document\x1b[0m`,
 );
 console.log(`  \x1b[90mis verified against itself.\x1b[0m\n`);
 
