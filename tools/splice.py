@@ -1,5 +1,10 @@
 """Replaces line ranges in a file, applying from the bottom up.
 
+USE ONE CALL PER FILE. Line numbers come from es-blocks.py reading the file as it
+is now; the moment a splice runs, every range after it shifts. Splitting a file's
+ranges across two invocations silently writes the second batch to the wrong lines
+— which is what happened to db/delinquency.ts and cost a revert.
+
 Companion to es-blocks.py for the migration to English. Reads a JSON object of
 {"start-end": "replacement text"} from stdin and splices each range into the
 file. Bottom-up so earlier replacements do not shift the line numbers of later

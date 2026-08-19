@@ -1,37 +1,38 @@
 /**
- * Morosidad y special servicing por añada.
+ * Delinquency and special servicing by vintage.
  *
  *   npm run db:delinquency
  *
- * EL ORDEN IMPORTA Y ESTÁ FORZADO POR EL CÓDIGO
+ * THE ORDER MATTERS AND IS ENFORCED BY THE CODE
  *
- * Primero la identidad, después las tasas. Si la identidad no cierra, el script
- * NO reporta tasas: imprime los desvíos y termina.
+ * The identity first, the rates after. If the identity does not close, the script
+ * does NOT report rates: it prints the deviations and stops.
  *
- * Eso no es prolijidad. Con el NOI construimos el análisis primero y la
- * verificación meses después, y el resultado vivió un año sin que nadie pudiera
- * romperlo. Acá la verificación está antes por construcción, no por disciplina.
+ * That is not tidiness. With the NOI we built the analysis first and the
+ * verification months later, and the result lived a year without anyone being able
+ * to break it. Here the verification comes first by construction, not by
+ * discipline.
  *
  * LA IDENTIDAD
  *
- * `months_delinquent` y `paid_through` son el mismo hecho por dos caminos: los
- * meses de atraso tienen que ser ≈ (fin del período − paid through) / 30,44. Que
- * dos columnas mapeadas por separado coincidan sobre cientos de filas es la
- * misma clase de evidencia que las identidades del Annex A.
+ * `months_delinquent` and `paid_through` are the same fact by two routes: the
+ * months should be ≈ (end of period − paid through) / 30.44. That two
+ * independently mapped columns agree over hundreds of rows is the same class of
+ * evidence as the Annex A identities.
  *
  * DOS EVENTOS DISTINTOS
  *
- * Benchmark 2020-B16 tiene un préstamo transferido a special servicing que paga
- * al día. La transferencia es la señal temprana; el atraso, el síntoma tardío.
- * Se reportan por separado porque miden cosas distintas.
+ * Benchmark 2020-B16 has a loan transferred to special servicing that is paying
+ * on time. The transfer is the early signal; delinquency, the late symptom.
+ * They are reported separately because they measure different things.
  *
- * EL DENOMINADOR ES UNA COTA
+ * THE DENOMINATOR IS A BOUND
  *
- * El numerador solo cuenta préstamos que pegaron contra el informe del servicer.
- * El denominador es el pool completo de esas emisiones, incluidos los que no
- * pegaron. Donde el join es parcial —Benchmark 2020-B16 pega 3 de 33— la tasa
- * queda subestimada. Por eso se reporta también restringido a emisiones con join
- * mayoritario: si las dos versiones dicen lo mismo, el sesgo no manda.
+ * The numerator only counts loans that joined against the servicer report. The
+ * denominator is the full pool of those issuances, including the ones that did not
+ * join. Where the join is partial —Benchmark 2020-B16 joins 3 of 33— the rate is
+ * understated. That is why it is also reported restricted to issuances whose join
+ * majority join: if both versions say the same thing, the bias does not drive it.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -43,7 +44,7 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Umbrales fijados antes de ver los números. */
+/** Thresholds fixed before looking at the numbers. */
 const IDENTIDAD_MINIMA = 0.9;
 const TOLERANCIA_MESES = 1;
 const JOIN_MAYORITARIO = 0.5;
@@ -55,7 +56,7 @@ console.log("Morosidad y special servicing");
 console.log(`${"═".repeat(78)}`);
 
 // ---------------------------------------------------------------------------
-// 1. La identidad, antes que nada
+// 1. The identity, before anything else
 // ---------------------------------------------------------------------------
 
 const { rows: ident } = await query<{
@@ -77,12 +78,12 @@ const n = Number(ident[0]?.n ?? 0);
 const cierra = Number(ident[0]?.cierra ?? 0);
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Identidad: meses de atraso ≈ (período − paid through) / 30,44");
+console.log("Identity: months delinquent ≈ (period − paid through) / 30.44");
 console.log(`${"─".repeat(78)}\n`);
 
 if (n === 0) {
   console.log(
-    `  \x1b[33mNo hay filas con las dos columnas. Corré db:performance.\x1b[0m\n`,
+    `  \x1b[33mNo rows have both columns. Run db:performance.\x1b[0m\n`,
   );
   await closePool();
   process.exit(0);
@@ -114,35 +115,35 @@ const { rows: desvios } = await query<{
 for (const d of desvios) {
   console.log(
     `    \x1b[90mpublica ${d.publica.padStart(3)} meses · paid through ${d.paid} · ` +
-      `período ${d.periodo} → ${d.esperado}\x1b[0m`,
+      `period ${d.periodo} → ${d.esperado}\x1b[0m`,
   );
 }
 
 if (share < IDENTIDAD_MINIMA) {
   console.log(
-    `\n  \x1b[31mLA IDENTIDAD NO CIERRA. No se reportan tasas.\x1b[0m`,
+    `\n  \x1b[31mTHE IDENTITY DOES NOT CLOSE. No rates are reported.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mUna de las dos columnas no significa lo que creemos. Calcular tasas\x1b[0m`,
+    `  \x1b[90mOne of the two columns does not mean what we think. Computing rates\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mencima sería construir sobre un dato que no entendemos — que es\x1b[0m`,
+    `  \x1b[90mon top of it would be building on a datum we do not understand — which\x1b[0m`,
   );
-  console.log(`  \x1b[90mexactamente lo que pasó con el NOI.\x1b[0m\n`);
+  console.log(`  \x1b[90mis exactly what happened with the NOI.\x1b[0m\n`);
   await closePool();
   process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
-// 2. Tasas por añada, con intervalo
+// 2. Rates by vintage, with an interval
 // ---------------------------------------------------------------------------
 
 /**
- * Intervalo de Wilson, no la aproximación normal.
+ * Wilson interval, not the normal approximation.
  *
- * Con tasas bajas y n moderado, la normal da intervalos que se meten en
- * negativo y subestiman la incertidumbre. Wilson se porta bien en los extremos,
- * que es justo donde van a caer las añadas jóvenes.
+ * With low rates and moderate n, the normal gives intervals that run negative and
+ * understate the uncertainty. Wilson behaves well at the extremes, which is
+ * exactly where the young vintages are going to fall.
  */
 function wilson(k: number, total: number): [number, number] {
   if (total === 0) return [0, 0];
@@ -189,14 +190,14 @@ async function tasas(soloJoinMayoritario: boolean): Promise<Anada[]> {
 }
 
 for (const [titulo, solo] of [
-  ["Todas las emisiones con informe del servicer", false],
-  [`Solo emisiones con join ≥ ${pct(JOIN_MAYORITARIO, 0)}`, true],
+  ["All issuances with a servicer report", false],
+  [`Only issuances with a join ≥ ${pct(JOIN_MAYORITARIO, 0)}`, true],
 ] as Array<[string, boolean]>) {
   const rows = await tasas(solo);
   console.log(`\n${"─".repeat(78)}`);
   console.log(titulo);
   console.log(`${"─".repeat(78)}\n`);
-  console.log(`  añada   pool   special servicing        IC 95%         moroso  ejec.`);
+  console.log(`  vintage  pool   special servicing        95% CI        delinq.  forecl.`);
   console.log(`  ${"─".repeat(70)}`);
 
   for (const r of rows) {
@@ -212,9 +213,9 @@ for (const [titulo, solo] of [
 }
 
 /**
- * ¿Alguna añada es distinguible de otra?
+ * Is any vintage distinguishable from another?
  *
- * Es la pregunta que mató al hallazgo del NOI, hecha antes de afirmar nada.
+ * It is the question that killed the NOI finding, asked before asserting anything.
  */
 const rows = await tasas(false);
 const conIC = rows.map((r) => {
@@ -237,31 +238,33 @@ console.log(`\n${"─".repeat(78)}`);
 console.log("Veredicto");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
-  `  Pares de añadas con intervalos que NO se pisan: ${distinguibles.length} de ${pares}`,
+  `  Vintage pairs whose intervals do NOT overlap: ${distinguibles.length} of ${pares}`,
 );
 if (distinguibles.length > 0) {
   console.log(`  \x1b[32m${distinguibles.join(" · ")}\x1b[0m\n`);
   console.log(
-    `  \x1b[90mEsta variable sí distingue añadas, a diferencia del crecimiento del NOI\x1b[0m`,
+    `  \x1b[90mThis variable does distinguish vintages, unlike NOI growth\x1b[0m`,
   );
-  console.log(`  \x1b[90m—donde 0 de 10 pares eran distinguibles—.\x1b[0m\n`);
+  console.log(`  \x1b[90m—where 0 of 10 pairs were distinguishable.\x1b[0m\n`);
 } else {
   console.log(`  \x1b[33mNinguno.\x1b[0m\n`);
   console.log(
-    `  \x1b[90mLa morosidad tampoco separa añadas con esta muestra. El problema no\x1b[0m`,
+    `  \x1b[90mDelinquency does not separate vintages with this sample either. The problem\x1b[0m`,
   );
   console.log(`  \x1b[90mera la variable elegida.\x1b[0m\n`);
 }
 
 /**
- * ¿La añada o dos emisiones?
+ * The vintage, or two issuances?
  *
- * Una tasa por añada promedia emisiones, y el corpus tiene pocas por año. Si el
- * exceso de una añada vive en una o dos, no es un fenómeno de mercado sino de
- * esos deals —distinto originador, distinta concentración, distinto activo—.
+ * A rate per vintage averages issuances, and the corpus has few per year. If a
+ * vintage's excess lives in one or two of them, it is not a market phenomenon but
+ * a property of those deals —different originator, different concentration,
+ * different asset.
  *
- * El criterio se fija antes de mirar: si la emisión más afectada aporta más de
- * la mitad de los eventos de su añada, la tasa anual no describe a la añada.
+ * The criterion is fixed before looking: if the worst-affected issuance
+ * contributes more than half of its vintage's events, the annual rate does not
+ * describe the vintage.
  */
 const CONCENTRACION_MAX = 0.5;
 
@@ -283,7 +286,7 @@ const { rows: porEmision } = await query<{
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("¿La añada, o unas pocas emisiones?");
+console.log("The vintage, or a few issuances?");
 console.log(`${"─".repeat(78)}\n`);
 
 const porAnada = new Map<string, typeof porEmision>();
@@ -308,39 +311,39 @@ for (const [anada, lista] of [...porAnada].sort()) {
     console.log(
       `      ${String(r.eventos).padStart(3)} de ${String(r.pool).padStart(3)} ` +
         `(${pct(Number(r.eventos) / Number(r.pool)).padStart(5)} del deal · ` +
-        `${pct(p, 0).padStart(4)} de la añada)  \x1b[90m${r.company.slice(0, 38)}\x1b[0m`,
+        `${pct(p, 0).padStart(4)} of the vintage)  \x1b[90m${r.company.slice(0, 38)}\x1b[0m`,
     );
   }
-  if (lista.length > 3) console.log(`      \x1b[90m… y ${lista.length - 3} emisiones más\x1b[0m`);
+  if (lista.length > 3) console.log(`      \x1b[90m… and ${lista.length - 3} more issuances\x1b[0m`);
   console.log();
 }
 
 /**
- * ¿Cuándo fallan, no cuántos fallan.
+ * WHEN they fail, not how many fail.
  *
- * EL CONFUNDIDOR QUE QUEDA
+ * THE CONFOUNDER THAT REMAINS
  *
- * El 10-D lista los préstamos que están HOY en special servicing, no los que
- * alguna vez estuvieron. Un préstamo de 2020 que entró en 2021 y se resolvió no
- * aparece; uno de 2024 todavía no tuvo tiempo de entrar. Eso produce un pico en
- * las añadas de edad intermedia sin que tengan nada de malo, y es la explicación
- * más económica del 6,1% de 2023.
+ * The 10-D lists the loans in special servicing TODAY, not those that were at some
+ * point. A 2020 loan that entered in 2021 and was resolved does not appear; a 2024
+ * one has not had time to enter. That produces a peak in the middle-aged vintages
+ * without anything being wrong with them, and it is the most economical
+ * explanation for 2023's 6.1%.
  *
- * `transfer_date` permite distinguirlo sin bajar informes históricos: para cada
- * evento sabemos cuántos meses pasaron entre el cierre de la emisión y la
- * transferencia.
+ * `transfer_date` lets us tell them apart without downloading historical reports:
+ * for each event we know how many months passed between the issuance closing and
+ * the transfer.
  *
- *   Si 2023 falla a la MISMA antigüedad que las demás → es stock, no calidad.
- *     Todas las añadas transfieren a los ~30 meses; 2023 está en esa ventana
- *     ahora y las otras ya pasaron.
+ *   If 2023 fails at the SAME age as the others → it is stock, not quality.
+ *     Every vintage transfers at ~30 months; 2023 is in that window now and the
+ *     others have already passed through it.
  *
- *   Si 2023 falla ANTES —a los 18 meses donde otras tardan 40— eso no lo explica
- *     el stock. Un préstamo que se rompe en año y medio se suscribió mal.
+ *   If 2023 fails EARLIER —at 18 months where others take 40— stock does not
+ *     explain that. A loan that breaks in a year and a half was underwritten badly.
  *
- * La segunda columna es la tasa por año de exposición, que normaliza
- * parcialmente por edad: eventos dividido años desde el cierre. Es cruda —supone
- * riesgo constante en el tiempo, que es falso— pero mueve el número en la
- * dirección correcta y muestra si el pico sobrevive al ajuste.
+ * The second column is the rate per year of exposure, which partially normalises
+ * for age: events divided by years since closing. It is crude —it assumes constant
+ * risk over time, which is false— but it moves the number in the right direction
+ * and shows whether the peak survives the adjustment.
  */
 const { rows: timing } = await query<{
   anada: string; n: string; p25: number | null; mediana: number | null;
@@ -375,9 +378,9 @@ const { rows: timing } = await query<{
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("¿Cuándo fallan? Meses entre el cierre y la transferencia");
+console.log("When do they fail? Months between closing and transfer");
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  añada    n    p25   mediana   p75    edad    eventos por 1.000 préstamos-año`);
+console.log(`  vintage   n    p25   median   p75    age    events per 1,000 loan-years`);
 console.log(`  ${"─".repeat(74)}`);
 
 for (const t of timing) {
@@ -398,44 +401,44 @@ if (medianas.length >= 2) {
   const lento = medianas.reduce((a, b) => (a.m > b.m ? a : b));
   const rapido = medianas.reduce((a, b) => (a.m < b.m ? a : b));
   console.log(
-    `\n  Más rápido en fallar: \x1b[1m${rapido.anada}\x1b[0m a los ${rapido.m.toFixed(0)} meses · ` +
-      `más lento: ${lento.anada} a los ${lento.m.toFixed(0)}`,
+    `\n  Fastest to fail: \x1b[1m${rapido.anada}\x1b[0m at ${rapido.m.toFixed(0)} months · ` +
+      `slowest: ${lento.anada} at ${lento.m.toFixed(0)}`,
   );
   console.log(
-    `\n  \x1b[90mSi la añada con más eventos es también la más rápida en producirlos, el\x1b[0m`,
+    `\n  \x1b[90mIf the vintage with the most events is also the fastest to produce them,\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mstock no lo explica. Si falla a la misma antigüedad que las demás, sí.\x1b[0m\n`,
+    `  \x1b[90mstock does not explain it. If it fails at the same age as the rest, it does.\x1b[0m\n`,
   );
 }
 
 /**
- * Incidencia a edad fija: eventos dentro de los primeros 24 meses.
+ * Incidence at fixed age: events within the first 24 months.
  *
- * POR QUÉ EL TEST ANTERIOR NO SIRVE
+ * WHY THE PREVIOUS TEST IS NO USE
  *
- * La mediana de meses hasta la transferencia cae monótona con la añada —50, 43,
- * 31, 19, 14— y eso no dice nada sobre las añadas: dice que a una emisión de
- * 2024 la venimos mirando 31 meses, así que su mediana no puede pasar de 31.
- * Es censura por la derecha, y el modo de falla del test es indistinguible de la
- * hipótesis que quería descartar.
+ * The median months to transfer falls monotonically with the vintage —50, 43, 31,
+ * 19, 14— and that says nothing about the vintages: it says that a 2024 issuance
+ * has only been watched for 31 months, so its median cannot exceed 31. That is
+ * right-censoring, and the test's failure mode is indistinguishable from the
+ * hypothesis it was meant to rule out.
  *
- * QUÉ ARREGLA ESTA VERSIÓN
+ * WHAT THIS VERSION FIXES
  *
- * Fijar la ventana. Contar solo eventos ocurridos dentro de los primeros 24
- * meses desde el cierre pone a todas las añadas en la misma escala: 24 meses
- * están completamente observados para cualquier emisión con más de dos años.
+ * Fixing the window. Counting only events occurring within the first 24 months
+ * from closing puts every vintage on the same scale: 24 months are fully observed
+ * for any issuance older than two years.
  *
- * QUÉ NO ARREGLA
+ * WHAT IT DOES NOT FIX
  *
- * El 10-D lista lo que está HOY en special servicing. Un préstamo de 2020 que
- * transfirió en el mes 18 y se resolvió en 2023 no aparece, así que su ventana
- * de 24 meses está vaciada por resolución. **La incidencia de las añadas viejas
- * queda subestimada y el sesgo crece con la edad.**
+ * The 10-D lists what is in special servicing TODAY. A 2020 loan that transferred
+ * in month 18 and was resolved in 2023 does not appear, so its 24-month window is
+ * emptied by resolution. **The incidence of older vintages is understated and the
+ * bias grows with age.**
  *
- * Por eso la comparación honesta es 2023 contra 2024: las dos jóvenes, las dos
- * con 24 meses observados, las dos con poco tiempo para que se resuelva nada.
- * Las demás se muestran como referencia con la advertencia puesta.
+ * That is why the honest comparison is 2023 against 2024: both young, both with 24
+ * months observed, both with little time for anything to have been resolved. The
+ * rest are shown for reference with the warning attached.
  */
 const VENTANA_MESES = 24;
 
@@ -461,7 +464,7 @@ const { rows: fija } = await query<{
 console.log(`\n${"─".repeat(78)}`);
 console.log(`Incidencia a edad fija: transferencias en los primeros ${VENTANA_MESES} meses`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  añada   pool   eventos   incidencia         IC 95%        edad`);
+console.log(`  vintage  pool   events   incidence          95% CI        age`);
 console.log(`  ${"─".repeat(66)}`);
 
 const fijos = fija
@@ -479,14 +482,14 @@ for (const r of fijos) {
     `  ${r.anada}  ${String(r.pool).padStart(5)}   ${String(r.k).padStart(5)}     ` +
       `${pct(r.k / r.pool).padStart(6)}    [${pct(r.lo).padStart(5)} , ${pct(r.hi).padStart(5)}]   ` +
       `${r.edad.toFixed(1)}a` +
-      (viejo ? `  \x1b[90m← vaciada por resolución\x1b[0m` : ""),
+      (viejo ? `  \x1b[90m← emptied by resolution\x1b[0m` : ""),
   );
 }
 
 const a23 = fijos.find((r) => r.anada === "2023");
 const a24 = fijos.find((r) => r.anada === "2024");
 
-console.log(`\n  \x1b[1mLa comparación limpia: 2023 contra 2024\x1b[0m`);
+console.log(`\n  \x1b[1mThe clean comparison: 2023 against 2024\x1b[0m`);
 if (a23 && a24) {
   const solapan = !(a23.lo > a24.hi || a24.lo > a23.hi);
   console.log(
@@ -496,47 +499,46 @@ if (a23 && a24) {
   if (solapan) {
     console.log(`\n    \x1b[33mLos intervalos se pisan.\x1b[0m`);
     console.log(
-      `    \x1b[90mA la misma edad, 2023 y 2024 no son distinguibles. El 6,1% de 2023\x1b[0m`,
+      `    \x1b[90mAt the same age, 2023 and 2024 are not distinguishable. 2023's 6.1%\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mera la ventana de observación, no la añada. El pico se explica por\x1b[0m`,
+      `    \x1b[90mwas the observation window, not the vintage. The peak is explained by\x1b[0m`,
     );
     console.log(`    \x1b[90mstock y censura.\x1b[0m\n`);
   } else {
-    console.log(`\n    \x1b[32mLos intervalos NO se pisan.\x1b[0m`);
+    console.log(`\n    \x1b[32mThe intervals do NOT overlap.\x1b[0m`);
     console.log(
-      `    \x1b[90mA la misma edad y con el mismo sesgo de resolución, una añada tiene\x1b[0m`,
+      `    \x1b[90mAt the same age and with the same resolution bias, one vintage has\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mmás transferencias tempranas que la otra. Eso el stock no lo explica.\x1b[0m\n`,
+      `    \x1b[90mmore early transfers than the other. Stock does not explain that.\x1b[0m\n`,
     );
   }
 } else {
-  console.log(`    \x1b[33mFaltan datos de una de las dos añadas.\x1b[0m\n`);
+  console.log(`    \x1b[33mData is missing for one of the two vintages.\x1b[0m\n`);
 }
 
 /**
- * ¿Ya venían distintos al originar?
+ * Were they already different at origination?
  *
- * LA ÚLTIMA ALTERNATIVA BARATA
+ * THE LAST CHEAP ALTERNATIVE
  *
- * 2023 transfiere a special servicing 2,4 veces más que 2024 a la misma edad.
- * Eso sobrevivió a la identidad, al sesgo del join, a la concentración por
- * emisión y al confundidor de edad. Queda una explicación que no es sobre
- * suscripción sino sobre composición: que los préstamos de 2023 ya fueran peores
- * en el papel.
+ * 2023 transfers to special servicing 2.4 times more often than 2024 at the same
+ * age. That survived the identity, the join bias, the concentration by issuance
+ * and the age confounder. One explanation remains that is not about underwriting
+ * but about composition: that the 2023 loans were already worse on paper.
  *
- * 2023 fue el año de menor emisión CMBS de la década y el peor momento de la
- * oficina. Si esos deals traen más oficina, más apalancamiento o menos cobertura
- * al originar, el mercado ya lo sabía y no hay noticia.
+ * 2023 was the lowest CMBS issuance year of the decade and the worst moment for
+ * offices. If those deals carry more office, more leverage or less coverage at
+ * origination, the market already knew and there is no news.
  *
- * Se compara sobre el lado del Annex A, que es el dato más fuerte del corpus
- * —identidades al 97%— y que es independiente del informe del servicer.
+ * The comparison is made on the Annex A side, which is the corpus's strongest
+ * data —identities at 97%— and which is independent of the servicer report.
  *
- * CÓMO SE LEE
+ * HOW TO READ IT
  *
- *   perfil parecido + desempeño distinto  → es sobre suscripción
- *   perfil peor en 2023                   → es composición, no hay noticia
+ *   similar profile + different outcome  → it is about underwriting
+ *   worse profile in 2023                → it is composition, there is no news
  */
 const { rows: perfil } = await query<{
   anada: string; n: string; ltv: number | null; dscr: number | null;
@@ -567,9 +569,9 @@ const { rows: perfil } = await query<{
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("¿Ya venían distintos al originar? Perfil del Annex A");
+console.log("Were they already different at origination? Annex A profile");
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  añada     n     LTV    DSCR   debt yield    oficina  retail  hotel  multi`);
+console.log(`  vintage   n     LTV    DSCR   debt yield    office  retail  hotel  multi`);
 console.log(`  ${"─".repeat(74)}`);
 
 for (const r of perfil) {
@@ -586,10 +588,10 @@ const p24 = perfil.find((r) => r.anada === "2024");
 
 if (p23 && p24) {
   /**
-   * El criterio se fija antes: 2023 "viene peor" si su LTV mediano supera al de
-   * 2024 en más de 3 puntos, su DSCR es menor en más de 0,15, o su exposición a
-   * oficina es mayor en más de 8 puntos. Son las tres palancas que un suscriptor
-   * miraría primero.
+   * The criterion is fixed beforehand: 2023 "comes in worse" if its median LTV exceeds
+   * 2024 by more than 3 points, its DSCR is lower by more than 0.15, or its office
+   * exposure is higher by more than 8 points. Those are the three levers an
+   * underwriter would look at first.
    */
   const peorLtv = Number(p23.ltv ?? 0) - Number(p24.ltv ?? 0) > 0.03;
   const peorDscr = Number(p24.dscr ?? 0) - Number(p23.dscr ?? 0) > 0.15;
@@ -598,7 +600,7 @@ if (p23 && p24) {
   console.log(`\n  \x1b[1m2023 contra 2024 al originar\x1b[0m`);
   console.log(
     `    LTV      ${pct(Number(p23.ltv ?? 0), 1)} vs ${pct(Number(p24.ltv ?? 0), 1)}` +
-      `   ${peorLtv ? "\x1b[33m← 2023 más apalancado\x1b[0m" : "\x1b[90msin diferencia relevante\x1b[0m"}`,
+      `   ${peorLtv ? "\x1b[33m← 2023 more leveraged\x1b[0m" : "\x1b[90mno relevant difference\x1b[0m"}`,
   );
   console.log(
     `    DSCR     ${Number(p23.dscr ?? 0).toFixed(2)} vs ${Number(p24.dscr ?? 0).toFixed(2)}` +
@@ -606,52 +608,52 @@ if (p23 && p24) {
   );
   console.log(
     `    oficina  ${pct(Number(p23.office ?? 0), 1)} vs ${pct(Number(p24.office ?? 0), 1)}` +
-      `   ${masOffice ? "\x1b[33m← 2023 más expuesto\x1b[0m" : "\x1b[90msin diferencia relevante\x1b[0m"}`,
+      `   ${masOffice ? "\x1b[33m← 2023 more exposed\x1b[0m" : "\x1b[90mno relevant difference\x1b[0m"}`,
   );
 
   if (!peorLtv && !peorDscr && !masOffice) {
-    console.log(`\n    \x1b[32mNo se explica por composición.\x1b[0m`);
+    console.log(`\n    \x1b[32mNot explained by composition.\x1b[0m`);
     console.log(
-      `    \x1b[90mLos préstamos de 2023 y 2024 se ven iguales en el papel y se rompen\x1b[0m`,
+      `    \x1b[90mThe 2023 and 2024 loans look identical on paper and break\x1b[0m`,
     );
     console.log(
-      `    \x1b[90mdistinto. Eso es sobre suscripción, o sobre algo que el Annex A no\x1b[0m`,
+      `    \x1b[90mdifferently. That is about underwriting, or about something the Annex A\x1b[0m`,
     );
-    console.log(`    \x1b[90mpublica.\x1b[0m\n`);
+    console.log(`    \x1b[90mdoes not publish.\x1b[0m\n`);
   } else {
-    console.log(`\n    \x1b[33m2023 ya venía peor en el papel.\x1b[0m`);
+    console.log(`\n    \x1b[33m2023 already came in worse on paper.\x1b[0m`);
     console.log(
-      `    \x1b[90mLa diferencia de desempeño puede ser composición del pool y no\x1b[0m`,
+      `    \x1b[90mThe performance difference may be pool composition and not\x1b[0m`,
     );
-    console.log(`    \x1b[90mcalidad de la suscripción.\x1b[0m\n`);
+    console.log(`    \x1b[90munderwriting quality.\x1b[0m\n`);
   }
 }
 
 /**
- * La misma comparación, dentro de cada tipo de activo.
+ * The same comparison, within each asset type.
  *
- * POR QUÉ EL BLOQUE ANTERIOR NO ALCANZÓ
+ * WHY THE PREVIOUS BLOCK WAS NOT ENOUGH
  *
- * Los tres umbrales que fijé —LTV, DSCR, oficina— pasaron por separado y el
- * script concluyó "no se explica por composición". Mirando la tabla se ve otra
- * cosa: 2023 tiene 17,5% oficina y 15% hotel contra 11,2% y 10% de 2024, y la
- * mitad de multifamily. Ninguna diferencia individual llegó al corte, pero
- * juntas describen un pool más riesgoso por el lado del activo.
+ * The three thresholds I set —LTV, DSCR, office— each passed separately and the
+ * script concluded "not explained by composition". Looking at the table shows
+ * something else: 2023 has 17.5% office and 15% hotel against 11.2% and 10% for
+ * 2024, and half the multifamily. No individual difference reached the cut, but
+ * together they describe a riskier pool on the asset side.
  *
- * **Un umbral univariado deja pasar una diferencia que está repartida entre
- * varias variables.** Los valores crudos lo mostraron; el veredicto automático
+ * **A univariate threshold lets through a difference spread across several
+ * variables.** The raw values showed it; the automatic verdict
  * no.
  *
- * ESTA ES LA PRUEBA DIRECTA
+ * THIS IS THE DIRECT TEST
  *
- * Comparar 2023 contra 2024 DENTRO de cada tipo. Si la oficina de 2023 falla
- * como la de 2024 y la brecha agregada viene de que 2023 tiene más oficina,
- * es composición. Si la oficina de 2023 falla más que la de 2024, no lo es.
+ * Comparing 2023 against 2024 WITHIN each type. If 2023's office fails as much
+ * as 2024's and the aggregate gap comes from 2023 having more office, it is
+ * composition. If 2023's office fails more than 2024's, it is not.
  *
- * Es la misma lógica de la banda de tamaño que mató al hallazgo del NOI.
+ * It is the same logic as the size band that killed the NOI finding.
  *
- * La última fila estandariza: la tasa que tendría 2023 si tuviera la mezcla de
- * activos de 2024. Si al reponderar la brecha se disuelve, era composición.
+ * The last row standardises: the rate 2023 would have with 2024's asset mix. If
+ * reweighting dissolves the gap, it was composition.
  */
 const TIPOS: Array<[string, string]> = [
   ["oficina", "%office%"],
@@ -662,7 +664,7 @@ const TIPOS: Array<[string, string]> = [
 ];
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Dentro de cada tipo de activo: 2023 contra 2024 a ${VENTANA_MESES} meses`);
+console.log(`Within each asset type: 2023 against 2024 at ${VENTANA_MESES} months`);
 console.log(`${"─".repeat(78)}\n`);
 console.log(`  tipo            2023: n    tasa        2024: n    tasa      cociente`);
 console.log(`  ${"─".repeat(72)}`);
@@ -709,10 +711,10 @@ for (const [nombre, patron] of TIPOS) {
 }
 
 /**
- * Estandarización directa: la tasa de 2023 con la mezcla de 2024.
+ * Direct standardisation: 2023's rate with 2024's mix.
  *
- * Se aplican las tasas por tipo de 2023 a los pesos de 2024. Si el resultado se
- * acerca a la tasa cruda de 2024, la brecha era composición.
+ * 2023's per-type rates are applied to 2024's weights. If the result comes close
+ * to 2024's crude rate, the gap was composition.
  */
 if (porTipo.length >= 3) {
   const pool24 = porTipo.reduce((a, t) => a + t.n24, 0);
@@ -724,7 +726,7 @@ if (porTipo.length >= 3) {
   const cruda23 =
     porTipo.reduce((a, t) => a + t.k23, 0) / porTipo.reduce((a, t) => a + t.n23, 0);
 
-  console.log(`\n  \x1b[1mEstandarizando 2023 a la mezcla de activos de 2024\x1b[0m`);
+  console.log(`\n  \x1b[1mStandardising 2023 to 2024's asset mix\x1b[0m`);
   console.log(`    2023 cruda          ${pct(cruda23)}`);
   console.log(`    2023 estandarizada  ${pct(estandarizada)}`);
   console.log(`    2024 cruda          ${pct(cruda24)}`);
@@ -734,36 +736,36 @@ if (porTipo.length >= 3) {
   const explicado = brechaCruda !== 0 ? 1 - brechaEstand / brechaCruda : 0;
 
   console.log(
-    `\n    La composición explica ${pct(Math.max(0, Math.min(1, explicado)), 0)} de la brecha.`,
+    `\n    Composition explains ${pct(Math.max(0, Math.min(1, explicado)), 0)} of the gap.`,
   );
   if (brechaEstand > 0.01) {
     console.log(
-      `    \x1b[32mQueda una brecha de ${pct(brechaEstand)} después de igualar la mezcla.\x1b[0m\n`,
+      `    \x1b[32mA gap of ${pct(brechaEstand)} remains after equalising the mix.\x1b[0m\n`,
     );
   } else {
     console.log(
-      `    \x1b[33mIgualando la mezcla, la brecha desaparece: era composición.\x1b[0m\n`,
+      `    \x1b[33mEqualising the mix, the gap disappears: it was composition.\x1b[0m\n`,
     );
   }
 }
 
 /**
- * La celda que sostiene todo: multifamily 2023.
+ * The cell holding everything up: multifamily 2023.
  *
- * POR QUÉ MIRAR ACÁ
+ * WHY LOOK HERE
  *
- * La estandarización concluyó que la composición explica 0% de la brecha. Ese
- * veredicto depende casi enteramente de una celda: multifamily 2023, con 17
- * eventos sobre 95 préstamos —17,9%—. Como multifamily pesa 30% en la mezcla de
- * 2024, esa tasa se propaga a toda la estandarización.
+ * The standardisation concluded that composition explains 0% of the gap. That
+ * verdict depends almost entirely on one cell: multifamily 2023, with 17 events
+ * over 95 loans —17.9%. Since multifamily weighs 30% in 2024's mix, that rate
+ * propagates through the whole standardisation.
  *
- * Y 17,9% de special servicing en multifamily a 24 meses no es una tasa de
- * mercado: multifamily es la clase más resistente del CMBS. Un número así
- * describe un producto concreto —préstamos puente a tasa flotante, sponsors
- * apalancados— o un error, pero no "el multifamily de 2023".
+ * And 17.9% special servicing in multifamily at 24 months is not a market rate:
+ * multifamily is the most resilient class in CMBS. A number like that describes a
+ * specific product —floating-rate bridge loans, leveraged sponsors— or an error,
+ * but not "2023 multifamily".
  *
- * Si los 17 están en una o dos emisiones, el resultado no es sobre la añada ni
- * sobre el tipo de activo, y toda la cadena de conclusiones se cae.
+ * If the 17 sit in one or two issuances, the result is not about the vintage nor
+ * about the asset type, and the whole chain of conclusions falls apart.
  */
 const { rows: mf } = await query<{
   company: string; pool: string; eventos: string; ltv: number | null;
@@ -801,9 +803,9 @@ const { rows: mf } = await query<{
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("La celda que sostiene el resultado: multifamily 2023");
+console.log("The cell holding up the result: multifamily 2023");
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  eventos / pool    LTV    DSCR   tasa     emisión`);
+console.log(`  events / pool     LTV    DSCR   rate     issuance`);
 console.log(`  ${"─".repeat(72)}`);
 
 const totalEv = mf.reduce((a, r) => a + Number(r.eventos), 0);
@@ -823,38 +825,38 @@ const top2 = mf.slice(0, 2).reduce((a, r) => a + Number(r.eventos), 0);
 const shareTop2 = totalEv > 0 ? top2 / totalEv : 0;
 
 console.log(
-  `\n  ${totalEv} eventos en ${conEventos} emisiones · las dos peores aportan ${pct(shareTop2, 0)}`,
+  `\n  ${totalEv} events across ${conEventos} issuances · the worst two contribute ${pct(shareTop2, 0)}`,
 );
 
 if (shareTop2 > 0.5) {
-  console.log(`\n  \x1b[31mLA CELDA ESTÁ DOMINADA POR DOS EMISIONES.\x1b[0m`);
+  console.log(`\n  \x1b[31mTHE CELL IS DOMINATED BY TWO ISSUANCES.\x1b[0m`);
   console.log(
-    `  \x1b[90m"El multifamily de 2023" no existe como fenómeno: son esos deals. Y como\x1b[0m`,
+    `  \x1b[90m"2023 multifamily" does not exist as a phenomenon: it is those deals. And\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mesta celda manda en la estandarización, el "0% explicado por composición"\x1b[0m`,
+    `  \x1b[90msince this cell drives the standardisation, the "0% explained by composition"\x1b[0m`,
   );
   console.log(`  \x1b[90mtampoco se sostiene.\x1b[0m\n`);
 } else {
-  console.log(`\n  \x1b[32mRepartido entre ${conEventos} emisiones.\x1b[0m`);
+  console.log(`\n  \x1b[32mSpread across ${conEventos} issuances.\x1b[0m`);
   console.log(
-    `  \x1b[90mNo es un deal puntual. Mirar LTV, DSCR y tasa: si esas emisiones traen\x1b[0m`,
+    `  \x1b[90mNot a one-off deal. Look at LTV, DSCR and rate: if those issuances carry\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mtasas notoriamente más altas, el producto es distinto aunque el tipo de\x1b[0m`,
+    `  \x1b[90mnotably higher rates, the product is different even though the asset type\x1b[0m`,
   );
   console.log(`  \x1b[90mactivo se llame igual.\x1b[0m\n`);
 }
 
 console.log(
-  `  \x1b[90mOJO: la exposición al riesgo crece con la edad. Una añada 2020 tuvo seis\x1b[0m`,
+  `  \x1b[90mCAUTION: risk exposure grows with age. A 2020 vintage had six years to\x1b[0m`,
 );
 console.log(
-  `  \x1b[90maños para acumular eventos y una 2024 tuvo dos. Una diferencia entre\x1b[0m`,
+  `  \x1b[90maccumulate events and a 2024 one had two. A difference between vintages\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mañadas puede ser calidad de suscripción o simplemente tiempo, y estas\x1b[0m`,
+  `  \x1b[90mmay be underwriting quality or simply time, and these\x1b[0m`,
 );
-console.log(`  \x1b[90mtasas no lo separan.\x1b[0m\n`);
+console.log(`  \x1b[90mrates do not separate them.\x1b[0m\n`);
 
 await closePool();
