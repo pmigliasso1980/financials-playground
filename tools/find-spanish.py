@@ -96,6 +96,12 @@ if not paths:
         # miss.
         if f.startswith("tools/"):
             return True
+        # The glossary records Spanish->English naming decisions, so it is
+        # Spanish by definition, exactly like the tools/ files. It says in its
+        # own header that it is a migration artefact to be deleted when the
+        # move is done.
+        if f == "docs/translation-glossary.md":
+            return True
         # git ls-files still lists a file deleted in the working tree until the
         # deletion is committed.
         if not pathlib.Path(f).exists():
