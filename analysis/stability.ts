@@ -1,44 +1,42 @@
 /**
- * ¿Las distribuciones de originación son comparables entre añadas?
+ * Are the origination distributions comparable across vintages?
  *
  *   npm run db:stability
  *
- * POR QUÉ ESTA PREGUNTA VA PRIMERA
+ * WHY THIS QUESTION COMES FIRST
  *
- * El corpus llegó a su techo para preguntas de resultado: la transferencia a
- * special servicing es un evento raro (2,4%) sobre un universo acotado, y la
- * historia de los 10-D solo compra 1,33x. Cuatro caminos independientes
- * llegaron a lo mismo.
+ * The corpus hit its ceiling for outcome questions: transfer to special servicing
+ * is a rare event (2.4%) over a bounded universe, and the 10-D history only buys
+ * 1.33x. Four independent routes reached the same place.
  *
- * Lo que sí abunda son los datos de ORIGINACIÓN: 9.751 préstamos, 94 métricas,
- * identidades que cierran al 90-98%. Ahí las celdas tienen miles de
- * observaciones en vez de decenas.
+ * What there is plenty of is ORIGINATION data: 9,751 loans, 94 metrics, identities
+ * closing at 90-98%. There the cells have thousands of observations rather than
+ * dozens.
  *
- * Pero cualquier pregunta que junte añadas —una distribución de referencia
- * histórica, o un corte transversal sobre el corpus entero— asume que un
- * préstamo de 2021 y uno de 2024 son comparables. Entre esas dos fechas la tasa
- * de interés pasó de ~3,5% a ~7%, y eso arrastra el DSCR y el debt yield por
- * construcción, no por decisión de nadie.
+ * But any question that pools vintages —a historical reference distribution, or a
+ * cross-section over the whole corpus— assumes a 2021 loan and a 2024 loan are
+ * comparable. Between those two dates the interest rate went from ~3.5% to ~7%, and
+ * that drags DSCR and debt yield along by construction, not by anyone's decision.
  *
- * Si las distribuciones no son estables, la referencia mide el ciclo y no la
- * emisión. Eso rompe el benchmark de perfil Y rompe los cortes transversales.
- * Un solo test decide las dos direcciones, y por eso va antes de escribir nada.
+ * If the distributions are not stable, the reference measures the cycle and not the
+ * issuance. That breaks the profile benchmark AND breaks the cross-sections. One
+ * test decides both directions, which is why it comes before writing anything.
  *
- * CÓMO SE MIDE
+ * HOW IT IS MEASURED
  *
- * Para cada métrica, la mediana por añada y el rango entre la más alta y la más
- * baja, normalizado por la mediana global. Un desplazamiento del 10% es ruido;
- * uno del 60% significa que las añadas son poblaciones distintas.
+ * For each metric, the median per vintage and the range between the highest and the
+ * lowest, normalised by the global median. A 10% shift is noise; a 60% one means
+ * the vintages are different populations.
  *
- * No es un test de hipótesis: con miles de observaciones por celda cualquier
- * diferencia sale significativa. Lo que importa es la MAGNITUD relativa al uso
- * que se le quiera dar.
+ * It is not a hypothesis test: with thousands of observations per cell any
+ * difference comes out significant. What matters is the MAGNITUDE relative to the
+ * use you want to put it to.
  *
- * LO QUE ESTE TEST NO PUEDE DECIR
+ * WHAT THIS TEST CANNOT SAY
  *
- * Que una métrica sea estable no la vuelve comparable si su significado cambió.
- * El LTV se calcula contra una tasación, y las tasaciones de 2021 y 2024 no
- * miden el mismo mercado aunque el cociente dé parecido.
+ * That a metric is stable does not make it comparable if its meaning changed. LTV
+ * is computed against an appraisal, and 2021 and 2024 appraisals do not measure the
+ * same market even if the ratio comes out similar.
  */
 
 import { closePool, ping, query } from "../db/client.js";
@@ -50,62 +48,62 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Fijado antes de ver nada. */
-const DESPLAZAMIENTO_TOLERABLE = 0.2;
-const MIN_POR_ANADA = 100;
+/** Fixed before looking at anything. */
+const TOLERABLE_SHIFT = 0.2;
+const MIN_PER_VINTAGE = 100;
 
 const pct = (v: number, d = 0) => `${(v * 100).toFixed(d)}%`;
 
 /**
- * Las métricas que un benchmark de perfil usaría, y sus rangos de sanidad.
+ * The metrics a profile benchmark would use, and their sanity ranges.
  *
- * Los rangos descartan la basura conocida —el DSCR de 91.617 que arrastramos
- * desde `db:predictors`, los LTV que vienen como porcentaje sin dividir— sin
- * los cuales la mediana aguanta pero los cuartiles no.
+ * The ranges discard the known rubbish —the DSCR of 91,617 we have been carrying
+ * since `db:predictors`, the LTVs that arrive as a percentage without dividing—
+ * without which the median holds up but the quartiles do not.
  */
-const METRICAS: Array<{ key: string; etiqueta: string; min: number; max: number; fmt: (v: number) => string }> = [
-  { key: "interest_rate", etiqueta: "Tasa de interés", min: 0.001, max: 0.2, fmt: (v) => pct(v, 2) },
-  { key: "dscr", etiqueta: "DSCR", min: 0.1, max: 20, fmt: (v) => v.toFixed(2) },
-  { key: "ltv", etiqueta: "LTV", min: 0.01, max: 2, fmt: (v) => pct(v, 1) },
-  { key: "debt_yield", etiqueta: "Debt yield", min: 0.01, max: 1, fmt: (v) => pct(v, 1) },
-  { key: "loan_amount", etiqueta: "Saldo", min: 1e5, max: 1e10, fmt: (v) => `${(v / 1e6).toFixed(1)}M` },
-  { key: "occupancy", etiqueta: "Ocupación", min: 0.1, max: 1.01, fmt: (v) => pct(v, 1) },
-  { key: "term_original", etiqueta: "Plazo (meses)", min: 12, max: 480, fmt: (v) => v.toFixed(0) },
+const METRICS: Array<{ key: string; label: string; min: number; max: number; fmt: (v: number) => string }> = [
+  { key: "interest_rate", label: "Interest rate", min: 0.001, max: 0.2, fmt: (v) => pct(v, 2) },
+  { key: "dscr", label: "DSCR", min: 0.1, max: 20, fmt: (v) => v.toFixed(2) },
+  { key: "ltv", label: "LTV", min: 0.01, max: 2, fmt: (v) => pct(v, 1) },
+  { key: "debt_yield", label: "Debt yield", min: 0.01, max: 1, fmt: (v) => pct(v, 1) },
+  { key: "loan_amount", label: "Saldo", min: 1e5, max: 1e10, fmt: (v) => `${(v / 1e6).toFixed(1)}M` },
+  { key: "occupancy", label: "Occupancy", min: 0.1, max: 1.01, fmt: (v) => pct(v, 1) },
+  { key: "term_original", label: "Plazo (meses)", min: 12, max: 480, fmt: (v) => v.toFixed(0) },
 ];
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿Son comparables las añadas? — el test que decide si hay referencia");
+console.log("Are the vintages comparable? — the test that decides whether there is a reference");
 console.log(`${"═".repeat(78)}`);
 
-const { rows: anadas } = await query<{ anada: string; n: string }>(
-  `SELECT extract(year FROM f.filed_at)::int::text AS anada, count(l.id)::text AS n
+const { rows: vintages } = await query<{ vintage: string; n: string }>(
+  `SELECT extract(year FROM f.filed_at)::int::text AS vintage, count(l.id)::text AS n
      FROM corpus.filings f JOIN corpus.loans l ON l.accession = f.accession
     WHERE f.filed_at IS NOT NULL
-    GROUP BY 1 HAVING count(l.id) >= ${MIN_POR_ANADA}
+    GROUP BY 1 HAVING count(l.id) >= ${MIN_PER_VINTAGE}
     ORDER BY 1`,
 );
 
-const cols = anadas.map((a) => a.anada);
+const cols = vintages.map((a) => a.vintage);
 console.log(
-  `\n\x1b[90m  ${cols.length} añadas con ≥ ${MIN_POR_ANADA} préstamos: ` +
-    `${anadas.map((a) => `${a.anada} (${a.n})`).join(" · ")}\x1b[0m\n`,
+  `\n\x1b[90m  ${cols.length} vintages with ≥ ${MIN_PER_VINTAGE} loans: ` +
+    `${vintages.map((a) => `${a.vintage} (${a.n})`).join(" · ")}\x1b[0m\n`,
 );
 
 console.log(
-  `  métrica          ` + cols.map((c) => c.padStart(9)).join("") + `   desplaz.    nulo  ×nulo`,
+  `  metric           ` + cols.map((c) => c.padStart(9)).join("") + `   shift      null  ×null`,
 );
 console.log(`  ${"─".repeat(20 + cols.length * 9 + 12)}`);
 
 interface Resultado {
-  etiqueta: string;
-  desplazamiento: number;
+  label: string;
+  shift: number;
   monotona: boolean;
-  /** Cuánto se desplazaría por puro muestreo si las añadas fueran intercambiables. */
+  /** How much it would shift by pure sampling if the vintages were exchangeable. */
   nuloMediana: number | null;
   pValor: number;
 }
 
-/** Semilla fija: un p-valor que cambia entre corridas no se puede citar. */
+/** Fixed seed: a p-value that changes between runs cannot be quoted. */
 function rng(semilla: number) {
   let s = semilla >>> 0;
   return () => {
@@ -113,11 +111,11 @@ function rng(semilla: number) {
     return s / 4294967296;
   };
 }
-const resultados: Resultado[] = [];
+const results: Resultado[] = [];
 
-for (const m of METRICAS) {
-  const { rows } = await query<{ anada: string; mediana: string | null; n: string; valores: number[] }>(
-    `SELECT extract(year FROM f.filed_at)::int::text AS anada,
+for (const m of METRICS) {
+  const { rows } = await query<{ vintage: string; mediana: string | null; n: string; valores: number[] }>(
+    `SELECT extract(year FROM f.filed_at)::int::text AS vintage,
             percentile_cont(0.5) WITHIN GROUP (ORDER BY fa.value::numeric)::text AS mediana,
             count(*)::text AS n,
             array_agg(fa.value::numeric) AS valores
@@ -128,29 +126,29 @@ for (const m of METRICAS) {
         AND fa.value ~ '^-?[0-9.]+$'
         AND fa.value::numeric BETWEEN ${m.min} AND ${m.max}
         AND f.filed_at IS NOT NULL
-      GROUP BY 1 HAVING count(*) >= ${MIN_POR_ANADA}
+      GROUP BY 1 HAVING count(*) >= ${MIN_PER_VINTAGE}
       ORDER BY 1`,
     [m.key],
   );
 
-  const porAnada = new Map(rows.map((r) => [r.anada, Number(r.mediana)]));
+  const porAnada = new Map(rows.map((r) => [r.vintage, Number(r.mediana)]));
   const valores = cols.map((c) => porAnada.get(c) ?? null);
   const presentes = valores.filter((v): v is number => v !== null);
 
   if (presentes.length < 3) {
-    console.log(`  ${m.etiqueta.padEnd(17)}` + `\x1b[90m  sin muestra suficiente\x1b[0m`);
+    console.log(`  ${m.label.padEnd(17)}` + `\x1b[90m  sin muestra suficiente\x1b[0m`);
     continue;
   }
 
   const alto = Math.max(...presentes);
   const bajo = Math.min(...presentes);
   const centro = presentes.slice().sort((a, b) => a - b)[Math.floor(presentes.length / 2)]!;
-  const desplazamiento = centro !== 0 ? (alto - bajo) / Math.abs(centro) : 0;
+  const shift = centro !== 0 ? (alto - bajo) / Math.abs(centro) : 0;
 
   /**
-   * Monótona o no: un desplazamiento grande pero en zigzag es ruido de
-   * composición; uno que va siempre en la misma dirección es una tendencia del
-   * mercado, y ese es el que hace que las añadas no sean intercambiables.
+   * Monotone or not: a large shift that zigzags is composition noise; one that
+   * always goes the same way is a market trend, and that is the one that makes the
+   * vintages non-exchangeable.
    */
   let subiendo = true;
   let bajando = true;
@@ -161,27 +159,27 @@ for (const m of METRICAS) {
   const monotona = subiendo || bajando;
 
   /**
-   * EL NULO DEL DESPLAZAMIENTO, QUE FALTABA.
+   * THE NULL FOR THE SHIFT, WHICH WAS MISSING.
    *
-   * El umbral del 20% estaba fijado a priori y sin referencia. Pero las medianas
-   * por añada varían por muestreo aunque las añadas sean idénticas, así que
-   * `(máx − mín) / mediana` tiene un valor esperado MAYOR A CERO que crece con la
-   * cantidad de añadas y baja con el n de cada celda. Comparar contra 20% sin
-   * saber cuánto vale el nulo es la clase de error que esta sesión encontró siete
-   * veces.
+   * The 20% threshold was fixed a priori and with no reference. But the per-vintage
+   * medians vary by sampling even if the vintages are identical, so
+   * `(max − min) / median` has an expected value GREATER THAN ZERO that grows with
+   * the number of vintages and falls with each cell's n. Comparing against 20%
+   * without knowing what the null is worth is the class of error this session found
+   * seven times.
    *
-   * Se simula lo que la pregunta afirma: si las añadas fueran intercambiables, se
-   * sacan de una bolsa común tantos valores como tiene cada una y se recalcula el
-   * desplazamiento. El observado se compara contra esa distribución.
+   * It simulates what the question asserts: if the vintages were exchangeable, you
+   * draw from a common pool as many values as each one has and recompute the shift.
+   * The observed value is compared against that distribution.
    *
-   * Nota sobre el costo: esto remuestrea miles de valores por métrica, así que se
-   * usan 600 réplicas en vez de 2.000. Con un observado que suele estar diez veces
-   * arriba del nulo, la precisión del p-valor no es lo que decide.
+   * A note on cost: this resamples thousands of values per metric, so it uses 600
+   * replicates rather than 2,000. With an observed value usually ten times above the
+   * null, the p-value's precision is not what decides.
    */
   const REPLICAS = 600;
   const bolsa = rows.flatMap((r) => (r.valores ?? []).map(Number)).filter(Number.isFinite);
   const tamanos = rows
-    .filter((r) => porAnada.has(r.anada))
+    .filter((r) => porAnada.has(r.vintage))
     .map((r) => Number(r.n));
 
   let nuloMediana: number | null = null;
@@ -193,7 +191,7 @@ for (const m of METRICAS) {
     for (let k = 0; k < REPLICAS; k++) {
       const medianas: number[] = [];
       for (const n of tamanos) {
-        // Muestreo con reemplazo de la bolsa común: la hipótesis de intercambio.
+        // Sampling with replacement from the common pool: the exchangeability hypothesis.
         const muestra: number[] = [];
         for (let i = 0; i < n; i++) muestra.push(bolsa[Math.floor(rand() * bolsa.length)]!);
         muestra.sort((a, b) => a - b);
@@ -207,35 +205,35 @@ for (const m of METRICAS) {
     }
     simulados.sort((a, b) => a - b);
     nuloMediana = simulados[Math.floor(simulados.length / 2)]!;
-    pValor = simulados.filter((x) => x >= desplazamiento).length / simulados.length;
+    pValor = simulados.filter((x) => x >= shift).length / simulados.length;
   }
 
-  resultados.push({ etiqueta: m.etiqueta, desplazamiento, monotona, nuloMediana, pValor });
+  results.push({ label: m.label, shift, monotona, nuloMediana, pValor });
 
   const color =
-    desplazamiento > DESPLAZAMIENTO_TOLERABLE ? "\x1b[31m" : "\x1b[32m";
+    shift > TOLERABLE_SHIFT ? "\x1b[31m" : "\x1b[32m";
   console.log(
-    `  ${m.etiqueta.padEnd(17)}` +
+    `  ${m.label.padEnd(17)}` +
       valores.map((v) => (v === null ? "—" : m.fmt(v)).padStart(9)).join("") +
-      `   ${color}${pct(desplazamiento).padStart(7)}\x1b[0m` +
+      `   ${color}${pct(shift).padStart(7)}\x1b[0m` +
       `  \x1b[90m${nuloMediana === null ? "  —" : pct(nuloMediana).padStart(6)}\x1b[0m` +
       /**
-       * El cociente contra el nulo, que es lo que el p-valor no dice.
+       * The ratio against the null, which is what the p-value does not say.
        *
-       * Con miles de préstamos por celda TODO sale significativo — el propio
-       * docstring lo anticipaba— así que el p no decide nada. Lo que importa es
-       * cuántas veces el desplazamiento observado supera al ruido: abajo de 2x, el
-       * umbral del 20% está haciendo el trabajo del muestreo y no del mercado.
+       * With thousands of loans per cell EVERYTHING comes out significant — the
+       * docstring itself anticipated that — so the p decides nothing. What matters
+       * is how many times the observed shift exceeds the noise: below 2x, the 20%
+       * threshold is doing sampling's work and not the market's.
        *
-       * El Saldo es el caso: nulo del 16% porque su mediana tiene colas gruesas.
-       * Con un observado del 106% sobra, pero si hubiera sido 25% el criterio a
-       * priori habría dicho "inestable" con 1,5x de margen sobre el ruido.
+       * Balance is the case: a null of 16% because its median has fat tails. With
+       * an observed 106% there is plenty of room, but had it been 25% the a priori
+       * criterion would have said "unstable" with 1.5x of margin over the noise.
        */
       `  ${
         nuloMediana === null || nuloMediana === 0
           ? "\x1b[90m    —\x1b[0m"
           : (() => {
-              const veces = desplazamiento / nuloMediana;
+              const veces = shift / nuloMediana;
               return `${veces < 2 ? "\x1b[33m" : "\x1b[90m"}${veces.toFixed(1)}x\x1b[0m`;
             })()
       }` +
@@ -244,154 +242,154 @@ for (const m of METRICAS) {
 }
 
 console.log(
-  `\n  \x1b[90mDesplazamiento = (máx − mín) / mediana central. La columna "nulo" es cuánto\x1b[0m`,
+  `\n  \x1b[90mShift = (max − min) / central median. The "null" column is how much it\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mse desplazaría por puro muestreo si las añadas fueran intercambiables:\x1b[0m`,
+  `  \x1b[90mwould shift by pure sampling if the vintages were exchangeable:\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mse sacan de una bolsa común tantos valores como tiene cada añada y se\x1b[0m`,
+  `  \x1b[90myou draw from a common pool as many values as each vintage has and\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mrecalcula. El umbral de ${pct(DESPLAZAMIENTO_TOLERABLE)} estaba fijado a priori y sin referencia;\x1b[0m`,
+  `  \x1b[90mrecompute. The threshold of ${pct(TOLERABLE_SHIFT)} was fixed a priori with no reference;\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mahora se ve si está arriba o abajo del nulo. Umbral ${pct(DESPLAZAMIENTO_TOLERABLE)},\x1b[0m`,
+  `  \x1b[90mnow you can see whether it sits above or below the null. Threshold ${pct(TOLERABLE_SHIFT)},\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mfijado antes de mirar. ↗ marca las que se mueven siempre en la misma\x1b[0m`,
+  `  \x1b[90mfixed before looking. ↗ marks the ones that always move in the same\x1b[0m`,
 );
-console.log(`  \x1b[90mdirección: tendencia del mercado, no ruido de composición.\x1b[0m`);
-
+console.log(`  \x1b[90mdirection: a market trend, not composition noise.\x1b[0m`);
 /**
- * QUÉ REVELÓ EL NULO EN ESTE CORPUS, Y EN QUÉ DIRECCIÓN
+ * WHAT THE NULL REVEALED IN THIS CORPUS, AND IN WHICH DIRECTION
  *
- * Los cocientes medidos: Tasa 10,9x · DSCR 10,0x · LTV 11,5x · Debt yield 5,8x ·
- * Saldo 6,8x · Ocupación 3,4x. Ninguno abajo de 2x, así que el umbral del 20%
- * tiene margen en las siete.
+ * The measured ratios: Rate 10.9x · DSCR 10.0x · LTV 11.5x · Debt yield 5.8x ·
+ * Balance 6.8x · Occupancy 3.4x. None below 2x, so the 20% threshold has margin on
+ * all seven.
  *
- * La preocupación con la que se agregó esta columna era el Saldo: su nulo es 16%
- * —ocho veces el del LTV, porque su mediana tiene colas gruesas— y con un umbral
- * fijo de 20% eso deja poco aire. Pero el observado es 106%, así que el temor era
- * un condicional que no se cumplió.
+ * The worry this column was added for was Balance: its null is 16% —eight times
+ * LTV's, because its median has fat tails— and with a fixed 20% threshold that
+ * leaves little air. But the observed value is 106%, so the fear was a conditional
+ * that did not materialise.
  *
- * Lo que la tabla sí muestra va en la dirección contraria. LTV y Debt yield están
- * los dos en 21%, apenas arriba del umbral, y son 11,5x y 5,8x el ruido. El
- * criterio del 20% casi los clasifica como estables cuando están abrumadoramente
- * por encima del muestreo: acá el riesgo es que el umbral sea demasiado ESTRICTO.
+ * What the table does show runs the other way. LTV and Debt yield are both at 21%,
+ * barely above the threshold, and are 11.5x and 5.8x the noise. The 20% criterion
+ * almost classified them as stable when they are overwhelmingly above sampling:
+ * here the risk is the threshold being too STRICT.
  *
- * Eso no cambia el veredicto —las seis inestables lo son por las dos varas— pero sí
- * cambia qué vara conviene mirar si mañana una métrica cae a 18%.
+ * That does not change the verdict —the six unstable ones are unstable by both
+ * yardsticks— but it does change which yardstick to look at if a metric drops to
+ * 18% tomorrow.
  */
 
 /**
- * LAS DOS PREGUNTAS SON DISTINTAS Y CONVIENE NO MEZCLARLAS.
+ * THE TWO QUESTIONS ARE DIFFERENT AND WORTH NOT MIXING.
  *
- * El umbral del 20% pregunta si el desplazamiento es GRANDE. El nulo pregunta si es
- * REAL. La ocupación se desplaza 3% contra un nulo de 1%: real y despreciable a la
- * vez, y las dos cosas son ciertas.
+ * The 20% threshold asks whether the shift is LARGE. The null asks whether it is
+ * REAL. Occupancy shifts 3% against a null of 1%: real and negligible at once, and
+ * both are true.
  *
- * Lo que decide si hay referencia pooled es la primera —un desplazamiento del 3% no
- * arruina una referencia— así que el veredicto sigue usando el umbral. El nulo entra
- * como control de que el umbral esté por encima del ruido, y ahí aparece el único
- * caso donde no lo está con margen.
+ * What decides whether there is a pooled reference is the first —a 3% shift does
+ * not ruin a reference— so the verdict still uses the threshold. The null enters as
+ * a check that the threshold sits above the noise, and there the single case where
+ * it does not with margin appears.
  */
-const cercaDelRuido = resultados.filter(
-  (r) => r.nuloMediana !== null && r.nuloMediana > 0 && r.desplazamiento / r.nuloMediana < 2,
+const nearNoise = results.filter(
+  (r) => r.nuloMediana !== null && r.nuloMediana > 0 && r.shift / r.nuloMediana < 2,
 );
-if (cercaDelRuido.length > 0) {
+if (nearNoise.length > 0) {
   console.log(
-    `\n  \x1b[33mAtención:\x1b[0m ${cercaDelRuido.map((r) => r.etiqueta).join(", ")} ` +
-      `tiene(n) el desplazamiento a menos`,
+    `\n  \x1b[33mNote:\x1b[0m ${nearNoise.map((r) => r.label).join(", ")} ` +
+      `ha(ve) a shift less than`,
   );
   console.log(
-    `  \x1b[90mde 2x del ruido de muestreo. Ahí el umbral del ${pct(DESPLAZAMIENTO_TOLERABLE)} no distingue mercado\x1b[0m`,
+    `  \x1b[90m2x the sampling noise. There the ${pct(TOLERABLE_SHIFT)} threshold does not separate market\x1b[0m`,
   );
-  console.log(`  \x1b[90mde azar, y el veredicto sobre esa métrica no se puede citar.\x1b[0m`);
+  console.log(`  \x1b[90mfrom chance, and the verdict on that metric cannot be quoted.\x1b[0m`);
 }
 
-const inestables = resultados.filter((r) => r.desplazamiento > DESPLAZAMIENTO_TOLERABLE);
-const tendencia = inestables.filter((r) => r.monotona);
+const unstable = results.filter((r) => r.shift > TOLERABLE_SHIFT);
+const trending = unstable.filter((r) => r.monotona);
 
 console.log(`\n${"─".repeat(78)}\n`);
 console.log(
-  `  ${inestables.length} de ${resultados.length} métricas se desplazan más del ` +
-    `${pct(DESPLAZAMIENTO_TOLERABLE)}` +
-    (tendencia.length > 0 ? `, ${tendencia.length} con tendencia monótona` : ""),
+  `  ${unstable.length} of ${results.length} metrics shift more than ` +
+    `${pct(TOLERABLE_SHIFT)}` +
+    (trending.length > 0 ? `, ${trending.length} with a monotone trend` : ""),
 );
 
-if (inestables.length === 0) {
+if (unstable.length === 0) {
   console.log(
-    `\n  \x1b[32mLas añadas son comparables.\x1b[0m Una referencia pooled es defendible.\n`,
+    `\n  \x1b[32mThe vintages are comparable.\x1b[0m A pooled reference is defensible.\n`,
   );
 } else {
   console.log(
-    `\n  \x1b[31mNo son intercambiables:\x1b[0m ${inestables.map((r) => r.etiqueta).join(", ")}.`,
+    `\n  \x1b[31mNo son intercambiables:\x1b[0m ${unstable.map((r) => r.label).join(", ")}.`,
   );
   console.log(
-    `\n  \x1b[90mUna referencia histórica pooled sobre esas métricas mediría el ciclo y\x1b[0m`,
+    `\n  \x1b[90mA pooled historical reference over those metrics would measure the cycle\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mno la emisión. La referencia tiene que ser POR AÑADA o contra tendencia.\x1b[0m`,
+    `  \x1b[90mand not the issuance. The reference has to be PER VINTAGE or against trend.\x1b[0m`,
   );
   console.log(
-    `\n  \x1b[90mY eso tiene un costo que conviene decir ahora: por añada, el n de cada\x1b[0m`,
+    `\n  \x1b[90mAnd that has a cost worth stating now: per vintage, each cell's n is\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mcelda se divide por cinco, que es la misma restricción que ya nos frenó.\x1b[0m\n`,
+    `  \x1b[90mdivided by five, which is the same constraint that already stopped us.\x1b[0m\n`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// ¿El plazo explica la deriva mejor que la añada?
+// Does the term explain the drift better than the vintage?
 // ---------------------------------------------------------------------------
 
 /**
- * El hallazgo que no vi venir, y su consecuencia.
+ * The finding I did not see coming, and its consequence.
  *
- * El plazo pasó de 120 meses a 60 entre 2022 y 2024, monótono, y es la única
- * métrica del tablero que se mueve siempre en la misma dirección. El mercado
- * cambió de préstamos a diez años a préstamos a cinco — por eso existen los
- * shelves BANK5, BBCMS 5C y BMO 5C, nombres que veníamos leyendo dos días sin
- * registrar qué querían decir.
+ * The term went from 120 months to 60 between 2022 and 2024, monotonically, and it
+ * is the only metric on the board that always moves the same way. The market shifted
+ * from ten-year loans to five-year loans — which is why the BANK5, BBCMS 5C and BMO
+ * 5C shelves exist, names we had been reading for two days without registering what
+ * they meant.
  *
- * Eso no es un estorbo: es un cambio de producto. Y si el producto es lo que
- * cambió, el eje de comparación correcto no es la añada sino el plazo.
+ * That is not a nuisance: it is a change of product. And if the product is what
+ * changed, the correct comparison axis is not the vintage but the term.
  *
- * POR QUÉ IMPORTA PARA LA ARITMÉTICA
+ * WHY IT MATTERS FOR THE ARITHMETIC
  *
- * Por añada el n se divide en nueve. Por plazo se divide en dos: ~5.000
- * préstamos a diez años y ~4.700 a cinco. Es la diferencia entre tener
- * referencia y no tenerla.
+ * By vintage the n divides by nine. By term it divides by two: ~5,000 ten-year
+ * loans and ~4,700 five-year. That is the difference between having a reference and
+ * not having one.
  *
- * CÓMO SE LEE
+ * HOW TO READ IT
  *
- * Para cada métrica, el desplazamiento entre añadas DENTRO de cada bucket de
- * plazo, contra el desplazamiento global de la tabla anterior.
+ * For each metric, the shift between vintages WITHIN each term bucket, against the
+ * global shift from the previous table.
  *
- *   baja mucho   →  la deriva era el cambio de producto: referencia por plazo
- *   no baja      →  es macro puro y no hay más remedio que la añada
+ *   falls a lot  →  the drift was the product change: reference by term
+ *   does not fall →  it is pure macro and there is no alternative to the vintage
  *
- * LO QUE NO PUEDE PASAR Y HAY QUE VIGILAR
+ * WHAT CANNOT HAPPEN AND HAS TO BE WATCHED
  *
- * Los buckets están casi perfectamente separados en el tiempo: 10 años es
- * 2013-2022 y 5 años es 2023-2026. Si dentro de un bucket quedan pocas añadas,
- * el desplazamiento baja por falta de rango temporal y no porque el plazo
- * explique nada. Por eso se imprime cuántas añadas tiene cada bucket ANTES del
+ * The buckets are almost perfectly separated in time: 10 years is 2013-2022 and 5
+ * years is 2023-2026. If few vintages remain inside a bucket, the shift falls for
+ * lack of temporal range and not because the term explains anything. That is why
+ * how many vintages each bucket has is printed BEFORE the
  * resultado.
  */
-const BUCKETS: Array<{ etiqueta: string; min: number; max: number }> = [
-  { etiqueta: "≤ 84 meses", min: 12, max: 84 },
-  { etiqueta: "> 84 meses", min: 85, max: 480 },
+const BUCKETS: Array<{ label: string; min: number; max: number }> = [
+  { label: "≤ 84 meses", min: 12, max: 84 },
+  { label: "> 84 meses", min: 85, max: 480 },
 ];
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿El plazo explica la deriva mejor que la añada?");
+console.log("Does the term explain the drift better than the vintage?");
 console.log(`${"═".repeat(78)}`);
 
 for (const b of BUCKETS) {
-  const { rows: cobertura } = await query<{ anadas: string; n: string }>(
-    `SELECT count(DISTINCT extract(year FROM f.filed_at))::text AS anadas,
+  const { rows: coverage } = await query<{ vintages: string; n: string }>(
+    `SELECT count(DISTINCT extract(year FROM f.filed_at))::text AS vintages,
             count(*)::text AS n
        FROM corpus.facts t
        JOIN corpus.loans l ON l.id = t.loan_id
@@ -400,22 +398,22 @@ for (const b of BUCKETS) {
         AND t.value::numeric BETWEEN ${b.min} AND ${b.max}`,
   );
 
-  const nAnadas = Number(cobertura[0]?.anadas ?? 0);
+  const nVintages = Number(coverage[0]?.vintages ?? 0);
   console.log(
-    `\n  \x1b[1m${b.etiqueta}\x1b[0m  ${Number(cobertura[0]?.n ?? 0).toLocaleString("en-US")} préstamos ` +
-      `en ${nAnadas} añadas` +
-      (nAnadas < 3
-        ? `  \x1b[31m← sin rango temporal: cualquier caída es artefacto\x1b[0m`
+    `\n  \x1b[1m${b.label}\x1b[0m  ${Number(coverage[0]?.n ?? 0).toLocaleString("en-US")} loans ` +
+      `across ${nVintages} vintages` +
+      (nVintages < 3
+        ? `  \x1b[31m← no temporal range: any fall is an artefact\x1b[0m`
         : ""),
   );
-  if (nAnadas < 3) continue;
+  if (nVintages < 3) continue;
 
-  console.log(`    métrica            global   dentro del bucket`);
+  console.log(`    metric             global   within the bucket`);
   console.log(`    ${"─".repeat(48)}`);
 
-  for (const m of METRICAS) {
+  for (const m of METRICS) {
     if (m.key === "term_original") continue;
-    const prev = resultados.find((r) => r.etiqueta === m.etiqueta);
+    const prev = results.find((r) => r.label === m.label);
     if (!prev) continue;
 
     const { rows } = await query<{ mediana: string | null }>(
@@ -438,31 +436,31 @@ for (const b of BUCKETS) {
 
     const vals = rows.map((r) => Number(r.mediana)).filter((v) => Number.isFinite(v));
     if (vals.length < 3) {
-      console.log(`    ${m.etiqueta.padEnd(18)} ${pct(prev.desplazamiento).padStart(6)}   \x1b[90m—\x1b[0m`);
+      console.log(`    ${m.label.padEnd(18)} ${pct(prev.shift).padStart(6)}   \x1b[90m—\x1b[0m`);
       continue;
     }
 
     const centro = vals.slice().sort((a, b2) => a - b2)[Math.floor(vals.length / 2)]!;
     const dentro = centro !== 0 ? (Math.max(...vals) - Math.min(...vals)) / Math.abs(centro) : 0;
-    const mejora = prev.desplazamiento > 0 ? 1 - dentro / prev.desplazamiento : 0;
+    const mejora = prev.shift > 0 ? 1 - dentro / prev.shift : 0;
 
     console.log(
-      `    ${m.etiqueta.padEnd(18)} ${pct(prev.desplazamiento).padStart(6)}   ` +
-        `${(dentro <= DESPLAZAMIENTO_TOLERABLE ? "\x1b[32m" : "\x1b[31m")}${pct(dentro).padStart(6)}\x1b[0m` +
+      `    ${m.label.padEnd(18)} ${pct(prev.shift).padStart(6)}   ` +
+        `${(dentro <= TOLERABLE_SHIFT ? "\x1b[32m" : "\x1b[31m")}${pct(dentro).padStart(6)}\x1b[0m` +
         `   \x1b[90m${mejora > 0 ? `−${pct(mejora)}` : "sin mejora"}\x1b[0m`,
     );
   }
 }
 
 console.log(
-  `\n  \x1b[90mSi el desplazamiento dentro del bucket cae por debajo del ${pct(DESPLAZAMIENTO_TOLERABLE)},\x1b[0m`,
+  `\n  \x1b[90mIf the shift within the bucket falls below ${pct(TOLERABLE_SHIFT)},\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mla deriva era el cambio de producto y la referencia se arma por plazo,\x1b[0m`,
+  `  \x1b[90mthe drift was the product change and the reference is built by term,\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mcon miles de préstamos por celda. Si no cae, es macro y hay que ir por\x1b[0m`,
+  `  \x1b[90mwith thousands of loans per cell. If it does not fall, it is macro and we\x1b[0m`,
 );
-console.log(`  \x1b[90mañada — con el n dividido en nueve.\x1b[0m\n`);
+console.log(`  \x1b[90mhave to go by vintage — with the n divided by nine.\x1b[0m\n`);
 
 await closePool();
