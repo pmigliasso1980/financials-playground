@@ -35,27 +35,8 @@ from collections import Counter
 # Spanish stems that are not English words. Deliberately conservative: a stem
 # that is also English (total, real, base, error, local, final, no, id, mas)
 # is left out, because a checker that cries wolf gets muted.
-STEMS = """
-saldo saldos prestamo prestamos emision emisiones cosecha cosechas cosechado
-anada anadas mediana medianas promedio vendedor vendedores comprador
-subtipo subtipos tipo tipos estrato estratos recorte recortes recortado
-veredicto veredictos hallazgo hallazgos mapeo mapeos encabezado encabezados
-consulta consultas archivo archivos columna columnas fila filas dato datos
-numero numeros nulo nulos vacio vacios todos todas cuantos cuantas
-etiqueta etiquetas extraer permutar mezcla mezclar mezclado semilla
-plazo plazos meses mes dias dia anio anios fecha fechas
-reserva reservas evento eventos morosidad procedencia estampa
-alcance peldano escalera muestra muestras suficiente encontrados
-objetivo objetivos criterio criterios respuesta respuestas caso casos
-inicio fin comienzo primero segundo tercero ultimo ultima
-tamano tamanos ancho alto largo corto grande chico chicos
-banda bandas ruido piso techo umbral
-parcial parciales asignado asignados grupo grupos
-razon razones motivo motivos causa causas
-guardar leer escribir borrar buscar contar sumar restar
-sinesta conteo conteos calculo calculos medicion mediciones
-desempeno ocupacion suscripcion suscrito distribucion
-""".split()
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from spanish_vocab import CONTENT_STEMS as STEMS  # noqa: E402
 STEM_SET = set(STEMS)
 
 # Split camelCase, PascalCase, snake_case, SCREAMING_CASE into lowercase words.

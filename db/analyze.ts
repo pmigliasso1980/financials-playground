@@ -106,7 +106,7 @@ for (const [metric, label, unit] of [
   if (rows.length === 0) continue;
 
   console.log(`  ${label}`);
-  console.log(`    ${"tipo".padEnd(20)} ${"n".padStart(4)}  ${"p25".padStart(8)} ${"mediana".padStart(8)} ${"p75".padStart(8)}`);
+  console.log(`    ${"type".padEnd(20)} ${"n".padStart(4)}  ${"p25".padStart(8)} ${"median".padStart(8)} ${"p75".padStart(8)}`);
   for (const r of rows) {
     console.log(
       `    ${r.property_type.slice(0, 20).padEnd(20)} ${String(r.n).padStart(4)}  ` +

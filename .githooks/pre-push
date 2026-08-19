@@ -28,6 +28,9 @@ python3 tools/check-sql.py > /dev/null
 echo "pre-push: HTML/API contract"
 python3 tools/check-html-contract.py > /dev/null
 
+echo "pre-push: detectors agree with each other"
+python3 tools/agree.py > /dev/null
+
 echo "pre-push: Spanish (ratcheted — may fall, never rise)"
 python3 tools/ratchet.py
 

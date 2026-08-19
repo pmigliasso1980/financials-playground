@@ -44,7 +44,7 @@ function eq<T>(actual: T, expected: T, label: string) {
 
 // ---------------------------------------------------------------------------
 
-console.log("\nPersistencia del corpus\n");
+console.log("\nCorpus persistence\n");
 
 const health = await ping();
 if (!health.ok) {
@@ -201,7 +201,7 @@ await check("facts point at the observation that produced them", async () => {
       WHERE l.accession = $1 AND f.metric_key = 'noi_underwritten' AND l.row_index = 0`,
     [ACCESSION],
   );
-  eq(rows[0]?.header, "Underwritten Net Operating Income ($)", "provenance del fact");
+  eq(rows[0]?.header, "Underwritten Net Operating Income ($)", "provenance of the fact");
 });
 
 // ---------------------------------------------------------------------------
@@ -225,12 +225,12 @@ await check("the source is preserved in full", () => {
 
 await check("loans come back in order and with their labels", () => {
   eq(loaded!.properties.length, 2, "cantidad");
-  eq(loaded!.properties[0]!.label.property_name, "TheWit Chicago", "primero");
-  eq(loaded!.properties[0]!.label.city, "Chicago", "ciudad");
-  eq(loaded!.properties[1]!.label.property_name, "Ventana Residences", "segundo");
+  eq(loaded!.properties[0]!.label.property_name, "TheWit Chicago", "first");
+  eq(loaded!.properties[0]!.label.city, "Chicago", "city");
+  eq(loaded!.properties[1]!.label.property_name, "Ventana Residences", "second");
 });
 
-await check("las observations conservan valor, crudo y provenance", () => {
+await check("observations keep value, raw and provenance", () => {
   const noi = loaded!.properties[0]!.observations.find((o) => o.metric_key === "noi_underwritten");
   assert(noi, "did not find the NOI");
   eq(noi!.value, "10932267", "valor");
@@ -252,7 +252,7 @@ await check("no observation is lost", () => {
 await check("the processing metadata is preserved", () => {
   eq(loaded!.columnsUnmapped.length, 2, "unmapped columns");
   assert(loaded!.columnsUnmapped.includes("Footnotes"), "lost an unmapped header");
-  eq(loaded!.columnsMapped.length, 3, "columnas mapeadas");
+  eq(loaded!.columnsMapped.length, 3, "columns mapped");
   eq(loaded!.stats.propertiesKept, 2, "stats");
 });
 
@@ -262,7 +262,7 @@ console.log("\nRecosecha");
 
 const second = await saveHarvest(fixture);
 
-await check("recosechar reemplaza en vez de duplicar", async () => {
+await check("re-harvesting replaces rather than duplicates", async () => {
   eq(second.replaced, true, "should have replaced");
   const { rows } = await query<{ count: string }>(
     "SELECT count(*) AS count FROM corpus.loans WHERE accession = $1",
@@ -312,7 +312,7 @@ console.log("\nDiagnostic views");
 
 await check("metric_coverage counts loans per metric", async () => {
   const stats = await corpusStats();
-  assert(stats.filings > 0, "sin filings");
+  assert(stats.filings > 0, "no filings");
   const noi = stats.byMetric.find((m) => m.metric_key === "noi_underwritten");
   assert(noi, "noi_underwritten does not appear in the coverage");
   assert(noi!.loans >= 2, `expected at least 2 loans, there are ${noi!.loans}`);

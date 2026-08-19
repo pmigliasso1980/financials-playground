@@ -347,7 +347,7 @@ for (const [i, t] of targets.entries()) {
       console.log(
         `${tag} \x1b[90m○\x1b[0m ${name} \x1b[90msin NOI\x1b[0m  ` +
           `${String(delinquent).padStart(3)} delinquent of ${String(corpusLoans.length).padStart(3)} in the pool` +
-          `${attempts > 1 ? ` \x1b[90m(${attempts} meses)\x1b[0m` : ""}`,
+          `${attempts > 1 ? ` \x1b[90m(${attempts} months)\x1b[0m` : ""}`,
       );
       problems.push(
         `${t.company_name} [${report.periodOfReport}, ${attempts} intento(s)]: ` +
