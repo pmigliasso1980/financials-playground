@@ -97,7 +97,7 @@ if (LIST_ONLY) {
     console.log(
       `  ${c.filed.slice(0, 10)}  ${c.name.slice(0, 42).padEnd(44)} ${String(c.pool).padStart(4)}` +
         (share > TYPE_CONCENTRATION
-          ? `  \x1b[33mmono-tipo (${pct(share)} ${c.dominantType})\x1b[0m`
+          ? `  \x1b[33msingle-type (${pct(share)} ${c.dominantType})\x1b[0m`
           : ""),
     );
   }
@@ -131,12 +131,12 @@ if (AUDIT) {
        HAVING count(*) >= ${MIN_PER_METRIC}`,
       [m.key, accs],
     );
-    const con = new Set(rows.map((r) => r.accession));
-    const missing = cohort.filter((c) => !con.has(c.accession));
+    const withCount = new Set(rows.map((r) => r.accession));
+    const missing = cohort.filter((c) => !withCount.has(c.accession));
     const counts = new Map(rows.map((r) => [r.accession, Number(r.n)]));
-    const share = cohort.length ? con.size / cohort.length : 0;
+    const share = cohort.length ? withCount.size / cohort.length : 0;
     console.log(
-      `  ${m.label.padEnd(14)} ${`${con.size}/${cohort.length}`.padStart(8)}   ` +
+      `  ${m.label.padEnd(14)} ${`${withCount.size}/${cohort.length}`.padStart(8)}   ` +
         `${share >= 0.9 ? "\x1b[32m" : share >= 0.5 ? "\x1b[33m" : "\x1b[31m"}${pct(share).padStart(5)}\x1b[0m` +
         (missing.length > 0 ? `   \x1b[90m${missing.length} with no data\x1b[0m` : ""),
     );
@@ -144,13 +144,13 @@ if (AUDIT) {
     /**
      * The missing ones are named ALWAYS, not only when there are few.
      *
-     * The first version listed them with `sin.length <= 5` and above that printed
+     * The first version listed them with `missing.length <= 5` and above that printed
      * "7 issuances". It is the same error we keep chasing in the
      * data, committed in the report: a summary that hides exactly what is needed
      * to decide. Seven names do not fill a screen, and without them there is no
      * way to know whether the absence is random or structural.
      */
-    if (missing.length > 0 && con.size < cohort.length) {
+    if (missing.length > 0 && withCount.size < cohort.length) {
       /**
        * How many loans it REALLY has, without the threshold.
        *
@@ -178,7 +178,7 @@ if (AUDIT) {
       for (const x of missing) {
         const n = rawCount.get(x.accession) ?? 0;
         console.log(
-          `    \x1b[90m· ${x.name.slice(0, 42).padEnd(44)} ${String(n).padStart(3)} de ${x.pool}` +
+          `    \x1b[90m· ${x.name.slice(0, 42).padEnd(44)} ${String(n).padStart(3)} of ${x.pool}` +
             (n > 0 ? ` \x1b[33m← the datum exists, the threshold of ${MIN_PER_METRIC} cuts it\x1b[0m` : ` \x1b[90mzero\x1b[0m`),
         );
       }
@@ -195,9 +195,9 @@ if (AUDIT) {
    * biased — with nothing in the output indicating it.
    *
    * It is the same question that already cost us dearly with `property_type`: there the
-   * cobertura global era 93,7% y tres shelves enteros estaban abajo del umbral.
+   * global coverage was 93.7% and three whole shelves were below the threshold.
    */
-  const { rows: porShelf } = await query<{ shelf: string; total: string; with_occ: string }>(
+  const { rows: byShelf } = await query<{ shelf: string; total: string; with_occ: string }>(
     `WITH e AS (
        SELECT f.accession,
               split_part(f.company_name, ' ', 1) AS shelf,
@@ -218,12 +218,12 @@ if (AUDIT) {
   );
 
   console.log(`\n  Occupancy by shelf — does the absence cluster?\n`);
-  for (const r of porShelf) {
+  for (const r of byShelf) {
     const tot = Number(r.total);
-    const con = Number(r.with_occ);
+    const withCount = Number(r.with_occ);
     console.log(
-      `    ${r.shelf.slice(0, 18).padEnd(20)} ${`${con}/${tot}`.padStart(6)}` +
-        (con === 0 ? `  \x1b[31m← the whole shelf\x1b[0m` : con < tot ? `  \x1b[33mpartial\x1b[0m` : ""),
+      `    ${r.shelf.slice(0, 18).padEnd(20)} ${`${withCount}/${tot}`.padStart(6)}` +
+        (withCount === 0 ? `  \x1b[31m← the whole shelf\x1b[0m` : withCount < tot ? `  \x1b[33mpartial\x1b[0m` : ""),
     );
   }
   console.log(
@@ -260,10 +260,10 @@ if (AUDIT) {
    * is 42% multifamily, i.e. ~26 loans where occupancy is the asset's central
    * metric. But one case does not decide, and this cut does.
    */
-  const { rows: porTipo } = await query<{
+  const { rows: byType } = await query<{
     type: string; total: string; with_occ: string;
   }>(
-    `SELECT coalesce(l.property_type, '(sin tipo)') AS type,
+    `SELECT coalesce(l.property_type, '(no type)') AS type,
             count(*)::text AS total,
             count(*) FILTER (WHERE EXISTS (
               SELECT 1 FROM corpus.facts fa
@@ -277,20 +277,20 @@ if (AUDIT) {
     [accs],
   );
 
-  const totPrest = porTipo.reduce((a, r) => a + Number(r.total), 0);
-  const totOcc = porTipo.reduce((a, r) => a + Number(r.with_occ), 0);
+  const totPrest = byType.reduce((a, r) => a + Number(r.total), 0);
+  const totOcc = byType.reduce((a, r) => a + Number(r.with_occ), 0);
 
   console.log(`\n${"─".repeat(78)}`);
   console.log(`\n  Occupancy at LOAN level, by property type\n`);
   console.log(`    type                      loans   with occupancy`);
   console.log(`    ${"─".repeat(52)}`);
-  for (const r of porTipo) {
+  for (const r of byType) {
     const tot = Number(r.total);
-    const con = Number(r.with_occ);
-    const sh = con / tot;
+    const withCount = Number(r.with_occ);
+    const sh = withCount / tot;
     console.log(
       `    ${r.type.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
-        `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(con).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
+        `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(withCount).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
     );
   }
   console.log(
@@ -304,7 +304,7 @@ if (AUDIT) {
    * inside the asset and the "reported where it means something" explanation does
    * sostiene.
    */
-  const shares = porTipo.map((r) => Number(r.with_occ) / Number(r.total));
+  const shares = byType.map((r) => Number(r.with_occ) / Number(r.total));
   const spread = Math.max(...shares) - Math.min(...shares);
   console.log(
     `\n    \x1b[90mDispersion between types: ${pct(spread)} (from ${pct(Math.min(...shares))} to ${pct(Math.max(...shares))}).\x1b[0m`,
@@ -339,7 +339,7 @@ if (AUDIT) {
    * DO carry the datum, if coverage is even across types then format is the only
    * thing deciding and type plays no part.
    */
-  const { rows: dentro } = await query<{ type: string; total: string; with_occ: string }>(
+  const { rows: inside } = await query<{ type: string; total: string; with_occ: string }>(
     `WITH sanas AS (
        SELECT l.accession
          FROM corpus.loans l
@@ -351,7 +351,7 @@ if (AUDIT) {
                    AND fa.value ~ '^-?[0-9.]+$'
               ))::numeric / count(*) > 0.5
      )
-     SELECT coalesce(l.property_type, '(sin tipo)') AS type,
+     SELECT coalesce(l.property_type, '(no type)') AS type,
             count(*)::text AS total,
             count(*) FILTER (WHERE EXISTS (
               SELECT 1 FROM corpus.facts fa
@@ -368,13 +368,13 @@ if (AUDIT) {
   console.log(`\n  Only within the issuances that DO carry occupancy\n`);
   console.log(`    type                      loans   with occupancy`);
   console.log(`    ${"─".repeat(52)}`);
-  for (const r of dentro) {
+  for (const r of inside) {
     const tot = Number(r.total);
-    const con = Number(r.with_occ);
-    const sh = con / tot;
+    const withCount = Number(r.with_occ);
+    const sh = withCount / tot;
     console.log(
       `    ${r.type.slice(0, 20).padEnd(22)} ${String(tot).padStart(9)}   ` +
-        `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(con).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
+        `${(sh >= 0.8 ? "\x1b[32m" : sh >= 0.3 ? "\x1b[33m" : "\x1b[31m")}${String(withCount).padStart(5)} ${pct(sh).padStart(6)}\x1b[0m`,
     );
   }
 
@@ -391,7 +391,7 @@ if (AUDIT) {
    * The loans with no type are the `property_type` gap that is already
    * noted separately. They are shown, not computed.
    */
-  const sd = dentro
+  const sd = inside
     .filter((r) => !r.type.startsWith("("))
     .map((r) => Number(r.with_occ) / Number(r.total));
   const spreadWithin = sd.length ? Math.max(...sd) - Math.min(...sd) : 0;
@@ -452,7 +452,7 @@ if (AUDIT) {
    * variants means it is still mixed.
    */
   const { rows: cats } = await query<{ type: string; n: string; issuances: string }>(
-    `SELECT coalesce(property_type, '(sin tipo)') AS type,
+    `SELECT coalesce(property_type, '(no type)') AS type,
             count(*)::text AS n,
             count(DISTINCT accession)::text AS issuances
        FROM corpus.loans WHERE accession = ANY($1)
@@ -463,7 +463,7 @@ if (AUDIT) {
   for (const c of cats) {
     console.log(
       `    ${c.type.slice(0, 34).padEnd(36)} ${String(c.n).padStart(4)} loans` +
-        ` \x1b[90men ${c.issuances} emisiones\x1b[0m` +
+        ` \x1b[90men ${c.issuances} issuances\x1b[0m` +
         /**
          * Two flags, for two different failure modes.
          *
@@ -498,14 +498,14 @@ if (AUDIT) {
    * If it is a shift, the neighbouring fields will also be out of
    * place: a property name where the type goes, a type where the count goes. If
    * instead the rest looks healthy, "2" is an isolated dirty cell and there is no
-   * corrimiento — dos causas con arreglos completamente distintos.
+   * shift — two causes with completely different fixes.
    */
   const { rows: suspects } = await query<{
     name: string; loan_id: string; type: string;
     prop_name: string | null; prop_count: string | null; unit: string | null;
   }>(
     `SELECT f.company_name AS name,
-            coalesce(l.loan_ref, 'fila ' || l.row_index) AS loan_id,
+            coalesce(l.loan_ref, 'row ' || l.row_index) AS loan_id,
             l.property_type AS type,
             l.property_name AS prop_name,
             max(fa.value) FILTER (WHERE fa.metric_key = 'property_count') AS prop_count,
@@ -524,9 +524,9 @@ if (AUDIT) {
     for (const x of suspects) {
       console.log(`    \x1b[1m${x.name.slice(0, 40)}\x1b[0m  loan ${x.loan_id}`);
       console.log(
-        `      tipo=\x1b[31m${JSON.stringify(x.type)}\x1b[0m` +
+        `      type=\x1b[31m${JSON.stringify(x.type)}\x1b[0m` +
           `  # props=${JSON.stringify(x.prop_count)}` +
-          `  unidad=${JSON.stringify(x.unit)}`,
+          `  unit=${JSON.stringify(x.unit)}`,
       );
       console.log(`      nombre=${JSON.stringify((x.prop_name ?? "").slice(0, 44))}`);
     }
@@ -578,7 +578,7 @@ if (AUDIT) {
   const { rows: phantoms } = await query<{
     name: string; pool: string; thin: string; empty: string; min_facts: string;
   }>(
-    `WITH conteo AS (
+    `WITH counts AS (
        SELECT l.accession, l.id, count(fa.id) AS facts
          FROM corpus.loans l
          LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
@@ -590,7 +590,7 @@ if (AUDIT) {
             count(*) FILTER (WHERE c.facts <= 5)::text AS thin,
             count(*) FILTER (WHERE c.facts = 0)::text AS empty,
             min(c.facts)::text AS min_facts
-       FROM conteo c JOIN corpus.filings f ON f.accession = c.accession
+       FROM counts c JOIN corpus.filings f ON f.accession = c.accession
       GROUP BY f.company_name
      HAVING count(*) FILTER (WHERE c.facts <= 5) > 0
       ORDER BY count(*) FILTER (WHERE c.facts <= 5) DESC`,
@@ -603,7 +603,7 @@ if (AUDIT) {
   );
   for (const r of phantoms) {
     console.log(
-      `    ${r.name.slice(0, 40).padEnd(42)} ${String(r.thin).padStart(3)} de ${String(r.pool).padStart(3)}` +
+      `    ${r.name.slice(0, 40).padEnd(42)} ${String(r.thin).padStart(3)} of ${String(r.pool).padStart(3)}` +
         `  \x1b[90mminimum ${r.min_facts} facts\x1b[0m` +
         (Number(r.empty) > 0 ? `  \x1b[31m${r.empty} with no fact at all\x1b[0m` : ""),
     );
@@ -648,8 +648,8 @@ if (AUDIT) {
    * corpus-wide cut by looking at 12% is the same unit error that has already come
    * up twice today: measuring where it is convenient and applying where it matters.
    */
-  const { rows: histo } = await query<{ tramo: string; n: string }>(
-    `WITH conteo AS (
+  const { rows: histo } = await query<{ bucket: string; n: string }>(
+    `WITH counts AS (
        SELECT l.id, count(fa.id) AS facts
          FROM corpus.loans l
          LEFT JOIN corpus.facts fa ON fa.loan_id = l.id
@@ -661,9 +661,9 @@ if (AUDIT) {
               WHEN facts < 40 THEN '20-39'
               WHEN facts < 60 THEN '40-59'
               ELSE '60+'
-            END AS tramo,
+            END AS bucket,
             count(*)::text AS n
-       FROM conteo GROUP BY 1 ORDER BY 1`,
+       FROM counts GROUP BY 1 ORDER BY 1`,
   );
 
   const totalCorpus = histo.reduce((a, h) => a + Number(h.n), 0);
@@ -673,10 +673,10 @@ if (AUDIT) {
   const maxN = Math.max(...histo.map((h) => Number(h.n)));
   for (const h of histo) {
     const n = Number(h.n);
-    const barra = "█".repeat(Math.max(1, Math.round((n / maxN) * 44)));
-    const chico = /^\s*\d+$/.test(h.tramo) && Number(h.tramo) <= 10;
+    const bar = "█".repeat(Math.max(1, Math.round((n / maxN) * 44)));
+    const small = /^\s*\d+$/.test(h.bucket) && Number(h.bucket) <= 10;
     console.log(
-      `    ${h.tramo.padStart(5)}  ${chico ? "\x1b[31m" : "\x1b[90m"}${barra}\x1b[0m ${n}`,
+      `    ${h.bucket.padStart(5)}  ${small ? "\x1b[31m" : "\x1b[90m"}${bar}\x1b[0m ${n}`,
     );
   }
 
@@ -697,24 +697,24 @@ if (AUDIT) {
    * It is the fifth verdict this session computed over a set that is not
    * the one the sentence describes. The table was right all five times.
    */
-  const presentes = new Set(
-    histo.map((h) => h.tramo.trim()).filter((t) => /^\d+$/.test(t)).map(Number),
+  const present = new Set(
+    histo.map((h) => h.bucket.trim()).filter((t) => /^\d+$/.test(t)).map(Number),
   );
-  const floor = Math.min(...presentes);
-  const techo = Math.max(...presentes);
+  const floor = Math.min(...present);
+  const ceiling = Math.max(...present);
 
   /** The longest contiguous run of empty buckets, only between floor and ceiling. */
-  let mejor: number[] = [];
-  let actual: number[] = [];
-  for (let k = floor; k <= techo; k++) {
-    if (presentes.has(k)) {
-      if (actual.length > mejor.length) mejor = actual;
-      actual = [];
-    } else actual.push(k);
+  let best: number[] = [];
+  let current: number[] = [];
+  for (let k = floor; k <= ceiling; k++) {
+    if (present.has(k)) {
+      if (current.length > best.length) best = current;
+      current = [];
+    } else current.push(k);
   }
-  if (actual.length > mejor.length) mejor = actual;
+  if (current.length > best.length) best = current;
 
-  const emptyBuckets = [...Array(10).keys()].map((k) => k + 1).filter((k) => !presentes.has(k));
+  const emptyBuckets = [...Array(10).keys()].map((k) => k + 1).filter((k) => !present.has(k));
   console.log(
     `\n    \x1b[90mNo rows at: ${emptyBuckets.length ? emptyBuckets.join(", ") : "any count from 1 to 10"}.` +
       ` Thinnest population: ${floor} observations.\x1b[0m`,
@@ -737,7 +737,7 @@ if (AUDIT) {
    * coverage —task #40— and not phantom rows.
    */
   const lowTail = histo
-    .filter((h) => /^\s*\d+$/.test(h.tramo) && Number(h.tramo) <= 10)
+    .filter((h) => /^\s*\d+$/.test(h.bucket) && Number(h.bucket) <= 10)
     .reduce((a, h) => a + Number(h.n), 0);
   console.log(
     `    \x1b[90m${lowTail} rows with 10 observations or fewer out of ${totalCorpus}.\x1b[0m`,
@@ -757,14 +757,14 @@ if (AUDIT) {
 
   console.log(`\n  Duplicated issuances? — the cohort is the denominator of everything\n`);
   if (dups.length === 0) {
-    console.log(`    \x1b[32mNinguna: ${cohort.length} nombres distintos en ${cohort.length} emisiones.\x1b[0m`);
+    console.log(`    \x1b[32mNone: ${cohort.length} distinct names across ${cohort.length} issuances.\x1b[0m`);
   } else {
     for (const d of dups) {
       console.log(`    \x1b[33m${d.name.slice(0, 46)}\x1b[0m  ×${d.n}  pools ${d.pools}`);
       console.log(`      \x1b[90m${d.accs}\x1b[0m`);
     }
     console.log(
-      `\n    \x1b[90mPools distintos = deals distintos con nombre igual. Pools iguales =\x1b[0m`,
+      `\n    \x1b[90mDifferent pools = different deals sharing a name. Identical pools =\x1b[0m`,
     );
     console.log(`    \x1b[90mcheck whether it is the same issuance harvested twice.\x1b[0m`);
   }
@@ -859,7 +859,7 @@ for (const m of b.metrics) {
   console.log(
     `  ${m.spec.label.padEnd(14)} ${f(m.value).padStart(12)}   ` +
       `${f(m.p25!).padStart(8)} ${f(m.p50!).padStart(8)} ${f(m.p75!).padStart(8)}      ` +
-      `${m.extreme ? (m.aggressive ? "\x1b[33m" : "\x1b[36m") : "\x1b[90m"}${m.rank}ª de ${m.total}\x1b[0m` +
+      `${m.extreme ? (m.aggressive ? "\x1b[33m" : "\x1b[36m") : "\x1b[90m"}${m.rank} of ${m.total}\x1b[0m` +
       (m.aggressive ? "  \x1b[33m← more aggressive\x1b[0m" : ""),
   );
 }

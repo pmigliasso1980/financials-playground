@@ -188,7 +188,7 @@ for (const key of servicerByInt.keys()) {
 const corpusOnly = [...corpusByInt.keys()].filter((k) => !servicerByInt.has(k));
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Correspondencia de identificadores`);
+console.log(`Identifier correspondence`);
 console.log(`${"─".repeat(78)}\n`);
 
 console.log(`  corpus with Loan ID       ${String(corpusByInt.size).padStart(4)}`);
@@ -197,7 +197,7 @@ if (corpusDupes > 0) console.log(`  corpus with repeated ID   ${String(corpusDup
 console.log(`  servicer usable           ${String(servicerByInt.size).padStart(4)}`);
 console.log(`  \x1b[1mmatched                   ${String(matched.length).padStart(4)}\x1b[0m`);
 if (servicerOnly.length > 0) {
-  console.log(`  solo en servicer          ${String(servicerOnly.length).padStart(4)}  \x1b[90m(${servicerOnly.slice(0, 10).join(", ")})\x1b[0m`);
+  console.log(`  servicer only            ${String(servicerOnly.length).padStart(4)}  \x1b[90m(${servicerOnly.slice(0, 10).join(", ")})\x1b[0m`);
 }
 if (corpusOnly.length > 0) {
   console.log(`  corpus only               ${String(corpusOnly.length).padStart(4)}  \x1b[90m(${corpusOnly.slice(0, 10).join(", ")})\x1b[0m`);

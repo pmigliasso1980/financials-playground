@@ -164,7 +164,7 @@ for (const r of byVintage) {
   total += n;
   console.log(
     `  ${r.vintage}   ${num(n).padStart(9)} ${String(missing).padStart(10)} ${pct(missing / Math.max(1, n), 1).padStart(7)}` +
-      `      ${r.iss_with_gap} de ${r.issuances}` +
+      `      ${r.iss_with_gap} of ${r.issuances}` +
       (missing / Math.max(1, n) > 0.05 ? `  \x1b[33m← concentrado\x1b[0m` : ""),
   );
 }
@@ -235,7 +235,7 @@ console.log("What is known about the loans with no type");
 console.log(`${"─".repeat(78)}\n`);
 const line = (et: string, v: string, nota = "") =>
   console.log(
-    `  ${et.padEnd(34)} ${String(v).padStart(5)} de ${q.total}` +
+    `  ${et.padEnd(34)} ${String(v).padStart(5)} of ${q.total}` +
       `  ${pct(Number(v) / Math.max(1, Number(q.total)), 0).padStart(6)}   \x1b[90m${nota}\x1b[0m`,
   );
 line("have property_count", q.with_count);
