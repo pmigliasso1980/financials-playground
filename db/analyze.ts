@@ -1,30 +1,28 @@
 /**
- * Distribuciones del corpus.
+ * Corpus distributions.
  *
  *   npm run db:analyze
  *   npm run db:analyze -- --type Multifamily
  *
- * PARA QUÉ SIRVE
+ * WHAT IT IS FOR
  *
- * Es la prueba más chica antes de decidir un producto: si estos números no le
- * dicen nada a alguien que suscribe deals de CRE, ninguna interfaz lo va a
- * salvar. Y si le dicen algo, ya sabemos qué hay que empaquetar.
+ * It is the smallest possible test before deciding on a product: if these numbers
+ * say nothing to someone who underwrites CRE deals, no interface will save it.
+ * And if they do say something, we already know what needs packaging.
  *
- * Cuatro cortes:
+ * Four cuts:
  *
- *   1. Cuartiles de DSCR, LTV y debt yield por tipo de activo. Es el "¿estoy en
- *      mercado?" que un broker contesta hoy por intuición o llamando a tres
- *      lenders.
+ *   1. DSCR, LTV and debt yield quartiles by asset type. This is the "am I in
+ *      market?" a broker answers today by intuition or by calling three lenders.
  *
- *   2. LA BRECHA DE SUSCRIPCIÓN: cuánto proyecta el originador por encima del
- *      NOI que la propiedad produjo de verdad. Nadie publica esto y sale
- *      directo de comparar dos columnas del mismo Annex A. Un promedio alto
- *      significa que el mercado está suscribiendo agresivo.
+ *   2. THE UNDERWRITING GAP: how much the originator projects above the NOI the
+ *      property actually produced. Nobody publishes this and it comes straight
+ *      from comparing two columns of the same Annex A. A high average means the
+ *      market is underwriting aggressively.
  *
- *   3. Cap rate implícito (NOI / tasación) por tipo y mercado.
+ *   3. Implied cap rate (NOI / appraised value) by type and market.
  *
- *   4. Evolución por fecha de emisión: si el apalancamiento o el DSCR se
- *      movieron en el tiempo.
+ *   4. Evolution by issuance date: whether leverage or DSCR moved over time.
  */
 
 import { closePool, ping, query } from "./client.js";
@@ -47,18 +45,18 @@ const filings = Number(totals[0]!.filings);
 const loans = Number(totals[0]!.loans);
 
 console.log(`\n${"═".repeat(76)}`);
-console.log(`Distribuciones · ${filings} filings · ${loans} préstamos`);
+console.log(`Distributions · ${filings} filings · ${loans} loans`);
 console.log(`${"═".repeat(76)}`);
 
 if (loans < 30) {
   console.log(
-    `\n  \x1b[33mMuestra chica.\x1b[0m Con menos de 30 préstamos las medianas son ruido.\n`,
+    `\n  \x1b[33mSmall sample.\x1b[0m With fewer than 30 loans the medians are noise.\n`,
   );
-  console.log(`  Cosechá más:  npm run harvest:batch -- --limit 25\n`);
+  console.log(`  Harvest more:  npm run harvest:batch -- --limit 25\n`);
 }
 
 // ---------------------------------------------------------------------------
-// 1. Ratios de suscripción por tipo de activo
+// 1. Underwriting ratios by asset type
 // ---------------------------------------------------------------------------
 
 interface RatioRow {
@@ -96,8 +94,8 @@ function fmt(v: number | null, unit: "pct" | "x"): string {
   return unit === "pct" ? `${(v * 100).toFixed(1)}%` : `${v.toFixed(2)}x`;
 }
 
-console.log(`\n\x1b[1mRatios de suscripción por tipo de activo\x1b[0m`);
-console.log(`\x1b[90m  p25 / mediana / p75 — el rango donde está el mercado\x1b[0m\n`);
+console.log(`\n\x1b[1mUnderwriting ratios by asset type\x1b[0m`);
+console.log(`\x1b[90m  p25 / median / p75 — the range where the market is\x1b[0m\n`);
 
 for (const [metric, label, unit] of [
   ["dscr", "DSCR", "x"],
@@ -119,20 +117,20 @@ for (const [metric, label, unit] of [
 }
 
 // ---------------------------------------------------------------------------
-// 2. La brecha de suscripción
+// 2. The underwriting gap
 // ---------------------------------------------------------------------------
 
 /**
- * Cuánto proyecta el originador por encima del NOI real.
+ * How much the originator projects above the actual NOI.
  *
- * Sale de dos columnas del mismo Annex A: `Underwritten NOI` contra
- * `Most Recent NOI`. Es una medida directa de agresividad de suscripción, por
- * tipo de activo, calculable solo con datos públicos.
+ * It comes from two columns of the same Annex A: `Underwritten NOI` against
+ * `Most Recent NOI`. It is a direct measure of underwriting aggressiveness, by
+ * asset type, computable from public data alone.
  *
- * Interpretación: +8% significa que en la mediana se está proyectando un NOI
- * 8% por encima de lo que la propiedad produjo el último período cerrado. Un
- * valor alto no es necesariamente malo —una propiedad en lease-up legítimamente
- * va a producir más— pero sostenido y creciente es señal de mercado recalentado.
+ * Reading it: +8% means that at the median an NOI is being projected 8% above
+ * what the property produced in the last closed period. A high value is not
+ * necessarily bad —a property in lease-up will legitimately produce more— but
+ * sustained and rising it is a sign of an overheated market.
  */
 interface GapRow {
   property_type: string;
@@ -172,14 +170,14 @@ const { rows: gaps } = await query<GapRow>(
 );
 
 if (gaps.length > 0) {
-  console.log(`\x1b[1mBrecha de suscripción\x1b[0m`);
+  console.log(`\x1b[1mUnderwriting gap\x1b[0m`);
   console.log(
-    `\x1b[90m  Cuánto proyecta el originador sobre el NOI real del último período.\x1b[0m`,
+    `\x1b[90m  How much the originator projects over the actual NOI of the last period.\x1b[0m`,
   );
   console.log(
-    `\x1b[90m  Sale de comparar dos columnas del mismo Annex A. Nadie lo publica.\x1b[0m\n`,
+    `\x1b[90m  It comes from comparing two columns of the same Annex A. Nobody publishes it.\x1b[0m\n`,
   );
-  console.log(`  ${"tipo".padEnd(20)} ${"n".padStart(4)}  ${"p25".padStart(8)} ${"mediana".padStart(8)} ${"p75".padStart(8)}  % por encima`);
+  console.log(`  ${"type".padEnd(20)} ${"n".padStart(4)}  ${"p25".padStart(8)} ${"median".padStart(8)} ${"p75".padStart(8)}  % above`);
   for (const g of gaps) {
     const pct = (v: number | null) => (v === null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
     const median = g.p50 ?? 0;
@@ -190,15 +188,15 @@ if (gaps.length > 0) {
     );
   }
   console.log(
-    `\n  \x1b[90mUn +8% en la mediana significa que se está suscribiendo un NOI 8% por\x1b[0m`,
+    `\n  \x1b[90mA +8% median means an NOI is being underwritten 8% above what the\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mencima de lo que la propiedad produjo. Alto y sostenido = mercado agresivo.\x1b[0m\n`,
+    `  \x1b[90mproperty produced. High and sustained = aggressive market.\x1b[0m\n`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// 3. Cap rate implícito
+// 3. Implied cap rate
 // ---------------------------------------------------------------------------
 
 const { rows: capRates } = await query<RatioRow>(
@@ -226,8 +224,8 @@ const { rows: capRates } = await query<RatioRow>(
 );
 
 if (capRates.length > 0) {
-  console.log(`\x1b[1mCap rate implícito\x1b[0m \x1b[90m(NOI underwritten / tasación)\x1b[0m\n`);
-  console.log(`  ${"tipo".padEnd(20)} ${"n".padStart(4)}  ${"p25".padStart(8)} ${"mediana".padStart(8)} ${"p75".padStart(8)}`);
+  console.log(`\x1b[1mImplied cap rate\x1b[0m \x1b[90m(underwritten NOI / appraised value)\x1b[0m\n`);
+  console.log(`  ${"type".padEnd(20)} ${"n".padStart(4)}  ${"p25".padStart(8)} ${"median".padStart(8)} ${"p75".padStart(8)}`);
   for (const r of capRates) {
     console.log(
       `  ${r.property_type.slice(0, 20).padEnd(20)} ${String(r.n).padStart(4)}  ` +
@@ -238,22 +236,22 @@ if (capRates.length > 0) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Evolución temporal
+// 4. Evolution over time
 // ---------------------------------------------------------------------------
 
 /**
- * CUIDADO CON LA SERIE TEMPORAL
+ * BE CAREFUL WITH THE TIME SERIES
  *
- * Una mediana agregada por trimestre está confundida por la mezcla de activos.
- * Multifamily tiene el DSCR más bajo y el LTV más alto de todas las categorías,
- * así que un trimestre dominado por un pool multifamily muestra apalancamiento
- * alto y cobertura baja **sin que ningún estándar de suscripción haya cambiado**.
+ * A median aggregated by quarter is confounded by the asset mix. Multifamily has
+ * the lowest DSCR and the highest LTV of any category, so a quarter dominated by
+ * a multifamily pool shows high leverage and low coverage **without any
+ * underwriting standard having changed**.
  *
- * Con 99 filings, un solo deal grande puede ser la mitad de un trimestre: BANK
- * 2026-BNK52 aportó 165 préstamos, BBCMS 2025-C35 aportó 103.
+ * With 99 filings, a single large deal can be half a quarter: BANK 2026-BNK52
+ * contributed 165 loans, BBCMS 2025-C35 contributed 103.
  *
- * Por eso mostramos también la composición y la serie dentro de multifamily,
- * que es la categoría con muestra suficiente para verla sola.
+ * That is why we also show the composition and the series within multifamily,
+ * which is the category with a large enough sample to be read on its own.
  */
 const { rows: overTime } = await query<{
   period: string; n: string; deals: string; dscr: number | null; ltv: number | null;
@@ -279,14 +277,14 @@ const { rows: overTime } = await query<{
 );
 
 if (overTime.length > 1) {
-  console.log(`\x1b[1mEvolución por trimestre\x1b[0m \x1b[90m(medianas, TODOS los activos)\x1b[0m\n`);
+  console.log(`\x1b[1mEvolution by quarter\x1b[0m \x1b[90m(medians, ALL assets)\x1b[0m\n`);
   console.log(
-    `  ${"período".padEnd(10)} ${"n".padStart(5)} ${"deals".padStart(6)}  ${"DSCR".padStart(8)} ${"LTV".padStart(8)} ${"debt yield".padStart(11)}  ${"% multif.".padStart(9)}`,
+    `  ${"period".padEnd(10)} ${"n".padStart(5)} ${"deals".padStart(6)}  ${"DSCR".padStart(8)} ${"LTV".padStart(8)} ${"debt yield".padStart(11)}  ${"% multif.".padStart(9)}`,
   );
   for (const r of overTime) {
     const n = Number(r.n);
     const deals = Number(r.deals);
-    // Un trimestre con uno o dos deals no es una lectura de mercado.
+    // A quarter with one or two deals is not a market reading.
     const thin = deals <= 2 || n < 100;
     const mark = thin ? "\x1b[33m" : "";
     console.log(
@@ -299,24 +297,24 @@ if (overTime.length > 1) {
   const thin = overTime.filter((r) => Number(r.deals) <= 2 || Number(r.n) < 100);
   if (thin.length > 0) {
     console.log(
-      `\n  \x1b[33m⚠ ${thin.map((r) => r.period).join(", ")}: muestra chica o pocos deals.\x1b[0m`,
+      `\n  \x1b[33m⚠ ${thin.map((r) => r.period).join(", ")}: small sample or few deals.\x1b[0m`,
     );
     console.log(
-      `  \x1b[90mUn solo pool puede dominar el trimestre. No leerlos como señal de mercado.\x1b[0m`,
+      `  \x1b[90mA single pool can dominate the quarter. Do not read them as market signal.\x1b[0m`,
     );
   }
   console.log(
-    `\n  \x1b[90mLa columna "% multifamily" existe porque esa categoría tiene el DSCR más\x1b[0m`,
+    `\n  \x1b[90mThe "% multifamily" column exists because that category has the lowest\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mbajo y el LTV más alto: si sube su participación, los agregados se mueven\x1b[0m`,
+    `  \x1b[90mDSCR and the highest LTV: if its share rises, the aggregates move\x1b[0m`,
   );
-  console.log(`  \x1b[90msin que cambie ningún estándar de suscripción.\x1b[0m\n`);
+  console.log(`  \x1b[90mwithout any underwriting standard changing.\x1b[0m\n`);
 
-  // --- la misma serie, dentro de un solo tipo de activo --------------------
+  // --- the same series, within a single asset type -------------------------
   //
-  // Controlar por composición es la única forma de leer la serie como señal de
-  // mercado en vez de como reflejo de qué se securitizó ese trimestre.
+  // Controlling for composition is the only way to read the series as market
+  // signal rather than as a reflection of what was securitised that quarter.
 
   const { rows: mfSeries } = await query<{
     period: string; n: string; dscr: number | null; ltv: number | null; dy: number | null;
@@ -339,8 +337,8 @@ if (overTime.length > 1) {
   );
 
   if (mfSeries.length > 2) {
-    console.log(`\x1b[1mEvolución dentro de multifamily\x1b[0m \x1b[90m(composición controlada)\x1b[0m\n`);
-    console.log(`  ${"período".padEnd(10)} ${"n".padStart(5)}  ${"DSCR".padStart(8)} ${"LTV".padStart(8)} ${"debt yield".padStart(11)}`);
+    console.log(`\x1b[1mEvolution within multifamily\x1b[0m \x1b[90m(composition controlled)\x1b[0m\n`);
+    console.log(`  ${"period".padEnd(10)} ${"n".padStart(5)}  ${"DSCR".padStart(8)} ${"LTV".padStart(8)} ${"debt yield".padStart(11)}`);
     for (const r of mfSeries) {
       console.log(
         `  ${r.period.padEnd(10)} ${String(r.n).padStart(5)}  ` +
@@ -348,13 +346,13 @@ if (overTime.length > 1) {
       );
     }
     console.log(
-      `\n  \x1b[90mEsta serie sí se puede leer como señal: si acá el LTV sube y el DSCR baja,\x1b[0m`,
+      `\n  \x1b[90mThis series CAN be read as signal: if LTV rises and DSCR falls here,\x1b[0m`,
     );
-    console.log(`  \x1b[90mes suscripción, no mezcla de activos.\x1b[0m\n`);
+    console.log(`  \x1b[90mit is underwriting, not asset mix.\x1b[0m\n`);
   }
 } else if (filings > 0) {
   console.log(
-    `\x1b[90mLa serie temporal necesita filings de varios trimestres. Cosechá más:\x1b[0m`,
+    `\x1b[90mThe time series needs filings from several quarters. Harvest more:\x1b[0m`,
   );
   console.log(`  npm run harvest:batch -- --limit 30\n`);
 }
@@ -363,10 +361,10 @@ if (overTime.length > 1) {
 
 console.log(`${"─".repeat(76)}`);
 console.log(
-  `\n  \x1b[90mSi alguno de estos números le llama la atención a alguien que suscribe\x1b[0m`,
+  `\n  \x1b[90mIf any of these numbers catches the eye of someone who underwrites\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mdeals, ahí está el producto. Si no, conviene saberlo antes de construir.\x1b[0m\n`,
+  `  \x1b[90mdeals, that is the product. If not, better to know before building.\x1b[0m\n`,
 );
 
 await closePool();
