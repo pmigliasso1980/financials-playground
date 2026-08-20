@@ -1,20 +1,20 @@
 /**
- * Genera el documento de la taxonomía CRE.
+ * Generates the CRE taxonomy document.
  *
- *   npm run taxonomy              imprime en pantalla
- *   npm run taxonomy -- --write   escribe docs/taxonomia-cre.md
+ *   npm run taxonomy              prints to the screen
+ *   npm run taxonomy -- --write   writes docs/cre-taxonomy.md
  *
- * PARA QUÉ
+ * WHAT FOR
  *
- * El conocimiento de dominio que acumulamos —que un Annex A publica cuatro
- * añadas de NOI, tres estructuras de LTV y dos bases de DSCR, y qué pasa si se
- * confunden— vive hoy en expresiones regulares. Eso funciona para el código
- * pero es inauditable para alguien del rubro.
+ * The domain knowledge we have accumulated —that an Annex A publishes four
+ * vintages of NOI, three LTV structures and two DSCR bases, and what happens if
+ * they get confused— currently lives in regular expressions. That works for the
+ * code but is unauditable for someone in the industry.
  *
- * Este documento existe para que un suscriptor de CRE pueda leerlo, decir "esto
- * está mal" o "les falta tal distinción", sin abrir un archivo de TypeScript.
- * Esa revisión es la forma más barata de validar si el trabajo de normalización
- * vale algo.
+ * This document exists so a CRE underwriter can read it and say "this is wrong"
+ * or "you are missing such-and-such distinction", without opening a TypeScript
+ * file. That review is the cheapest way to validate whether the normalisation
+ * work is worth anything.
  */
 
 import { writeFile } from "node:fs/promises";
@@ -22,38 +22,38 @@ import { METRIC_SPECS, type MetricKey } from "./normalize/columnMap.js";
 import { DEFINITIONS, TAXONOMY_VERSION } from "./normalize/definitions.js";
 
 const write = process.argv.includes("--write");
-const OUT = new URL("../docs/taxonomia-cre.md", import.meta.url).pathname;
+const OUT = new URL("../docs/cre-taxonomy.md", import.meta.url).pathname;
 
 const lines: string[] = [];
 const p = (s = "") => lines.push(s);
 
 // ---------------------------------------------------------------------------
 
-p(`# Taxonomía CRE`);
+p(`# CRE taxonomy`);
 p();
-p(`> Versión ${TAXONOMY_VERSION} · ${METRIC_SPECS.length} métricas`);
-p();
-p(
-  `Este documento describe cómo interpretamos las columnas de un Annex A de CMBS.`,
-);
-p(
-  `Está pensado para que alguien que suscribe deals pueda revisarlo y marcar qué`,
-);
-p(`está mal o qué falta, sin leer código.`);
+p(`> Version ${TAXONOMY_VERSION} · ${METRIC_SPECS.length} metrics`);
 p();
 p(
-  `**Por qué existe.** Los datos son públicos: cualquiera puede bajar los mismos`,
+  `This document describes how we interpret the columns of a CMBS Annex A.`,
 );
 p(
-  `filings de SEC. Lo que no es trivial es interpretarlos. Un Annex A publica el`,
+  `It is meant for someone who underwrites deals to review and flag what is`,
+);
+p(`wrong or missing, without reading code.`);
+p();
+p(
+  `**Why it exists.** The data is public: anyone can download the same SEC`,
 );
 p(
-  `NOI en cuatro añadas, el LTV contra tres denominadores distintos y el DSCR`,
+  `filings. What is not trivial is interpreting them. An Annex A publishes NOI`,
 );
 p(
-  `sobre dos bases. Confundirlos produce números plausibles y equivocados —el`,
+  `across four vintages, LTV against three different denominators, and DSCR on`,
 );
-p(`tipo de error que no salta a la vista y contamina todo lo que se derive.`);
+p(
+  `two bases. Confusing them produces plausible, wrong numbers —the kind of`,
+);
+p(`error that does not stand out and contaminates everything derived from it.`);
 p();
 
 // --- incidentes ---------------------------------------------------------------
@@ -61,12 +61,12 @@ p();
 const incidents = Object.entries(DEFINITIONS).filter(([, d]) => d?.incident);
 
 if (incidents.length > 0) {
-  p(`## Errores que motivaron estas distinciones`);
+  p(`## Errors that motivated these distinctions`);
   p();
   p(
-    `Cada uno se detectó con datos reales. En todos los casos el valor extraído`,
+    `Each was detected with real data. In every case the extracted value was`,
   );
-  p(`era correcto y la etiqueta estaba mal.`);
+  p(`correct and the label was wrong.`);
   p();
 
   for (const [key, def] of incidents) {
@@ -75,24 +75,24 @@ if (incidents.length > 0) {
   }
 }
 
-// --- métricas por familia --------------------------------------------------------
+// --- metrics by family -----------------------------------------------------------
 
 const families = new Map<string, MetricKey[]>();
 for (const spec of METRIC_SPECS) {
-  const family = DEFINITIONS[spec.key]?.family ?? "Otras";
+  const family = DEFINITIONS[spec.key]?.family ?? "Other";
   const list = families.get(family);
   if (list) list.push(spec.key);
   else families.set(family, [spec.key]);
 }
 
-// Las familias documentadas primero; "Otras" al final.
+// Documented families first; "Other" last.
 const ordered = [...families.entries()].sort((a, b) => {
-  if (a[0] === "Otras") return 1;
-  if (b[0] === "Otras") return -1;
+  if (a[0] === "Other") return 1;
+  if (b[0] === "Other") return -1;
   return 0;
 });
 
-p(`## Métricas`);
+p(`## Metrics`);
 p();
 
 for (const [family, keys] of ordered) {
@@ -105,23 +105,23 @@ for (const [family, keys] of ordered) {
 
     p(`#### ${spec.label}`);
     p();
-    p(`\`${key}\` · ${unitLabel(spec.unit)} · nivel ${spec.entity === "deal" ? "préstamo" : "propiedad"}`);
+    p(`\`${key}\` · ${unitLabel(spec.unit)} · ${spec.entity === "deal" ? "loan" : "property"} level`);
     p();
 
     if (def?.definition) {
       p(def.definition);
       p();
     } else {
-      p(`*Sin definición documentada.*`);
+      p(`*No documented definition.*`);
       p();
     }
 
     if (def?.disambiguation) {
-      p(`**Cómo se distingue.** ${def.disambiguation}`);
+      p(`**How to tell it apart.** ${def.disambiguation}`);
       p();
     }
 
-    p(`<details><summary>Encabezados que la capturan</summary>`);
+    p(`<details><summary>Headers that capture it</summary>`);
     p();
     p("```");
     for (const pattern of spec.patterns) {
@@ -141,20 +141,20 @@ for (const [family, keys] of ordered) {
   }
 }
 
-// --- cómo revisarlo ----------------------------------------------------------------
+// --- how to review it --------------------------------------------------------------
 
-p(`## Cómo revisar esto`);
+p(`## How to review this`);
 p();
-p(`Las preguntas que más valor tienen si trabajás en el rubro:`);
+p(`The questions with the most value if you work in the industry:`);
 p();
-p(`1. ¿Alguna definición está mal?`);
-p(`2. ¿Falta alguna distinción que importe? Por ejemplo: ¿conviene separar`);
-p(`   ocupación por tipo de activo, o el NOI ajustado por inquilinos únicos?`);
-p(`3. ¿Alguna de estas distinciones es irrelevante en la práctica?`);
-p(`4. ¿Hay columnas del Annex A que no capturamos y deberíamos?`);
+p(`1. Is any definition wrong?`);
+p(`2. Is a distinction that matters missing? For example: is it worth separating`);
+p(`   occupancy by asset type, or NOI adjusted for single tenants?`);
+p(`3. Is any of these distinctions irrelevant in practice?`);
+p(`4. Are there Annex A columns we do not capture and should?`);
 p();
 p(
-  `Para ver qué columnas quedaron sin mapear en el corpus actual: \`npm run db:stats\`.`,
+  `To see which columns went unmapped in the current corpus: \`npm run db:stats\`.`,
 );
 p();
 
@@ -164,11 +164,11 @@ const doc = lines.join("\n");
 
 if (write) {
   await writeFile(OUT, doc);
-  console.log(`\n  → docs/taxonomia-cre.md`);
-  console.log(`  ${METRIC_SPECS.length} métricas · versión ${TAXONOMY_VERSION}`);
+  console.log(`\n  → docs/cre-taxonomy.md`);
+  console.log(`  ${METRIC_SPECS.length} metrics · version ${TAXONOMY_VERSION}`);
   const documented = METRIC_SPECS.filter((s) => DEFINITIONS[s.key]?.definition).length;
   console.log(
-    `  ${documented} con definición, ${METRIC_SPECS.length - documented} sin documentar\n`,
+    `  ${documented} with a definition, ${METRIC_SPECS.length - documented} undocumented\n`,
   );
 } else {
   console.log(doc);
@@ -183,21 +183,21 @@ function labelOf(key: MetricKey): string {
 function unitLabel(unit: string): string {
   return (
     {
-      currency: "moneda",
-      percent: "porcentaje",
+      currency: "currency",
+      percent: "percent",
       ratio: "ratio",
-      count: "conteo",
-      years: "año",
-      text: "texto",
+      count: "count",
+      years: "years",
+      text: "text",
     }[unit] ?? unit
   );
 }
 
 /**
- * Traduce una expresión regular a algo legible.
+ * Translates a regular expression into something readable.
  *
- * No es exacto —una regex no siempre tiene una lectura natural— pero alcanza
- * para que alguien sin formación técnica entienda qué se está buscando.
+ * It is not exact —a regex does not always have a natural reading— but it is
+ * enough for someone without technical training to understand what is being
  */
 function describePattern(pattern: RegExp): string {
   return pattern.source

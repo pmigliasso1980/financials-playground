@@ -1,470 +1,472 @@
 /**
- * Definiciones de la taxonomía CRE.
+ * CRE taxonomy definitions.
  *
- * POR QUÉ ESTE ARCHIVO EXISTE APARTE
+ * WHY THIS FILE EXISTS SEPARATELY
  *
- * `columnMap.ts` resuelve el problema técnico: qué patrón matchea qué columna.
- * Este archivo guarda el problema de dominio: qué significa cada métrica y por
- * qué se distingue de sus vecinas.
+ * `columnMap.ts` solves the technical problem: which pattern matches which
+ * column. This file holds the domain problem: what each metric means and why it
+ * is distinct from its neighbours.
  *
- * La separación es deliberada. Los patrones son código y los revisa un
- * programador; las definiciones son conocimiento del rubro y las tiene que
- * poder revisar alguien que suscriba deals, sin leer TypeScript. De acá sale
- * `npm run taxonomy`, que genera un documento para eso.
+ * The separation is deliberate. The patterns are code and a programmer reviews
+ * them; the definitions are industry knowledge and have to be reviewable by
+ * someone who underwrites deals, without reading TypeScript. `npm run taxonomy`
+ * generates a document for exactly that.
  *
- * Cada entrada que existe acá se ganó su lugar rompiendo algo con datos reales.
- * Las que no tienen nota es porque nunca dieron problema.
+ * Every entry here earned its place by breaking something with real data. The
+ * ones with no note never caused a problem.
  */
 
 import type { MetricKey } from "./columnMap.js";
 
 /**
- * Versión de la taxonomía.
+ * Taxonomy version.
  *
- * Se registra con cada observation para poder medir si un cambio mejoró o
- * empeoró la cobertura del corpus. Subir cuando se agregan o redefinen
- * métricas, no cuando se ajusta un patrón.
+ * Recorded with every observation so we can measure whether a change improved
+ * or worsened corpus coverage. Bump it when metrics are added or redefined, not
+ * when a pattern is adjusted.
  */
 /**
- * 2026.08.17: el corpus pasa a guardar las filas de propiedad.
+ * 2026.08.17: the corpus starts storing property rows.
  *
- * Se sube la versión porque el contenido de una cosecha cambió, no porque cambió
- * una métrica. `harvest:batch` recosecha lo que no coincida con esta versión, así
- * que las 233 emisiones quedan marcadas para volver a bajar — es la única forma de
- * llenar corpus.properties sin escribir un camino de migración aparte.
+ * The version is bumped because the content of a harvest changed, not because a
+ * metric changed. `harvest:batch` re-harvests anything that does not match this
+ * version, so all 233 issuances are marked to be downloaded again — it is the
+ * only way to populate corpus.properties without writing a separate migration
+ * path.
  */
 export const TAXONOMY_VERSION = "2026.08.17";
 
 export interface MetricDefinition {
-  /** Qué mide, en una oración que entienda alguien del rubro. */
+  /** What it measures, in one sentence someone in the industry would understand. */
   definition: string;
   /**
-   * Con qué se confunde y cómo distinguirlas. Solo donde hubo un problema real.
+   * What it gets confused with and how to tell them apart. Only where there was
+   * a real problem.
    */
   disambiguation?: string;
-  /** Qué pasó cuando estuvo mal. La evidencia de por qué la distinción importa. */
+  /** What happened when it was wrong. The evidence for why the distinction matters. */
   incident?: string;
-  /** Familia conceptual, para agrupar en el documento. */
+  /** Conceptual family, for grouping in the document. */
   family?: string;
 }
 
 export const DEFINITIONS: Partial<Record<MetricKey, MetricDefinition>> = {
   // -------------------------------------------------------------------------
-  // Los siete saldos
+  // The seven balances
   // -------------------------------------------------------------------------
 
   balance_whole_loan: {
-    family: "Saldos",
+    family: "Balances",
     definition:
-      "El saldo del préstamo completo, sumando todas las notas pari passu estén donde estén.",
+      "The balance of the entire loan, adding up all the pari passu notes wherever they sit.",
     disambiguation:
-      "Este es el número contra el que el emisor calcula sus ratios, porque el NOI que publica es el de la propiedad entera. Comparar el NOI completo contra la porción del trust es comparar cosas de escalas distintas.",
+      "This is the number the issuer computes its ratios against, because the NOI it publishes is for the whole property. Comparing the whole NOI against the trust's portion is comparing things of different scales.",
   },
   balance_pari_passu_non_trust: {
-    family: "Saldos",
+    family: "Balances",
     definition:
-      "La parte del préstamo que está en OTRAS emisiones, con la misma prioridad de cobro que la nuestra.",
+      "The part of the loan that sits in OTHER issuances, with the same payment priority as ours.",
     disambiguation:
-      "Sumado al saldo del trust da el total senior. 'Pari passu' significa que cobran a la par: ninguna nota está subordinada a la otra, solo repartidas entre emisiones distintas.",
+      "Added to the trust balance it gives the senior total. 'Pari passu' means they get paid equally: neither note is subordinated to the other, they are just split across different issuances.",
   },
   balance_subordinate: {
-    family: "Saldos",
+    family: "Balances",
     definition:
-      "Deuda del mismo inmueble que cobra DESPUÉS que las notas senior. Suele llamarse B-note.",
+      "Debt on the same property that gets paid AFTER the senior notes. Usually called a B-note.",
     disambiguation:
-      "No es pari passu: está subordinada. Por eso el LTV 'whole loan' y el LTV a secas difieren —uno la incluye y el otro no— y por eso un préstamo puede verse conservador a nivel trust y apalancado a nivel inmueble.",
+      "It is not pari passu: it is subordinated. That is why 'whole loan' LTV and plain LTV differ —one includes it and the other does not— and why a loan can look conservative at trust level and leveraged at property level.",
   },
   balance_mezzanine: {
-    family: "Saldos",
+    family: "Balances",
     definition:
-      "Deuda garantizada por las participaciones societarias del dueño, no por el inmueble.",
+      "Debt secured by the owner's equity interests, not by the property.",
     disambiguation:
-      "No aparece en el LTV del préstamo pero existe y compite por el mismo flujo. Es la capa que hace que 'total debt LTV' sea mayor que 'whole loan LTV'.",
+      "It does not appear in the loan's LTV but it exists and competes for the same cash flow. It is the layer that makes 'total debt LTV' larger than 'whole loan LTV'.",
   },
   balance_original: {
-    family: "Saldos",
-    definition: "El monto al originar, antes de cualquier amortización.",
+    family: "Balances",
+    definition: "The amount at origination, before any amortisation.",
     disambiguation:
-      "Difiere del saldo a la fecha de corte solo en préstamos que ya amortizaron algo. En un pool mayoritariamente interest-only son casi idénticos, y esa coincidencia es justamente lo que hace fácil confundirlos.",
+      "It differs from the cut-off date balance only on loans that have already amortised something. In a mostly interest-only pool they are nearly identical, and that coincidence is precisely what makes them easy to confuse.",
   },
 
   // -------------------------------------------------------------------------
-  // Servicio de deuda y estructura del préstamo
+  // Debt service and loan structure
   // -------------------------------------------------------------------------
 
   debt_service_pi: {
-    family: "Servicio de deuda",
+    family: "Debt service",
     definition:
-      "El pago anual de capital e intereses que el préstamo exige una vez que empieza a amortizar. Es el denominador del DSCR.",
+      "The annual principal and interest payment the loan requires once it starts amortising. It is the denominator of the DSCR.",
     disambiguation:
-      "Convive con 'Annual Debt Service (IO)', que es el pago durante el período de solo intereses y siempre es menor. Un préstamo con dos años de IO tiene dos servicios de deuda distintos según el momento, y el DSCR publicado suele calcularse contra el de IO —lo que lo hace ver mejor de lo que va a ser cuando empiece a amortizar.",
+      "It lives alongside 'Annual Debt Service (IO)', which is the payment during the interest-only period and is always smaller. A loan with two years of IO has two different debt services depending on the moment, and the published DSCR is usually computed against the IO one — which makes it look better than it will be once amortisation starts.",
     incident:
-      "Esta métrica no existía: el bloque entero del Annex A que la contiene se descartaba porque ninguna de sus columnas estaba mapeada. Veníamos leyendo el DSCR ya calculado sin tener nunca sus dos partes, o sea sin poder verificarlo ni recalcularlo bajo otro supuesto.",
+      "This metric did not exist: the whole Annex A block containing it was being discarded because none of its columns was mapped. We had been reading the already-computed DSCR without ever having its two parts, that is, with no way to verify it or recompute it under a different assumption.",
   },
   debt_service_io: {
-    family: "Servicio de deuda",
+    family: "Debt service",
     definition:
-      "El pago anual durante el período de solo intereses, sin amortización de capital.",
+      "The annual payment during the interest-only period, with no principal amortisation.",
     disambiguation:
-      "Siempre menor que el P&I. La diferencia entre ambos es cuánto sube la cuota cuando termina el IO, y es la medida directa del riesgo de refinanciación de un préstamo que hoy cumple cómodo.",
+      "Always smaller than the P&I. The difference between the two is how much the instalment rises when the IO ends, and it is the direct measure of refinancing risk for a loan that currently pays comfortably.",
   },
   amortization_type: {
-    family: "Servicio de deuda",
+    family: "Debt service",
     definition:
-      "Cómo devuelve capital el préstamo: 'Interest Only' toda la vida, 'Amortizing' desde el principio, o 'Interest Only, Amortizing' con IO parcial.",
+      "How the loan repays principal: 'Interest Only' for its whole life, 'Amortizing' from the start, or 'Interest Only, Amortizing' with partial IO.",
     disambiguation:
-      "Un pool con mayoría de Interest Only no amortiza nada, así que todo el capital vence al final. Es una característica estructural que ninguna métrica de ratio muestra.",
+      "A pool that is mostly Interest Only amortises nothing, so all the principal falls due at the end. It is a structural characteristic that no ratio metric shows.",
   },
   term_original: {
-    family: "Servicio de deuda",
-    definition: "Plazo original hasta el vencimiento o la fecha de ARD, en meses.",
+    family: "Debt service",
+    definition: "Original term to maturity or to the ARD, in months.",
     disambiguation:
-      "No confundir con el plazo de amortización, que suele ser mucho más largo —360 meses típicamente— y define la cuota, no el vencimiento. Un préstamo con plazo 120 y amortización 360 devuelve una fracción chica del capital antes de vencer.",
+      "Not to be confused with the amortisation term, which is usually much longer —typically 360 months— and defines the instalment, not the maturity. A loan with a term of 120 and amortisation of 360 repays a small fraction of principal before maturing.",
   },
   amortization_term_original: {
-    family: "Servicio de deuda",
+    family: "Debt service",
     definition:
-      "Plazo sobre el que se calcula la cuota, en meses. Normalmente 360, aunque el préstamo venza mucho antes.",
+      "The term over which the instalment is computed, in months. Normally 360, even when the loan matures much sooner.",
     disambiguation:
-      "Es un supuesto de cálculo, no una fecha real. Los dos plazos comparten la palabra 'term' y la unidad, y confundirlos triplica o divide por tres el horizonte del préstamo.",
+      "It is a calculation assumption, not a real date. The two terms share the word 'term' and the unit, and confusing them either triples or thirds the loan's horizon.",
   },
   ard_loan: {
-    family: "Servicio de deuda",
+    family: "Debt service",
     definition:
-      "Si el préstamo tiene Anticipated Repayment Date: una fecha en la que se espera el repago y a partir de la cual la tasa sube fuerte y el flujo se barre para amortizar.",
+      "Whether the loan has an Anticipated Repayment Date: a date at which repayment is expected and after which the rate rises sharply and cash flow is swept to amortise.",
     disambiguation:
-      "El ARD funciona como vencimiento efectivo aunque el vencimiento legal sea posterior. Los LTV y DSCR 'a vencimiento' de un préstamo con ARD se calculan al ARD, no al vencimiento legal.",
+      "The ARD acts as the effective maturity even when legal maturity is later. The 'at maturity' LTV and DSCR of a loan with an ARD are computed at the ARD, not at legal maturity.",
   },
 
   // -------------------------------------------------------------------------
-  // Reservas: plata depositada contra ajustes de cálculo
+  // Reserves: money deposited versus calculation adjustments
   // -------------------------------------------------------------------------
   //
-  // Esta es la distinción más resbaladiza del bloque nuevo, porque los nombres
-  // son casi idénticos y los conceptos no se parecen en nada.
+  // This is the slipperiest distinction in the new block, because the names are
+  // nearly identical and the concepts have nothing in common.
 
   underwritten_tilc: {
-    family: "Reservas",
+    family: "Reserves",
     definition:
-      "Deducción anual que el suscriptor resta del NOI en concepto de comisiones de corretaje y mejoras para inquilinos. No es plata que exista: es un ajuste para estimar el flujo sostenible.",
+      "An annual deduction the underwriter subtracts from NOI for leasing commissions and tenant improvements. It is not money that exists: it is an adjustment to estimate sustainable cash flow.",
     disambiguation:
-      "Se confunde con 'Upfront TI/LC Reserve', que sí es plata depositada en escrow al cierre. Una es un supuesto del modelo y la otra es un saldo bancario. El encabezado se diferencia solo por la primera palabra —'Underwritten' contra 'Upfront'— y ambos contienen 'TI/LC'.",
+      "It gets confused with 'Upfront TI/LC Reserve', which IS money deposited in escrow at closing. One is a model assumption and the other is a bank balance. The header differs only in the first word —'Underwritten' versus 'Upfront'— and both contain 'TI/LC'.",
     incident:
-      "Junto con underwritten_replacement_reserve es la diferencia entre NOI y NCF. Sin ellas teníamos las dos puntas de esa resta y ninguno de los sustraendos, así que no se podía verificar que NCF = NOI − reservas.",
+      "Together with underwritten_replacement_reserve it is the difference between NOI and NCF. Without them we had both ends of that subtraction and neither of the subtrahends, so there was no way to verify that NCF = NOI − reserves.",
   },
   underwritten_replacement_reserve: {
-    family: "Reservas",
+    family: "Reserves",
     definition:
-      "Deducción anual por reposición de componentes de capital —techos, equipos, mobiliario en hoteles—. Como la anterior, es un ajuste de cálculo, no un depósito.",
+      "An annual deduction for replacing capital components —roofs, equipment, furniture in hotels. Like the previous one, it is a calculation adjustment, not a deposit.",
     disambiguation:
-      "Su gemela en escrow es 'Upfront Replacement / PIP Reserve'. En hoteles aparece como FF&E, que es la misma idea con otro nombre.",
+      "Its escrow twin is 'Upfront Replacement / PIP Reserve'. In hotels it appears as FF&E, which is the same idea under another name.",
   },
   reserve_tilc_upfront: {
-    family: "Reservas",
+    family: "Reserves",
     definition:
-      "Dinero efectivamente depositado al cierre para cubrir futuras comisiones y mejoras de inquilinos.",
+      "Money actually deposited at closing to cover future leasing commissions and tenant improvements.",
     disambiguation:
-      "Es un saldo real, a diferencia de underwritten_tilc que es un supuesto. Un edificio con vacancia alta suele traer una reserva grande acá: el prestamista quiere el dinero apartado antes de prestar.",
+      "It is a real balance, unlike underwritten_tilc which is an assumption. A building with high vacancy usually comes with a large reserve here: the lender wants the money set aside before lending.",
   },
   reserve_debt_service_upfront: {
-    family: "Reservas",
+    family: "Reserves",
     definition:
-      "Fondo depositado al cierre para pagar cuotas si el flujo no alcanza.",
+      "A fund deposited at closing to pay instalments if cash flow falls short.",
     disambiguation:
-      "Contiene la frase 'Debt Service' igual que las métricas de servicio de deuda, pero es lo contrario: no es una obligación, es un colchón contra ella. Su presencia suele indicar que el prestamista dudaba de que la propiedad cubriera la cuota desde el día uno.",
+      "It contains the phrase 'Debt Service' just like the debt service metrics, but it is the opposite: not an obligation, a cushion against one. Its presence usually indicates the lender doubted the property would cover the instalment from day one.",
   },
 
   // -------------------------------------------------------------------------
-  // Control del flujo de fondos
+  // Cash flow control
   // -------------------------------------------------------------------------
 
   lockbox_type: {
-    family: "Control de flujo",
+    family: "Cash flow control",
     definition:
-      "Quién cobra el alquiler. 'Hard' significa que los inquilinos pagan directo a una cuenta controlada por el prestamista; 'Soft' que paga el prestatario y transfiere; 'Springing' que se activa si se rompe un umbral.",
+      "Who collects the rent. 'Hard' means tenants pay directly into a lender-controlled account; 'Soft' means the borrower collects and transfers; 'Springing' means it activates if a threshold is breached.",
     disambiguation:
-      "Es una de las pocas variables del Annex A que describe control en vez de magnitud. Dos préstamos con el mismo DSCR y distinto lockbox tienen severidades de pérdida muy distintas si el prestatario se estresa.",
+      "It is one of the few Annex A variables that describes control rather than magnitude. Two loans with the same DSCR and a different lockbox have very different loss severities if the borrower comes under stress.",
   },
   cash_management: {
-    family: "Control de flujo",
+    family: "Cash flow control",
     definition:
-      "Si el excedente de caja queda barrido en cuentas del prestamista. Suele activarse por gatillo, no desde el cierre.",
+      "Whether excess cash is swept into lender accounts. Usually activated by a trigger rather than from closing.",
   },
   holdback_amount: {
-    family: "Control de flujo",
+    family: "Cash flow control",
     definition:
-      "Parte del préstamo aprobada pero no desembolsada, que se libera si la propiedad cumple una condición —alquilar un espacio, alcanzar un NOI—.",
+      "Part of the loan approved but not funded, released if the property meets a condition —leasing a space, reaching an NOI.",
     disambiguation:
-      "Un holdback grande indica que el saldo actual no refleja el préstamo completo. Los ratios calculados sobre el saldo desembolsado se ven mejores de lo que van a ser cuando se libere el resto.",
+      "A large holdback indicates the current balance does not reflect the full loan. Ratios computed on the funded balance look better than they will be once the rest is released.",
   },
 
   // -------------------------------------------------------------------------
-  // Resultado operativo
+  // Operating result
   // -------------------------------------------------------------------------
 
   noi_underwritten: {
-    family: "Resultado operativo",
+    family: "Operating result",
     definition:
-      "El NOI que el originador proyecta para el préstamo. Es una estimación, no un dato histórico: incorpora leases firmados que todavía no producen, ahorros esperados y estabilización proyectada.",
+      "The NOI the originator projects for the loan. It is an estimate, not a historical figure: it incorporates signed leases not yet producing, expected savings and projected stabilisation.",
     disambiguation:
-      "No es lo mismo que el NOI real. La diferencia entre ambos mide cuánto estira la suscripción, y es una de las pocas señales de agresividad de mercado calculables con datos públicos.",
+      "It is not the same as actual NOI. The difference between the two measures how far underwriting stretches, and is one of the few market-aggressiveness signals computable from public data.",
     incident:
-      "El encabezado 'Underwritten NOI DSCR (x)' contiene las palabras 'Underwritten' y 'NOI', así que un patrón genérico se lo llevaba. El NOI de un hotel quedó guardado como 1.83 —su DSCR— en vez de $10.932.267.",
+      "The header 'Underwritten NOI DSCR (x)' contains the words 'Underwritten' and 'NOI', so a generic pattern took it. A hotel's NOI was stored as 1.83 —its DSCR— instead of $10,932,267.",
   },
   noi_most_recent: {
-    family: "Resultado operativo",
+    family: "Operating result",
     definition:
-      "El NOI del último período cerrado, normalmente los últimos doce meses. Es lo que la propiedad produjo de verdad.",
+      "The NOI of the last closed period, normally the trailing twelve months. It is what the property actually produced.",
     disambiguation:
-      "Un Annex A publica hasta cuatro añadas de NOI. El patrón /most recent.*noi/ matchea también 'Second Most Recent' y 'Third Most Recent'.",
+      "An Annex A publishes up to four vintages of NOI. The pattern /most recent.*noi/ also matches 'Second Most Recent' and 'Third Most Recent'.",
     incident:
-      "Sin distinguirlas, ganaba la que aparecía primero en la planilla —que suele ser la más vieja. Un hotel en Chicago reportaba $9,7M cuando su NOI último era $11,4M: un 17% de diferencia, con la etiqueta equivocada.",
+      "Without distinguishing them, whichever appeared first in the spreadsheet won —usually the oldest. A hotel in Chicago reported $9.7M when its latest NOI was $11.4M: a 17% difference, under the wrong label.",
   },
   noi_second_most_recent: {
-    family: "Resultado operativo",
-    definition: "El NOI del anteúltimo período cerrado, típicamente hace dos años.",
+    family: "Operating result",
+    definition: "The NOI of the second-to-last closed period, typically two years ago.",
     disambiguation:
-      "Junto con third most recent forma la serie histórica. Tenerlas separadas permite contestar cómo viene evolucionando una propiedad, no solo dónde está.",
+      "Together with third most recent it forms the historical series. Keeping them separate makes it possible to answer how a property has been evolving, not just where it stands.",
   },
   noi_third_most_recent: {
-    family: "Resultado operativo",
-    definition: "El NOI de hace tres períodos.",
+    family: "Operating result",
+    definition: "The NOI from three periods ago.",
   },
   net_cash_flow: {
-    family: "Resultado operativo",
+    family: "Operating result",
     definition:
-      "NOI menos las reservas de capital: reemplazos, mejoras de inquilino y comisiones de corretaje. Es lo que efectivamente queda para servir la deuda.",
+      "NOI minus capital reserves: replacements, tenant improvements and leasing commissions. It is what is actually left to service the debt.",
     disambiguation:
-      "Siempre menor que el NOI. Los ratios calculados sobre NCF son más conservadores que los calculados sobre NOI, y un Annex A publica ambos.",
+      "Always smaller than NOI. Ratios computed on NCF are more conservative than those computed on NOI, and an Annex A publishes both.",
   },
   egi_underwritten: {
-    family: "Resultado operativo",
+    family: "Operating result",
     definition:
-      "Ingreso bruto potencial menos vacancia, concesiones e incobrables, según la proyección del suscriptor. El numerador antes de restar gastos.",
+      "Potential gross income minus vacancy, concessions and bad debt, per the underwriter's projection. The numerator before subtracting expenses.",
     disambiguation:
-      "Es una proyección, no una medición: no confundir con egi_most_recent, que es lo que el edificio produjo en el último período informado.",
+      "It is a projection, not a measurement: not to be confused with egi_most_recent, which is what the building produced in the last reported period.",
   },
   egi_most_recent: {
-    family: "Resultado operativo",
-    definition: "EGI efectivamente realizado en el último período informado.",
+    family: "Operating result",
+    definition: "EGI actually realised in the last reported period.",
   },
   expenses_underwritten: {
-    family: "Resultado operativo",
-    definition: "Gastos operativos proyectados por el suscriptor. EGI menos gastos da el NOI.",
+    family: "Operating result",
+    definition: "Operating expenses projected by the underwriter. EGI minus expenses gives NOI.",
   },
   expenses_most_recent: {
-    family: "Resultado operativo",
-    definition: "Gastos operativos efectivamente incurridos en el último período informado.",
+    family: "Operating result",
+    definition: "Operating expenses actually incurred in the last reported period.",
   },
 
   // -------------------------------------------------------------------------
-  // Estructura de deuda
+  // Debt structure
   // -------------------------------------------------------------------------
 
   ltv: {
-    family: "Estructura de deuda",
+    family: "Debt structure",
     definition:
-      "Loan-to-value del préstamo que está en ESTE trust, medido contra la tasación al cierre.",
+      "Loan-to-value of the loan that sits in THIS trust, measured against the appraisal at closing.",
     disambiguation:
-      "Un préstamo grande se parte en notas pari passu que se reparten entre varios trusts. El LTV del trust mide solo el pedazo securitizado acá; el whole loan mide el préstamo entero; el total debt suma además mezzanine y subordinada. Tres denominadores distintos.",
+      "A large loan is split into pari passu notes distributed across several trusts. The trust LTV measures only the piece securitised here; the whole loan measures the entire loan; total debt additionally adds mezzanine and subordinate. Three different denominators.",
     incident:
-      "Mapeamos 'Whole Loan Cut-off Date LTV' en vez de 'Cut-off Date LTV'. Como solo los préstamos partidos tienen whole loan, la cobertura quedó en 8 de 32 préstamos. El valor era correcto; la métrica, otra.",
+      "We mapped 'Whole Loan Cut-off Date LTV' instead of 'Cut-off Date LTV'. Since only split loans have a whole loan figure, coverage came out at 8 of 32 loans. The value was correct; the metric was another one.",
   },
   ltv_whole_loan: {
-    family: "Estructura de deuda",
+    family: "Debt structure",
     definition:
-      "LTV medido contra el préstamo completo, incluidas las notas pari passu que quedaron en otros trusts.",
+      "LTV measured against the entire loan, including the pari passu notes that stayed in other trusts.",
     disambiguation:
-      "Solo existe para préstamos partidos. Su ausencia en un préstamo no es un dato faltante: significa que no está estructurado así.",
+      "It only exists for split loans. Its absence on a loan is not a missing datum: it means the loan is not structured that way.",
   },
   ltv_total_debt: {
-    family: "Estructura de deuda",
+    family: "Debt structure",
     definition:
-      "LTV incluyendo toda la deuda sobre la propiedad: el préstamo hipotecario más mezzanine y subordinada.",
+      "LTV including all the debt on the property: the mortgage loan plus mezzanine and subordinate.",
     disambiguation:
-      "Es el apalancamiento real del activo. Puede ser sustancialmente mayor que el LTV del trust, y es el número que importa para evaluar riesgo de default.",
+      "It is the asset's real leverage. It can be substantially larger than the trust LTV, and it is the number that matters for assessing default risk.",
   },
   ltv_maturity: {
-    family: "Estructura de deuda",
+    family: "Debt structure",
     definition:
-      "LTV proyectado al vencimiento o a la fecha de amortización anticipada, después de la amortización del período.",
+      "LTV projected to maturity or to the anticipated repayment date, after the period's amortisation.",
     disambiguation:
-      "Mide riesgo de refinanciación, no apalancamiento de origen. En préstamos interest-only coincide con el LTV de cierre.",
+      "It measures refinancing risk, not leverage at origination. On interest-only loans it coincides with the closing LTV.",
   },
   dscr: {
-    family: "Estructura de deuda",
+    family: "Debt structure",
     definition:
-      "Cobertura del servicio de deuda calculada sobre NOI: cuántas veces el resultado operativo cubre los pagos.",
+      "Debt service coverage computed on NOI: how many times the operating result covers the payments.",
     disambiguation:
-      "Distinguir del DSCR sobre NCF, que descuenta reservas y siempre da menor. Y de las variantes whole loan y total debt, que cambian el denominador.",
+      "Distinguish it from DSCR on NCF, which deducts reserves and is always lower. And from the whole loan and total debt variants, which change the denominator.",
   },
   dscr_ncf: {
-    family: "Estructura de deuda",
+    family: "Debt structure",
     definition:
-      "Cobertura calculada sobre net cash flow, o sea después de reservas de capital. La medida conservadora.",
+      "Coverage computed on net cash flow, that is, after capital reserves. The conservative measure.",
   },
   dscr_whole_loan: {
-    family: "Estructura de deuda",
-    definition: "DSCR contra el servicio de deuda del préstamo completo, no solo el pedazo del trust.",
+    family: "Debt structure",
+    definition: "DSCR against the debt service of the entire loan, not just the trust's piece.",
   },
   dscr_total_debt: {
-    family: "Estructura de deuda",
-    definition: "DSCR contra el servicio de toda la deuda, incluida la mezzanine.",
+    family: "Debt structure",
+    definition: "DSCR against the service of all the debt, mezzanine included.",
   },
   debt_yield: {
-    family: "Estructura de deuda",
+    family: "Debt structure",
     definition:
-      "NOI dividido el saldo del préstamo. Mide el retorno del prestamista si tuviera que tomar la propiedad, sin depender de tasaciones.",
+      "NOI divided by the loan balance. It measures the lender's return if it had to take the property, without depending on appraisals.",
     disambiguation:
-      "A diferencia del LTV, no usa el valor tasado, así que no se distorsiona cuando las tasaciones se inflan. Por eso muchos suscriptores lo prefieren.",
+      "Unlike LTV, it does not use the appraised value, so it is not distorted when appraisals inflate. That is why many underwriters prefer it.",
   },
   debt_yield_ncf: {
-    family: "Estructura de deuda",
-    definition: "Debt yield calculado sobre net cash flow.",
+    family: "Debt structure",
+    definition: "Debt yield computed on net cash flow.",
   },
   debt_yield_whole_loan: {
-    family: "Estructura de deuda",
-    definition: "Debt yield contra el saldo del préstamo completo.",
+    family: "Debt structure",
+    definition: "Debt yield against the balance of the entire loan.",
   },
   debt_yield_total_debt: {
-    family: "Estructura de deuda",
-    definition: "Debt yield contra el total de la deuda sobre la propiedad.",
+    family: "Debt structure",
+    definition: "Debt yield against the total debt on the property.",
   },
   loan_amount: {
-    family: "Saldos",
+    family: "Balances",
     definition:
-      "El saldo que ESTE trust tiene del préstamo a la fecha de corte. Es lo que compró la emisión, no lo que debe el prestatario.",
+      "The balance of the loan THIS trust holds as of the cut-off date. It is what the issuance bought, not what the borrower owes.",
     disambiguation:
-      "Un Annex A publica siete saldos del mismo préstamo y este es solo uno. Los ratios que publica el emisor —debt yield, DSCR, LTV— no se calculan contra este número cuando el préstamo está repartido entre varios trusts: se calculan contra el préstamo completo, porque el NOI que publica es el de la propiedad entera.",
+      "An Annex A publishes seven balances for the same loan and this is only one of them. The ratios the issuer publishes —debt yield, DSCR, LTV— are not computed against this number when the loan is split across several trusts: they are computed against the entire loan, because the NOI it publishes is for the whole property.",
     incident:
-      "Apuntaba a 'Original Balance ($)' sin excluir calificadores. Tysons Corner Center quedó con $2.460.000 —la rebanada de este trust en un préstamo de $709M— y el debt yield calculado daba 3947%. Lo delataron las identidades aritméticas: el saldo implícito por debt yield y el implícito por LTV coincidían en 288x hasta el tercer dígito.",
+      "It pointed at 'Original Balance ($)' without excluding qualifiers. Tysons Corner Center came out with $2,460,000 —this trust's slice of a $709M loan— and the computed debt yield gave 3947%. The arithmetic identities gave it away: the balance implied by debt yield and the one implied by LTV agreed at 288x to three digits.",
   },
   interest_rate: {
-    family: "Estructura de deuda",
-    definition: "Tasa del préstamo hipotecario.",
+    family: "Debt structure",
+    definition: "The mortgage loan's rate.",
     disambiguation:
-      "Un Annex A publica además la tasa de la deuda subordinada y la de la mezzanine, que cotizan muy por encima. Mezclarlas contamina cualquier serie de costo de deuda.",
+      "An Annex A also publishes the subordinate debt rate and the mezzanine rate, which price well above. Mixing them contaminates any cost-of-debt series.",
     incident:
-      "Una serie temporal mostró tasas medianas de 84% y 0% en ciertos trimestres. El valor crudo era '480' y '360': plazos de amortización en meses que llegaban a la columna de tasa por una tabla mal adoptada. Ninguna validación de rango existía porque cada valor suelto parecía un porcentaje.",
+      "A time series showed median rates of 84% and 0% in certain quarters. The raw values were '480' and '360': amortisation terms in months reaching the rate column via a badly adopted table. No range validation existed because each loose value looked like a percentage.",
   },
 
   // -------------------------------------------------------------------------
-  // Cooperativas
+  // Cooperatives
   // -------------------------------------------------------------------------
 
   coop_units: {
-    family: "Cooperativas",
+    family: "Cooperatives",
     definition:
-      "Cantidad de unidades de una cooperativa de vivienda. Su presencia identifica al préstamo como cooperativo, que es un segmento con economía propia.",
+      "The number of units in a housing cooperative. Its presence identifies the loan as cooperative, which is a segment with its own economics.",
     disambiguation:
-      "Las cooperativas vienen clasificadas como Multifamily pero no se comportan igual: la cooperativa es dueña del edificio y toma deuda mínima contra un valor alto. LTV de 10-20% con DSCR de 4x a 12x es lo normal ahí.",
+      "Cooperatives come classified as Multifamily but do not behave the same way: the co-op owns the building and takes minimal debt against a high value. An LTV of 10-20% with a DSCR of 4x to 12x is normal there.",
     incident:
-      "Marqué como dato roto un LTV mediano de 11% en una familia de emisores, asumiendo que un préstamo de CMBS no cotiza así. La aritmética decía lo contrario —préstamo de $8,5M contra tasación de $38,6M, cap rate normal de 5,9%— y las columnas que lo explicaban llevaban horas en la lista de encabezados sin mapear, descartadas por parecer de nicho. El error fue de interpretación, no de extracción: los datos siempre estuvieron bien.",
+      "I flagged a median LTV of 11% in one issuer family as broken data, assuming a CMBS loan does not price like that. The arithmetic said otherwise —an $8.5M loan against a $38.6M appraisal, a normal 5.9% cap rate— and the columns that explained it had been sitting in the unmapped headers list for hours, dismissed as niche. The error was interpretation, not extraction: the data was right all along.",
   },
   coop_ltv_as_rental: {
-    family: "Cooperativas",
+    family: "Cooperatives",
     definition:
-      "El LTV que tendría el edificio valuado como propiedad de renta en vez de como cooperativa.",
+      "The LTV the building would have if valued as a rental property instead of as a cooperative.",
     disambiguation:
-      "Es el único número de apalancamiento comparable entre una cooperativa y un multifamily convencional. El LTV normal de una cooperativa no se puede poner en la misma tabla que el del resto.",
+      "It is the only leverage number comparable between a cooperative and conventional multifamily. A cooperative's normal LTV cannot go in the same table as everyone else's.",
   },
   coop_rental_value: {
-    family: "Cooperativas",
-    definition: "Valor del edificio tasado como propiedad de renta.",
+    family: "Cooperatives",
+    definition: "Value of the building appraised as a rental property.",
   },
   coop_sponsor_units: {
-    family: "Cooperativas",
+    family: "Cooperatives",
     definition:
-      "Unidades que todavía retiene el sponsor original de la conversión. Una proporción alta indica una cooperativa poco madura, con más riesgo.",
+      "Units still retained by the original conversion sponsor. A high proportion indicates an immature cooperative, with more risk.",
   },
 
   // -------------------------------------------------------------------------
-  // Ocupación
+  // Occupancy
   // -------------------------------------------------------------------------
 
   occupancy: {
-    family: "Ocupación",
+    family: "Occupancy",
     definition:
-      "Ocupación física o arrendada: qué proporción del espacio está ocupada o bajo contrato.",
+      "Physical or leased occupancy: what proportion of the space is occupied or under contract.",
     disambiguation:
-      "Distinta de la económica, que descuenta concesiones e incobrables y siempre es menor o igual. Muchos Annex A publican solo una de las dos.",
+      "Different from economic occupancy, which deducts concessions and bad debt and is always lower or equal. Many Annex A documents publish only one of the two.",
     incident:
-      "Una exclusión de /economic/ pensada para separarlas terminó descartando la única ocupación que ese Annex publicaba, y quedamos sin ninguna.",
+      "An /economic/ exclusion meant to separate them ended up discarding the only occupancy that Annex published, and we were left with none.",
   },
   occupancy_economic: {
-    family: "Ocupación",
+    family: "Occupancy",
     definition:
-      "Ocupación económica: proporción del ingreso potencial que efectivamente se cobra, después de concesiones, períodos de gracia e incobrables.",
+      "Economic occupancy: the proportion of potential income actually collected, after concessions, free-rent periods and bad debt.",
     disambiguation:
-      "Un edificio puede estar 100% arrendado y tener 85% de ocupación económica si dio meses gratis. La brecha entre ambas es una señal de blandura del mercado.",
+      "A building can be 100% leased and have 85% economic occupancy if it gave away free months. The gap between the two is a signal of market softness.",
   },
 
   // -------------------------------------------------------------------------
-  // Físico
+  // Physical
   // -------------------------------------------------------------------------
 
   units: {
-    family: "Físico",
+    family: "Physical",
     definition:
-      "Cantidad de unidades contables: departamentos, habitaciones de hotel, lotes o camas según el tipo de activo.",
+      "The number of countable units: apartments, hotel rooms, pads or beds depending on the asset type.",
     disambiguation:
-      "Un Annex A usa una sola columna 'Number of Units' para todo y una columna aparte, 'Unit of Measure', dice qué se está contando. Cuando la medida es de superficie, el número NO son unidades.",
+      "An Annex A uses a single 'Number of Units' column for everything and a separate column, 'Unit of Measure', says what is being counted. When the measure is an area, the number is NOT units.",
     incident:
-      "Un galpón entró al índice con 425.000 unidades. El chequeo de sanidad lo detectó, pero el diagnóstico inicial fue equivocado: se creyó que era un error de mapeo cuando era semántico.",
+      "A warehouse entered the index with 425,000 units. The sanity check caught it, but the initial diagnosis was wrong: it was assumed to be a mapping error when it was semantic.",
   },
   unit_of_measure: {
-    family: "Físico",
+    family: "Physical",
     definition:
-      "Qué cuenta la columna de unidades: Units, Rooms, Pads, Beds o SF. Sin este dato, comparar activos no tiene sentido.",
+      "What the units column counts: Units, Rooms, Pads, Beds or SF. Without this datum, comparing assets is meaningless.",
   },
   square_feet: {
-    family: "Físico",
-    definition: "Superficie rentable neta.",
+    family: "Physical",
+    definition: "Net rentable area.",
     disambiguation:
-      "Puede venir de una columna propia o de 'Number of Units' cuando la medida es SF. Multifamily y hotelería reportan unidades; oficinas, retail e industrial reportan superficie.",
+      "It can come from its own column or from 'Number of Units' when the measure is SF. Multifamily and hospitality report units; office, retail and industrial report area.",
     incident:
-      "El patrón /nra/ se llevaba 'Largest Tenant % of NRA'. En Tysons Corner Center guardábamos 14 como superficie —el porcentaje que ocupa el inquilino principal— en vez de los pies cuadrados. Un valor de dos dígitos donde debería haber seis, invisible salvo mirando la procedencia fila por fila.",
+      "The /nra/ pattern was taking 'Largest Tenant % of NRA'. At Tysons Corner Center we were storing 14 as the area —the percentage the largest tenant occupies— instead of the square footage. A two-digit value where there should be six, invisible except by reading the provenance row by row.",
   },
   year_built: {
-    family: "Físico",
-    definition: "Año de construcción.",
+    family: "Physical",
+    definition: "Year of construction.",
     disambiguation:
-      "Los préstamos sobre varias propiedades reportan 'Various'. Eso es ausencia de dato, no un año.",
+      "Loans over several properties report 'Various'. That is an absent datum, not a year.",
   },
 
   // -------------------------------------------------------------------------
-  // Valuación
+  // Valuation
   // -------------------------------------------------------------------------
 
   appraised_value: {
-    family: "Valuación",
-    definition: "Valor de tasación usado para calcular el LTV.",
+    family: "Valuation",
+    definition: "The appraised value used to compute the LTV.",
     disambiguation:
-      "Los Annex A publican además un 'Appraised Value Type' que indica si es valor as-is, as-stabilized o as-complete. Sin ese calificador, comparar tasaciones entre préstamos puede engañar.",
+      "Annex A documents also publish an 'Appraised Value Type' indicating whether it is as-is, as-stabilized or as-complete. Without that qualifier, comparing appraisals across loans can mislead.",
   },
   cap_rate: {
-    family: "Valuación",
-    definition: "Tasa de capitalización: NOI sobre valor.",
+    family: "Valuation",
+    definition: "Capitalisation rate: NOI over value.",
     disambiguation:
-      "Cuando no viene publicada se puede derivar del NOI y la tasación, pero el resultado depende de qué NOI se use —underwritten o real— y las dos dan números distintos.",
+      "When it is not published it can be derived from the NOI and the appraisal, but the result depends on which NOI is used —underwritten or actual— and the two give different numbers.",
   },
 
   // -------------------------------------------------------------------------
-  // Estructurales
+  // Structural
   // -------------------------------------------------------------------------
 
   loan_property_flag: {
-    family: "Estructura del documento",
+    family: "Document structure",
     definition:
-      "Indica si la fila describe un préstamo o una de las propiedades que lo garantizan.",
+      "Indicates whether the row describes a loan or one of the properties securing it.",
     disambiguation:
-      "Un préstamo sobre tres propiedades genera cuatro filas: una del préstamo y tres de propiedades. Tratarlas todas como préstamos multiplica el portfolio y suma el balance varias veces.",
+      "A loan over three properties generates four rows: one for the loan and three for properties. Treating them all as loans multiplies the portfolio and adds the balance several times over.",
     incident:
-      "Un préstamo de $70M sobre dos hoteles se contaba como tres deals y sumaba $140M al pool.",
+      "A $70M loan over two hotels was counted as three deals and added $140M to the pool.",
   },
   loan_id: {
-    family: "Estructura del documento",
+    family: "Document structure",
     definition:
-      "Identificador del préstamo dentro del pool. Es la clave que permite unir los bloques horizontales en que viene partido el Annex A.",
+      "The loan's identifier within the pool. It is the key that allows joining the horizontal blocks the Annex A is split into.",
   },
 };
