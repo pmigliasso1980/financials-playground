@@ -1,37 +1,36 @@
 /**
- * ¿Qué métricas se deciden por el orden de las columnas?
+ * Which metrics are decided by column order?
  *
  *   npm run harvest:ties
- *   npm run harvest:ties -- --emisiones 10
+ *   npm run harvest:ties -- --issuances 10
  *
- * QUÉ BUSCA
+ * WHAT IT LOOKS FOR
  *
- * `scoreHeader` puntúa por posición del patrón que matchea, y `mapColumns`
- * resuelve empates por orden de columna. Cuando dos encabezados distintos
- * empatan en el puntaje máximo de una métrica, el ganador lo decide el orden en
- * que quedaron los bloques después de `joinAnnexTables` — que varía por
- * emisión.
+ * `scoreHeader` scores by the position of the matching pattern, and
+ * `mapColumns` resolves ties by column order. When two different headers tie at
+ * a metric's maximum score, the winner is decided by the order the blocks ended
+ * up in after `joinAnnexTables` — which varies by issuance.
  *
- * Así se mezclaron dos cantidades bajo `occupancy` durante tres semanas:
- * `Leased Occupancy (%)` y `Most Recent Hotel Occupancy (%)` empataban en 0,76,
- * y en 7 emisiones de 2026 ganó la de hotel. La cobertura se veía en 76% y
- * adentro había dos métricas distintas.
+ * That is how two quantities got mixed under `occupancy` for three weeks:
+ * `Leased Occupancy (%)` and `Most Recent Hotel Occupancy (%)` tied at 0.76,
+ * and in 7 of the 2026 issuances the hotel one won. Coverage looked like 76%
+ * and inside it were two different metrics.
  *
- * El Annex A conduit tiene series históricas en varias métricas —NOI, ingresos,
- * gastos, ocupación—, así que no hay razón para pensar que la ocupación fuera
- * el único caso.
+ * The conduit Annex A has historical series in several metrics —NOI, income,
+ * expenses, occupancy— so there is no reason to think occupancy was the only
+ * case.
  *
- * ES UN TEST, NO UN INFORME
+ * IT IS A TEST, NOT A REPORT
  *
- * Sale con código 1 si encuentra empates. Un empate en el puntaje ganador no es
- * un dato del documento: es un agujero en la taxonomía, y la taxonomía es
- * nuestra.
+ * It exits with code 1 if it finds ties. A tie at the winning score is not a
+ * fact about the document: it is a hole in the taxonomy, and the taxonomy is
+ * ours.
  *
- * QUÉ NO DETECTA
+ * WHAT IT DOES NOT DETECT
  *
- * Que la columna ganadora sea la correcta. Si una métrica tiene un único
- * candidato y es el equivocado, esto pasa en verde. Detecta ambigüedad, no
- * error.
+ * Whether the winning column is the right one. If a metric has a single
+ * candidate and it is the wrong one, this passes green. It detects ambiguity,
+ * not error.
  */
 
 import { fetchBuffer, preflight } from "./edgar/client.js";
@@ -42,7 +41,7 @@ import { attachContinuationTables, joinAnnexTables } from "./normalize/annexStru
 import { closePool, ping, query } from "../db/client.js";
 
 const args = process.argv.slice(2);
-const i = args.indexOf("--emisiones");
+const i = args.indexOf("--issuances");
 const N = i === -1 ? 6 : Number(args[i + 1] ?? 6);
 
 const health = await preflight();
@@ -57,16 +56,16 @@ if (!db.ok) {
 }
 
 /**
- * Una emisión por añada, la de mayor pool.
+ * One issuance per vintage, the one with the largest pool.
  *
- * Criterio fijado antes de mirar: más préstamos es más probable que el Annex
- * traiga todos los bloques, y el muestreo por añada cubre cambios de plantilla
- * a lo largo del tiempo. No depende de ningún resultado.
+ * Criterion fixed before looking: more loans makes it likelier the Annex
+ * carries every block, and sampling by vintage covers template changes over
+ * time. It depends on no result.
  */
-const { rows: emisiones } = await query<{ cik: string; nombre: string; anada: string }>(
+const { rows: issuances } = await query<{ cik: string; name: string; vintage: string }>(
   `WITH r AS (
-     SELECT f.cik, f.company_name AS nombre,
-            extract(year FROM f.filed_at)::int::text AS anada,
+     SELECT f.cik, f.company_name AS name,
+            extract(year FROM f.filed_at)::int::text AS vintage,
             row_number() OVER (
               PARTITION BY extract(year FROM f.filed_at)
               ORDER BY count(l.id) DESC, f.accession
@@ -76,28 +75,28 @@ const { rows: emisiones } = await query<{ cik: string; nombre: string; anada: st
       WHERE f.filed_at IS NOT NULL
       GROUP BY f.cik, f.company_name, f.accession, f.filed_at
    )
-   SELECT cik, nombre, anada FROM r WHERE rn = 1 ORDER BY anada DESC`,
+   SELECT cik, name, vintage FROM r WHERE rn = 1 ORDER BY vintage DESC`,
 );
 await closePool();
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿Qué métricas se deciden por el orden de las columnas?");
+console.log("Which metrics are decided by column order?");
 console.log(`${"═".repeat(78)}\n`);
 
 interface Empate {
-  metrica: string;
+  metric: string;
   score: number;
   headers: string[];
-  emision: string;
+  issuance: string;
 }
 const empates: Empate[] = [];
-let revisadas = 0;
+let reviewed = 0;
 
-for (const e of emisiones.slice(0, N)) {
+for (const e of issuances.slice(0, N)) {
   try {
     const picks = await findAnnexFilings(e.cik, { max: 1 });
     if (picks.length === 0) {
-      console.log(`  ${e.nombre.slice(0, 40).padEnd(42)} \x1b[33msin Annex A\x1b[0m`);
+      console.log(`  ${e.name.slice(0, 40).padEnd(42)} \x1b[33msin Annex A\x1b[0m`);
       continue;
     }
     const { filing } = picks[0]!;
@@ -108,22 +107,22 @@ for (const e of emisiones.slice(0, N)) {
     );
     const joined = joinAnnexTables(annexTables);
     if (!joined) {
-      console.log(`  ${e.nombre.slice(0, 40).padEnd(42)} \x1b[33msin join\x1b[0m`);
+      console.log(`  ${e.name.slice(0, 40).padEnd(42)} \x1b[33msin join\x1b[0m`);
       continue;
     }
 
     /**
-     * Los encabezados UNIDOS, que es donde las columnas compiten de verdad.
+     * The JOINED headers, which is where the columns really compete.
      *
-     * Mirar tabla por tabla no sirve: el empate aparece justamente porque el
-     * join junta bloques que por separado tenían una sola candidata cada uno.
+     * Looking table by table is no use: the tie appears precisely because the
+     * join brings together blocks that separately had a single candidate each.
      */
     const headers = (joined.rows[joined.headerRowIndex] ?? []).map((c) =>
       c === null || c === undefined ? "" : String(c).replace(/\s+/g, " ").trim(),
     );
 
-    revisadas++;
-    const propios: Empate[] = [];
+    reviewed++;
+    const own: Empate[] = [];
 
     for (const spec of METRIC_SPECS) {
       const puntuadas = headers
@@ -133,91 +132,91 @@ for (const e of emisiones.slice(0, N)) {
 
       const max = Math.max(...puntuadas.map((x) => x.s));
       /**
-       * Encabezados repetidos no son ambigüedad: son la misma columna en dos
-       * bloques. La comparación ignora espacios y mayúsculas porque el Annex A
-       * trae "# of Properties" en un bloque y "#of Properties" en otro — un
-       * espacio de diferencia que la sonda reportaba como métrica ambigua.
+       * Repeated headers are not ambiguity: they are the same column in two
+       * blocks. The comparison ignores whitespace and case because the Annex A
+       * carries "# of Properties" in one block and "#of Properties" in another —
+       * one space of difference that the probe reported as an ambiguous metric.
        *
-       * Es un falso positivo mío, no un defecto de la taxonomía: las dos
-       * columnas contienen lo mismo y da igual cuál gane.
+       * That is a false positive of mine, not a defect in the taxonomy: the two
+       * columns contain the same thing and it does not matter which wins.
        */
       const clave = (h: string) => h.replace(/\s+/g, "").toLowerCase();
       const porClave = new Map<string, string>();
       for (const x of puntuadas.filter((x) => x.s === max)) {
         if (!porClave.has(clave(x.h))) porClave.set(clave(x.h), x.h);
       }
-      const ganadoras = [...porClave.values()];
-      if (ganadoras.length < 2) continue;
+      const winners = [...porClave.values()];
+      if (winners.length < 2) continue;
 
-      propios.push({ metrica: spec.key, score: max, headers: ganadoras, emision: e.nombre });
+      own.push({ metric: spec.key, score: max, headers: winners, issuance: e.name });
     }
 
-    empates.push(...propios);
+    empates.push(...own);
     console.log(
-      `  ${e.nombre.slice(0, 40).padEnd(42)} ${String(headers.length).padStart(3)} cols · ` +
-        (propios.length === 0
+      `  ${e.name.slice(0, 40).padEnd(42)} ${String(headers.length).padStart(3)} cols · ` +
+        (own.length === 0
           ? `\x1b[32msin empates\x1b[0m`
-          : `\x1b[31m${propios.length} métrica(s) ambigua(s)\x1b[0m`),
+          : `\x1b[31m${own.length} ambiguous metric(s)\x1b[0m`),
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(`  ${e.nombre.slice(0, 40).padEnd(42)} \x1b[31m${msg.slice(0, 30)}\x1b[0m`);
+    console.log(`  ${e.name.slice(0, 40).padEnd(42)} \x1b[31m${msg.slice(0, 30)}\x1b[0m`);
   }
 }
 
 console.log(`\n${"─".repeat(78)}\n`);
 
-if (revisadas === 0) {
-  console.log(`  \x1b[33mNinguna emisión se pudo revisar. Sin conclusión.\x1b[0m\n`);
+if (reviewed === 0) {
+  console.log(`  \x1b[33mNo issuance could be reviewed. No conclusion.\x1b[0m\n`);
   process.exit(1);
 }
 
 if (empates.length === 0) {
   console.log(
-    `  \x1b[32mNinguna métrica ambigua en ${revisadas} emisiones.\x1b[0m Cada una tiene una\n` +
-      `  sola columna en su puntaje máximo.\n`,
+    `  \x1b[32mNo ambiguous metric across ${reviewed} issuances.\x1b[0m Each has a\n` +
+      `  single column at its maximum score.\n`,
   );
   process.exit(0);
 }
 
-/** Se agrupa por métrica: la misma ambigüedad aparece en muchas emisiones. */
-const porMetrica = new Map<string, Empate[]>();
+/** Grouped by metric: the same ambiguity appears across many issuances. */
+const byMetric = new Map<string, Empate[]>();
 for (const x of empates) {
-  const l = porMetrica.get(x.metrica) ?? [];
+  const l = byMetric.get(x.metric) ?? [];
   l.push(x);
-  porMetrica.set(x.metrica, l);
+  byMetric.set(x.metric, l);
 }
 
 console.log(
-  `  \x1b[31m${porMetrica.size} métrica(s) con empate en el puntaje ganador\x1b[0m` +
-    ` \x1b[90m(${revisadas} emisiones revisadas)\x1b[0m\n`,
+  `  \x1b[31m${byMetric.size} metric(s) tied at the winning score\x1b[0m` +
+    ` \x1b[90m(${reviewed} issuances reviewed)\x1b[0m\n`,
 );
 
-for (const [metrica, casos] of [...porMetrica].sort((a, b) => b[1].length - a[1].length)) {
+for (const [metric, cases] of [...byMetric].sort((a, b) => b[1].length - a[1].length)) {
   console.log(
-    `  \x1b[1m${metrica}\x1b[0m \x1b[90m· empata en ${casos.length} de ${revisadas} emisiones · puntaje ${casos[0]!.score.toFixed(2)}\x1b[0m`,
+    `  \x1b[1m${metric}\x1b[0m \x1b[90m· ties in ${cases.length} of ${reviewed} issuances · score ${cases[0]!.score.toFixed(2)}\x1b[0m`,
   );
-  for (const h of casos[0]!.headers) console.log(`      \x1b[36m"${h.slice(0, 60)}"\x1b[0m`);
+  for (const h of cases[0]!.headers) console.log(`      \x1b[36m"${h.slice(0, 60)}"\x1b[0m`);
 
   /**
-   * Si las columnas empatadas cambian entre emisiones, el conjunto de
-   * candidatas depende del documento y no solo de la taxonomía.
+   * If the tied columns change between issuances, the candidate set depends on
+   * the document and not only on the taxonomy.
    */
-  const firmas = new Set(casos.map((c) => [...c.headers].sort().join("|")));
-  if (firmas.size > 1) {
-    console.log(`      \x1b[90m(${firmas.size} combinaciones distintas entre emisiones)\x1b[0m`);
+  const signatures = new Set(cases.map((c) => [...c.headers].sort().join("|")));
+  if (signatures.size > 1) {
+    console.log(`      \x1b[90m(${signatures.size} different combinations across issuances)\x1b[0m`);
   }
   console.log();
 }
 
 console.log(
-  `  \x1b[90mEl arreglo es el mismo que se usó en occupancy: un patrón más específico\x1b[0m`,
+  `  \x1b[90mThe fix is the same one used on occupancy: a more specific pattern\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mprimero para la columna que se quiere, o un exclude para las que no.\x1b[0m`,
+  `  \x1b[90mfirst for the column you want, or an exclude for the ones you do not.\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mDejarlo así hace que el valor guardado dependa del orden de los bloques.\x1b[0m\n`,
+  `  \x1b[90mLeaving it makes the stored value depend on the block order.\x1b[0m\n`,
 );
 
 process.exit(1);

@@ -1,37 +1,38 @@
 /**
- * ¿Por qué 7 emisiones de 2026 no traen ocupación?
+ * Why do 7 of the 2026 issuances carry no occupancy?
  *
  *   npm run harvest:occupancy
- *   npm run harvest:occupancy -- --rotas 4 --sanas 2
+ *   npm run harvest:occupancy -- --broken 4 --healthy 2
  *
- * QUÉ YA SABEMOS, Y QUÉ FALTA
+ * WHAT WE ALREADY KNOW, AND WHAT IS MISSING
  *
- * `db:benchmark --auditoria` dejó el diagnóstico cerrado por el lado de los
- * datos: dentro de las emisiones que traen la columna, los ocho tipos de
- * propiedad tienen ocupación en el 100% de los préstamos, dispersión cero. No
- * es que el dato no aplique a ciertos activos — es formato del Annex A.
+ * `db:benchmark --audit` closed the diagnosis from the data side: within the
+ * issuances that do carry the column, all eight property types have occupancy
+ * in 100% of loans, zero dispersion. It is not that the datum does not apply to
+ * certain assets — it is the Annex A's format.
  *
- * Lo que falta es el encabezado concreto que no reconocemos. Esta sonda lo
- * busca corriendo el MISMO pipeline que `harvest:batch` sobre una emisión rota
- * y una sana, y poniendo los encabezados uno al lado del otro.
+ * What is missing is the concrete header we do not recognise. This probe looks
+ * for it by running the SAME pipeline as `harvest:batch` over a broken issuance
+ * and a healthy one, and putting the headers side by side.
  *
- * POR QUÉ NO ALCANZA CON `harvest:inspect`
+ * WHY `harvest:inspect` IS NOT ENOUGH
  *
- * Ese inspector trabaja sobre fixtures ya capturados, y estas siete no están
- * entre ellos. Capturarlas primero sería un paso de más para una pregunta que
- * se contesta mirando una fila.
+ * That inspector works on already-captured fixtures, and these seven are not
+ * among them. Capturing them first would be an extra step for a question that
+ * is answered by looking at one row.
  *
- * NO ESCRIBE NADA. Es diagnóstico: baja, mira y reporta.
+ * IT WRITES NOTHING. It is diagnostic: download, look, report.
  *
- * LA PISTA QUE HAY QUE EXPLICAR
+ * THE CLUE THAT HAS TO BE EXPLAINED
  *
- * Seis de las siete rotas tienen ocupación en 1-6 préstamos, no en cero. Un
- * patrón que no matchea daría cero limpio. Que haya un puñado sugiere que la
- * columna correcta no se reconoce y esos pocos valores entran por OTRA columna
- * — probablemente una de un bloque distinto que sí matchea por casualidad.
+ * Six of the seven broken ones have occupancy in 1-6 loans, not in zero. A
+ * pattern that does not match would give a clean zero. That there is a handful
+ * suggests the correct column is not recognised and those few values come in
+ * through ANOTHER column — probably one from a different block that matches by
+ * accident.
  *
- * Si eso es cierto, los 688 valores que hoy tenemos por buenos incluyen algunos
- * que no son ocupación, y el problema no es solo de cobertura.
+ * If that is true, the 688 values we currently treat as good include some that
+ * are not occupancy, and the problem is not only one of coverage.
  */
 
 import { fetchBuffer, preflight } from "./edgar/client.js";
@@ -51,8 +52,8 @@ const flag = (name: string, def: number) => {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? def : Number(args[i + 1] ?? def);
 };
-const N_ROTAS = flag("rotas", 3);
-const N_SANAS = flag("sanas", 2);
+const N_BROKEN = flag("broken", 3);
+const N_HEALTHY = flag("healthy", 2);
 
 const health = await preflight();
 if (!health.ok) {
@@ -66,16 +67,16 @@ if (!db.ok) {
 }
 
 /**
- * Las emisiones salen de la base, no de una lista escrita a mano.
+ * The issuances come from the database, not from a hand-written list.
  *
- * Ya nos pasó en `harvest:history`: ocho CIKs inventados de memoria, los ocho
- * fallaron. Si hubiera acertado dos, el piloto habría corrido sobre esos dos
- * sin que nadie lo notara.
+ * It already happened to us in `harvest:history`: eight CIKs made up from
+ * memory, all eight failed. Had I guessed two correctly, the pilot would have
+ * run over those two without anyone noticing.
  */
-const { rows: emisiones } = await query<{
-  cik: string; accession: string; nombre: string; pool: string; con_occ: string;
+const { rows: issuances } = await query<{
+  cik: string; accession: string; name: string; pool: string; con_occ: string;
 }>(
-  `SELECT f.cik, f.accession, f.company_name AS nombre,
+  `SELECT f.cik, f.accession, f.company_name AS name,
           count(l.id)::text AS pool,
           count(*) FILTER (WHERE EXISTS (
             SELECT 1 FROM corpus.facts fa
@@ -94,25 +95,25 @@ const { rows: emisiones } = await query<{
 );
 await closePool();
 
-const cobertura = (e: (typeof emisiones)[number]) =>
+const coverage = (e: (typeof issuances)[number]) =>
   Number(e.con_occ) / Math.max(1, Number(e.pool));
 
-const rotas = emisiones.filter((e) => cobertura(e) < 0.5).slice(0, N_ROTAS);
-const sanas = emisiones.filter((e) => cobertura(e) > 0.95).slice(-N_SANAS);
+const broken = issuances.filter((e) => coverage(e) < 0.5).slice(0, N_BROKEN);
+const healthy = issuances.filter((e) => coverage(e) > 0.95).slice(-N_HEALTHY);
 
-if (rotas.length === 0) {
-  console.log(`\n  Ninguna emisión con cobertura de ocupación baja. Nada que diagnosticar.\n`);
+if (broken.length === 0) {
+  console.log(`\n  No issuance with low occupancy coverage. Nothing to diagnose.\n`);
   process.exit(0);
 }
 
-/** La especificación que estamos auditando, tal como la ve el mapeo. */
+/** The spec we are auditing, exactly as the mapping sees it. */
 const SPEC = METRIC_SPECS.find((m) => m.key === "occupancy")!;
 
-/** Amplio a propósito: queremos ver también lo que el mapeo NO considera. */
+/** Deliberately broad: we also want to see what the mapping does NOT consider. */
 const SOSPECHOSO = /occ|physic|lease|vacan|utiliz/i;
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿Qué encabezado de ocupación no reconocemos?");
+console.log("Which occupancy header do we not recognise?");
 console.log(`${"═".repeat(78)}`);
 console.log(
   `\n\x1b[90m  Patrones actuales: ${SPEC.patterns.map((p) => p.source).join("  ·  ")}\x1b[0m`,
@@ -122,55 +123,55 @@ console.log(
 );
 
 /**
- * Por qué un encabezado no llegó a ocupación.
+ * Why a header did not reach occupancy.
  *
- * Tres desenlaces distintos que "no matchea" confunde en uno:
- *   · ningún patrón lo toca         → falta un patrón
- *   · un exclude lo mata            → el exclude es demasiado ancho
- *   · matchea pero pierde la puja   → otra métrica se lo llevó, y saber cuál
- *                                     importa porque ahí está el valor mal
- *                                     etiquetado
+ * Three different outcomes that "does not match" conflates into one:
+ *   · no pattern touches it        → a pattern is missing
+ *   · an exclude kills it          → the exclude is too broad
+ *   · it matches but loses the bid → another metric took it, and knowing which
+ *                                    matters because that is where the
+ *                                    mislabelled value is
  */
-function porQue(header: string, headers: string[]): string {
+function whyNot(header: string, headers: string[]): string {
   const excl = (SPEC.exclude ?? []).find((r) => r.test(header));
-  const pega = SPEC.patterns.find((r) => r.test(header));
+  const hits = SPEC.patterns.find((r) => r.test(header));
   const score = scoreHeader(header, SPEC);
   const { matches } = mapColumns(headers);
-  const asignado = matches.find((m) => m.header === header);
+  const assigned = matches.find((m) => m.header === header);
 
-  if (asignado?.metric.key === "occupancy") return `\x1b[32mmapea a occupancy\x1b[0m`;
-  if (excl) return `\x1b[31mlo mata el exclude /${excl.source}/\x1b[0m`;
-  if (!pega) return `\x1b[33mningún patrón lo toca\x1b[0m`;
-  if (asignado) {
-    return `\x1b[31mse lo lleva ${asignado.metric.key}\x1b[0m \x1b[90m(occ: ${score.toFixed(2)})\x1b[0m`;
+  if (assigned?.metric.key === "occupancy") return `\x1b[32mmaps to occupancy\x1b[0m`;
+  if (excl) return `\x1b[31mkilled by the exclude /${excl.source}/\x1b[0m`;
+  if (!hits) return `\x1b[33mno pattern touches it\x1b[0m`;
+  if (assigned) {
+    return `\x1b[31mtaken by ${assigned.metric.key}\x1b[0m \x1b[90m(occ: ${score.toFixed(2)})\x1b[0m`;
   }
-  return `\x1b[33mmatchea (${score.toFixed(2)}) pero no se asigna\x1b[0m`;
+  return `\x1b[33mmatches (${score.toFixed(2)}) but is not assigned\x1b[0m`;
 }
 
-async function mirar(e: (typeof emisiones)[number], etiqueta: string) {
-  const cob = cobertura(e);
+async function look(e: (typeof issuances)[number], label: string) {
+  const cov = coverage(e);
   console.log(`${"─".repeat(78)}`);
   console.log(
-    `\x1b[1m${e.nombre.slice(0, 50)}\x1b[0m  \x1b[90m${etiqueta} · ${e.con_occ} de ${e.pool} (${(cob * 100).toFixed(0)}%)\x1b[0m`,
+    `\x1b[1m${e.name.slice(0, 50)}\x1b[0m  \x1b[90m${label} · ${e.con_occ} of ${e.pool} (${(cov * 100).toFixed(0)}%)\x1b[0m`,
   );
 
   try {
     const picks = await findAnnexFilings(e.cik, { max: 1 });
     if (picks.length === 0) {
-      console.log(`  \x1b[33msin Annex A en submissions\x1b[0m\n`);
+      console.log(`  \x1b[33mno Annex A in submissions\x1b[0m\n`);
       return;
     }
     const { filing } = picks[0]!;
 
     /**
-     * `findAnnexFilings` devuelve el más reciente del CIK, que puede no ser el
-     * mismo filing que cosechamos. Si difiere, lo decimos: comparar encabezados
-     * de otro documento sería exactamente el tipo de error silencioso que este
-     * proyecto ya pagó dos veces.
+     * `findAnnexFilings` returns the CIK's most recent one, which may not be
+     * the same filing we harvested. If it differs we say so: comparing headers
+     * from a different document would be exactly the kind of silent error this
+     * project has already paid for twice.
      */
     if (filing.accession.replace(/-/g, "") !== e.accession.replace(/-/g, "")) {
       console.log(
-        `  \x1b[33m⚠ el Annex más reciente (${filing.accession}) no es el cosechado (${e.accession})\x1b[0m`,
+        `  \x1b[33m⚠ the most recent Annex (${filing.accession}) is not the harvested one (${e.accession})\x1b[0m`,
       );
     }
 
@@ -181,33 +182,33 @@ async function mirar(e: (typeof emisiones)[number], etiqueta: string) {
     );
 
     if (annexTables.length === 0) {
-      console.log(`  \x1b[33msin tablas de Annex reconocibles\x1b[0m\n`);
+      console.log(`  \x1b[33mno recognisable Annex tables\x1b[0m\n`);
       return;
     }
 
     const vistos = new Set<string>();
-    let encontrados = 0;
+    let found = 0;
 
     for (const t of annexTables) {
       const headers = (t.rows[t.headerRowIndex] ?? []).map((c) =>
         c === null || c === undefined ? "" : String(c),
       );
       for (const h of headers) {
-        const limpio = h.replace(/\s+/g, " ").trim();
-        if (!limpio || !SOSPECHOSO.test(limpio) || vistos.has(limpio)) continue;
-        vistos.add(limpio);
-        encontrados++;
-        console.log(`  \x1b[36m"${limpio.slice(0, 52)}"\x1b[0m`);
-        console.log(`      ${porQue(h, headers)}`);
+        const cleaned = h.replace(/\s+/g, " ").trim();
+        if (!cleaned || !SOSPECHOSO.test(cleaned) || vistos.has(cleaned)) continue;
+        vistos.add(cleaned);
+        found++;
+        console.log(`  \x1b[36m"${cleaned.slice(0, 52)}"\x1b[0m`);
+        console.log(`      ${whyNot(h, headers)}`);
       }
     }
 
-    if (encontrados === 0) {
+    if (found === 0) {
       console.log(
-        `  \x1b[31mNingún encabezado menciona ocupación en todo el Annex.\x1b[0m`,
+        `  \x1b[31mNo header mentions occupancy anywhere in the Annex.\x1b[0m`,
       );
       console.log(
-        `  \x1b[90mSi es así, el dato no está en el documento y no hay parser que lo arregle.\x1b[0m`,
+        `  \x1b[90mIf so, the datum is not in the document and no parser can fix it.\x1b[0m`,
       );
     }
     console.log();
@@ -217,17 +218,17 @@ async function mirar(e: (typeof emisiones)[number], etiqueta: string) {
   }
 }
 
-for (const e of rotas) await mirar(e, "ROTA");
-for (const e of sanas) await mirar(e, "sana");
+for (const e of broken) await look(e, "BROKEN");
+for (const e of healthy) await look(e, "sana");
 
 console.log(`${"═".repeat(78)}`);
 console.log(
-  `\n  \x1b[90mEl encabezado que aparece en las sanas y falta —o cae por otra razón— en\x1b[0m`,
+  `\n  \x1b[90mThe header that appears in the healthy ones and is missing —or falls for\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mlas rotas es el arreglo. Si en las rotas no hay ningún encabezado de\x1b[0m`,
+  `  \x1b[90manother reason— in the broken ones is the fix. If the broken ones have no\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mocupación, el dato no existe en el documento: la métrica queda con\x1b[0m`,
+  `  \x1b[90moccupancy header at all, the datum does not exist in the document: the\x1b[0m`,
 );
-console.log(`  \x1b[90mcobertura parcial declarada, no con un bug abierto.\x1b[0m\n`);
+console.log(`  \x1b[90mmetric has declared partial coverage, not an open bug.\x1b[0m\n`);

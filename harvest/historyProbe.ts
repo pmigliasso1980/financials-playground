@@ -1,39 +1,39 @@
 /**
- * ¿Cuántos eventos compra bajar los 10-D históricos?
+ * How many events does downloading the historical 10-D files buy?
  *
- *   npm run harvest:history                 # piloto sobre 8 trusts
- *   npm run harvest:history -- --trusts 20 --cada 6
+ *   npm run harvest:history                 # pilot over 8 trusts
+ *   npm run harvest:history -- --trusts 20 --every 6
  *
- * LA PREGUNTA, Y POR QUÉ SE MIDE ANTES DE PAGARLA
+ * THE QUESTION, AND WHY IT IS MEASURED BEFORE BEING PAID FOR
  *
- * Todo lo que hicimos descansa sobre 168 eventos, y esa es la restricción real
- * del corpus — no los 7.000 préstamos. Cinco hipótesis murieron por falta de
- * potencia para sostener cuatro o cinco controles simultáneos.
+ * Everything we have done rests on 168 events, and that is the corpus's real
+ * constraint — not the 7,000 loans. Five hypotheses died for lack of power to
+ * support four or five simultaneous controls.
  *
- * El 10-D lista los préstamos que están en special servicing HOY. Un préstamo
- * que transfirió en 2022 y se resolvió en 2023 es invisible: es el sesgo de
- * stock, documentado desde el principio y nunca corregido.
+ * The 10-D lists the loans that are in special servicing TODAY. A loan that
+ * transferred in 2022 and was resolved in 2023 is invisible: that is the stock
+ * bias, documented from the start and never corrected.
  *
- * Bajar la historia lo convierte en flujo. Pero son ~1.500 documentos aun
- * muestreando semestralmente, y antes de gastar eso conviene saber cuánto
- * compra. Es la misma regla que el piso de ruido antes del efecto: medir si la
- * pregunta es contestable antes de intentar contestarla.
+ * Downloading the history turns it into a flow. But that is ~1,500 documents
+ * even sampling every six months, and before spending that it is worth knowing
+ * how much it buys. It is the same rule as the noise floor before the effect:
+ * measure whether the question is answerable before trying to answer it.
  *
- * QUÉ MIDE EL PILOTO
+ * WHAT THE PILOT MEASURES
  *
- * Para unos pocos trusts, baja informes cada N meses hacia atrás y cuenta
- * cuántos préstamos DISTINTOS aparecieron alguna vez en special servicing,
- * contra cuántos aparecen en el informe más reciente.
+ * For a handful of trusts, it downloads reports every N months going back and
+ * counts how many DISTINCT loans ever appeared in special servicing, against
+ * how many appear in the most recent report.
  *
- * El cociente es lo que multiplicaría los eventos del corpus entero.
+ * The ratio is what would multiply the whole corpus's events.
  *
- * CÓMO SE LEE
+ * HOW TO READ IT
  *
- *   ~1,2x   no paga: 1.500 requests para 20% más eventos
- *   ~2x     dudoso, y depende de cuánto cueste en tiempo
- *   ~3x     168 → ~500 eventos, y todo lo que murió por potencia se reabre
+ *   ~1.2x   does not pay: 1,500 requests for 20% more events
+ *   ~2x     doubtful, and depends on how much it costs in time
+ *   ~3x     168 → ~500 events, and everything that died for power reopens
  *
- * NO ESCRIBE NADA. Es una medición del prize, no una cosecha.
+ * IT WRITES NOTHING. It is a measurement of the prize, not a harvest.
  */
 
 import { fetchText, preflight } from "./edgar/client.js";
@@ -47,8 +47,8 @@ const flag = (name: string, def: number) => {
   return i === -1 ? def : Number(args[i + 1] ?? def);
 };
 
-const CADA_MESES = flag("cada", 6);
-const MAX_INFORMES = flag("informes", 10);
+const EVERY_MONTHS = flag("every", 6);
+const MAX_REPORTS = flag("reports", 10);
 
 const nTrusts = flag("trusts", 8);
 
@@ -64,26 +64,26 @@ if (!db.ok) {
 }
 
 /**
- * Los trusts salen del corpus, no de una lista escrita a mano.
+ * The trusts come from the corpus, not from a hand-written list.
  *
- * La primera versión tenía ocho CIKs hardcodeados "elegidos por añada, no por
- * resultado". La intención era correcta y la ejecución no: los ocho eran
- * inventados de memoria y los ocho fallaron. Si hubiera acertado dos, el
- * piloto habría corrido sobre esos dos sin que nadie lo notara.
+ * The first version had eight hardcoded CIKs "chosen by vintage, not by
+ * result". The intent was right and the execution was not: all eight were made
+ * up from memory and all eight failed. Had I guessed two correctly, the pilot
+ * would have run over those two without anyone noticing.
  *
- * Sacarlos de `servicer_reports` garantiza dos cosas: que existen, y que ya
- * sabemos que su 10-D se parsea.
+ * Taking them from `servicer_reports` guarantees two things: that they exist,
+ * and that we already know their 10-D parses.
  *
- * EL ORDEN ES DETERMINISTA Y NO DEPENDE DEL RESULTADO
+ * THE ORDER IS DETERMINISTIC AND DOES NOT DEPEND ON THE RESULT
  *
- * Se toman los de mayor pool dentro de cada añada. Es un criterio de potencia
- * —más préstamos, más eventos posibles— fijado antes de mirar nada, y no tiene
- * que ver con cuántas transferencias tenga cada uno.
+ * The largest pools within each vintage are taken. It is a power criterion
+ * —more loans, more possible events— fixed before looking at anything, and it
+ * has nothing to do with how many transfers each one has.
  */
-const { rows: TRUSTS } = await query<{ cik: string; nombre: string; anada: number }>(
-  `WITH por_anada AS (
-     SELECT f.cik, f.company_name AS nombre,
-            extract(year FROM f.filed_at)::int AS anada,
+const { rows: TRUSTS } = await query<{ cik: string; name: string; vintage: number }>(
+  `WITH by_vintage AS (
+     SELECT f.cik, f.company_name AS name,
+            extract(year FROM f.filed_at)::int AS vintage,
             count(l.id) AS pool,
             row_number() OVER (
               PARTITION BY extract(year FROM f.filed_at)
@@ -95,179 +95,180 @@ const { rows: TRUSTS } = await query<{ cik: string; nombre: string; anada: numbe
       WHERE extract(year FROM f.filed_at) BETWEEN 2020 AND 2024
       GROUP BY f.cik, f.company_name, f.accession, f.filed_at
    )
-   SELECT cik, nombre, anada FROM por_anada
-    WHERE rn <= 2 ORDER BY anada, nombre`,
+   SELECT cik, name, vintage FROM by_vintage
+    WHERE rn <= 2 ORDER BY vintage, name`,
 );
 await closePool();
 
 if (TRUSTS.length === 0) {
-  console.error(`\n✗ Ningún trust con informe registrado. Corré db:performance.\n`);
+  console.error(`\n✗ No trust with a registered report. Run db:performance.\n`);
   process.exit(1);
 }
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿Cuánto compra la historia? — piloto, no escribe nada");
+console.log("How much does the history buy? — pilot, writes nothing");
 console.log(`${"═".repeat(78)}`);
 console.log(
-  `\n\x1b[90m  Un informe cada ${CADA_MESES} meses, hasta ${MAX_INFORMES} por trust.\x1b[0m\n`,
+  `\n\x1b[90m  One report every ${EVERY_MONTHS} months, up to ${MAX_REPORTS} per trust.\x1b[0m\n`,
 );
 console.log(
-  `  trust                    informes   período        hoy   histórico   ratio`,
+  `  trust                    reports    period        today   historical  ratio`,
 );
 console.log(`  ${"─".repeat(74)}`);
 
-let totHoy = 0;
+let totToday = 0;
 let totHist = 0;
-const porAnada = new Map<number, { hoy: number; hist: number }>();
+const byVintage = new Map<number, { today: number; hist: number }>();
 
 for (const t of TRUSTS.slice(0, nTrusts)) {
   try {
     const reports = await findServicerReports(t.cik, {
-      max: MAX_INFORMES,
-      everyMonths: CADA_MESES,
+      max: MAX_REPORTS,
+      everyMonths: EVERY_MONTHS,
     });
 
     if (reports.length === 0) {
-      console.log(`  ${t.nombre.slice(0, 24).padEnd(24)} \x1b[33msin 10-D\x1b[0m`);
+      console.log(`  ${t.name.slice(0, 24).padEnd(24)} \x1b[33msin 10-D\x1b[0m`);
       continue;
     }
 
     /**
-     * Un préstamo cuenta una sola vez aunque aparezca en varios informes.
-     * La clave es el Loan ID normalizado, el mismo que usa el join del corpus.
+     * A loan counts once even if it appears in several reports. The key is the
+     * normalised Loan ID, the same one the corpus join uses.
      */
     const algunaVez = new Set<string>();
-    let hoy = 0;
+    let today = 0;
     let periodoViejo = "";
     let periodoNuevo = "";
 
     for (const [i, r] of reports.entries()) {
       const parsed = parseServicerReport(await fetchText(r.documentUrl));
-      const conTransferencia = new Set<string>();
+      const withTransfer = new Set<string>();
       for (const d of parsed.delinquency) {
-        if (d.transferDate) conTransferencia.add(d.loanId);
+        if (d.transferDate) withTransfer.add(d.loanId);
       }
       for (const s of parsed.specialServicing) {
-        if (s.transferDate) conTransferencia.add(s.loanId);
+        if (s.transferDate) withTransfer.add(s.loanId);
       }
 
-      // El primero de la lista es el más reciente: es lo que ve el corpus hoy.
+      // The first in the list is the most recent: it is what the corpus sees today.
       if (i === 0) {
-        hoy = conTransferencia.size;
+        today = withTransfer.size;
         periodoNuevo = r.periodOfReport || r.filedAt;
       }
       periodoViejo = r.periodOfReport || r.filedAt;
-      for (const id of conTransferencia) algunaVez.add(id);
+      for (const id of withTransfer) algunaVez.add(id);
     }
 
     const hist = algunaVez.size;
-    const ratio = hoy > 0 ? hist / hoy : hist > 0 ? Infinity : 1;
-    totHoy += hoy;
+    const ratio = today > 0 ? hist / today : hist > 0 ? Infinity : 1;
+    totToday += today;
     totHist += hist;
 
-    const a = porAnada.get(t.anada) ?? { hoy: 0, hist: 0 };
-    a.hoy += hoy;
+    const a = byVintage.get(t.vintage) ?? { today: 0, hist: 0 };
+    a.today += today;
     a.hist += hist;
-    porAnada.set(t.anada, a);
+    byVintage.set(t.vintage, a);
 
     console.log(
-      `  ${t.nombre.slice(0, 24).padEnd(24)} ${String(reports.length).padStart(8)}   ` +
+      `  ${t.name.slice(0, 24).padEnd(24)} ${String(reports.length).padStart(8)}   ` +
         `${periodoViejo.slice(0, 7)}→${periodoNuevo.slice(2, 7)}  ` +
-        `${String(hoy).padStart(5)}  ${String(hist).padStart(9)}   ` +
+        `${String(today).padStart(5)}  ${String(hist).padStart(9)}   ` +
         `${Number.isFinite(ratio) ? `${ratio.toFixed(2)}x` : "—"}`,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(`  ${t.nombre.slice(0, 24).padEnd(24)} \x1b[31m${msg.slice(0, 34)}\x1b[0m`);
+    console.log(`  ${t.name.slice(0, 24).padEnd(24)} \x1b[31m${msg.slice(0, 34)}\x1b[0m`);
   }
 }
 
 console.log(`\n${"─".repeat(78)}\n`);
 
-if (totHoy === 0) {
-  console.log(`  \x1b[33mNingún evento en los informes recientes. Sin base de comparación.\x1b[0m\n`);
+if (totToday === 0) {
+  console.log(`  \x1b[33mNo events in the recent reports. No basis for comparison.\x1b[0m\n`);
   process.exit(0);
 }
 
-const ratioGlobal = totHist / totHoy;
+const globalRatio = totHist / totToday;
 console.log(
-  `  \x1b[1mTotal: ${totHoy} eventos hoy · ${totHist} alguna vez · ${ratioGlobal.toFixed(2)}x\x1b[0m`,
+  `  \x1b[1mTotal: ${totToday} events today · ${totHist} ever · ${globalRatio.toFixed(2)}x\x1b[0m`,
 );
 
-console.log(`\n  Por añada — el control de que esto mide lo que decimos:\n`);
-for (const [anada, a] of [...porAnada].sort()) {
-  const r = a.hoy > 0 ? a.hist / a.hoy : 0;
+console.log(`\n  By vintage — the control that this measures what we say it does:\n`);
+for (const [vintage, a] of [...byVintage].sort()) {
+  const r = a.today > 0 ? a.hist / a.today : 0;
   console.log(
-    `    ${anada}   ${String(a.hoy).padStart(3)} hoy · ${String(a.hist).padStart(3)} alguna vez   ` +
+    `    ${vintage}   ${String(a.today).padStart(3)} today · ${String(a.hist).padStart(3)} ever   ` +
       `${r ? `${r.toFixed(2)}x` : "—"}`,
   );
 }
 
 /**
- * El control de sentido: las añadas viejas deberían ganar MÁS que las jóvenes.
+ * The sense check: the old vintages should gain MORE than the young ones.
  *
- * Un trust de 2023 tuvo poco tiempo para que un caso entre y se resuelva, así
- * que su historia no debería agregar casi nada. Si el ratio sale parejo entre
- * añadas, lo que estamos midiendo no es el sesgo de stock: es otra cosa —
- * ruido de parseo, o préstamos que entran y salen del bloque por otra razón.
+ * A 2023 trust has had little time for a case to enter and be resolved, so its
+ * history should add almost nothing. If the ratio comes out even across
+ * vintages, what we are measuring is not the stock bias: it is something else —
+ * parsing noise, or loans entering and leaving the block for another reason.
  */
-const suma = (xs: Array<[number, { hoy: number; hist: number }]>) => ({
-  hoy: xs.reduce((s, [, a]) => s + a.hoy, 0),
+const suma = (xs: Array<[number, { today: number; hist: number }]>) => ({
+  today: xs.reduce((s, [, a]) => s + a.today, 0),
   hist: xs.reduce((s, [, a]) => s + a.hist, 0),
 });
-const viejas = suma([...porAnada].filter(([a]) => a <= 2021));
-const jovenes = suma([...porAnada].filter(([a]) => a >= 2023));
+const viejas = suma([...byVintage].filter(([a]) => a <= 2021));
+const young = suma([...byVintage].filter(([a]) => a >= 2023));
 
 /**
- * El veredicto solo se emite si hay con qué compararlo.
+ * The verdict is only issued if there is something to compare it against.
  *
- * La versión anterior calculaba el ratio de las jóvenes como
- * `hist / max(1, hoy)`. Con cero eventos eso daba 0,00 y el control disparaba
- * "consistente con sesgo de stock" porque 1,29 > 0 × 1,3 — se validaba solo,
- * por una división degenerada.
+ * The previous version computed the young vintages' ratio as
+ * `hist / max(1, today)`. With zero events that gave 0.00 and the control fired
+ * "consistent with stock bias" because 1.29 > 0 × 1.3 — it validated itself,
+ * through a degenerate division.
  *
- * Es el mismo error que el cociente de dispersión que devolvía 29.333.333x: una
- * guarda contra la división por cero convertida en un número que parece medir
- * algo. Un grupo sin eventos no da un ratio bajo: no da ratio.
+ * It is the same error as the dispersion ratio that returned 29,333,333x: a
+ * guard against division by zero turned into a number that looks like it
+ * measures something. A group with no events does not give a low ratio: it
+ * gives no ratio.
  */
 console.log(
-  `\n  \x1b[90mViejas (≤2021): ${viejas.hoy} hoy · ${viejas.hist} alguna vez` +
-    `   ·   jóvenes (≥2023): ${jovenes.hoy} hoy · ${jovenes.hist} alguna vez\x1b[0m`,
+  `\n  \x1b[90mViejas (≤2021): ${viejas.today} today · ${viejas.hist} alguna vez` +
+    `   ·   young (≥2023): ${young.today} today · ${young.hist} ever\x1b[0m`,
 );
-if (viejas.hoy < 5 || jovenes.hoy < 5) {
+if (viejas.today < 5 || young.today < 5) {
   console.log(
-    `  \x1b[33mNo se puede contrastar: hace falta un mínimo de 5 eventos por grupo.\x1b[0m`,
+    `  \x1b[33mCannot be contrasted: a minimum of 5 events per group is needed.\x1b[0m`,
   );
 } else {
-  const rv = viejas.hist / viejas.hoy;
-  const rj = jovenes.hist / jovenes.hoy;
+  const rv = viejas.hist / viejas.today;
+  const rj = young.hist / young.today;
   console.log(
     `  \x1b[90mratios ${rv.toFixed(2)}x contra ${rj.toFixed(2)}x\x1b[0m` +
       (rv > rj * 1.3
-        ? `  \x1b[32m← consistente con sesgo de stock\x1b[0m`
-        : `  \x1b[31m← NO es sesgo de stock: ganan parejo\x1b[0m`),
+        ? `  \x1b[32m← consistent with stock bias\x1b[0m`
+        : `  \x1b[31m← NOT stock bias: both gain evenly\x1b[0m`),
   );
 }
 
 /**
- * La ventana efectiva, que decide si el ratio es leíble.
+ * The effective window, which decides whether the ratio is readable.
  *
- * Con `--informes 10` cada 6 meses se llega 54 meses atrás: para un trust de
- * 2020 eso arranca en 2022 y se pierde el pico de COVID, cuando hotelería y
- * retail entraron a special servicing en masa. El ratio queda como cota
- * inferior, y sesgada justo contra las añadas que más deberían ganar.
+ * With `--reports 10` every 6 months you reach 54 months back: for a 2020 trust
+ * that starts in 2022 and misses the COVID peak, when hospitality and retail
+ * entered special servicing in large numbers. The ratio ends up a lower bound, and
+ * biased precisely against the vintages that should gain most.
  */
-const alcanceMeses = MAX_INFORMES * CADA_MESES;
+const monthsReached = MAX_REPORTS * EVERY_MONTHS;
 console.log(
-  `\n  \x1b[90mVentana: ${alcanceMeses} meses hacia atrás (${MAX_INFORMES} informes × ${CADA_MESES}).\x1b[0m` +
-    (alcanceMeses < 72
-      ? `  \x1b[33m← no llega a la emisión de 2020\x1b[0m`
+  `\n  \x1b[90mWindow: ${monthsReached} months back (${MAX_REPORTS} reports × ${EVERY_MONTHS}).\x1b[0m` +
+    (monthsReached < 72
+      ? `  \x1b[33m← does not reach the 2020 issuance\x1b[0m`
       : ""),
 );
 console.log(
-  `\n  \x1b[90mSi el ratio global fuera ~1,2x no paga: 1.500 requests por 20% más\x1b[0m`,
+  `\n  \x1b[90mIf the global ratio were ~1.2x it does not pay: 1,500 requests for 20%\x1b[0m`,
 );
 console.log(
-  `  \x1b[90meventos. Cerca de 3x los 168 pasarían a ~500 y todo lo que murió por\x1b[0m`,
+  `  \x1b[90mmore events. Near 3x the 168 would become ~500 and everything that died\x1b[0m`,
 );
-console.log(`  \x1b[90mfalta de potencia se reabre.\x1b[0m\n`);
+console.log(`  \x1b[90mfor lack of power reopens.\x1b[0m\n`);

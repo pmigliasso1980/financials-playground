@@ -1,22 +1,21 @@
 /**
- * ¿Qué trae la columna del vendedor, antes de recosechar 222 emisiones?
+ * What does the seller column actually contain, before re-harvesting 222 issuances?
  *
  *   npm run harvest:seller
  *
- * POR QUÉ EXISTE
+ * WHY IT EXISTS
  *
- * Los fixtures muestran que `loan_seller` se mapea en las tres emisiones de
- * prueba. Eso dice que un encabezado matcheó — no dice que la celda contenga el
- * nombre de un banco.
+ * The fixtures show that `loan_seller` maps in all three test issuances. That
+ * says a header matched — it does not say the cell contains a bank's name.
  *
- * Confundir esas dos cosas es el error que este proyecto cometió cinco veces en
- * una semana: un diagnóstico que confirma lo que uno espera y no se audita.
- * "La tabla se ubicó" no era "la tabla tiene datos"; "el SIR correlaciona con
- * la cobertura" no era "el SIR mide cobertura"; "la columna fiscal tiene
- * mediana 1" no era "la columna fiscal sirve".
+ * Confusing those two is the error this project made five times in one week: a
+ * diagnostic that confirms what you expect and is never audited. "The table was
+ * located" was not "the table has data"; "the SIR correlates with coverage" was
+ * not "the SIR measures coverage"; "the fiscal column has a median of 1" was not
+ * "the fiscal column is usable".
  *
- * La recosecha cuesta media hora y se lleva puesto el desempeño de 2.213
- * préstamos. Mirar los valores crudos cuesta veinte segundos y corre offline.
+ * The re-harvest costs half an hour and takes the performance of 2,213 loans
+ * with it. Looking at the raw values costs twenty seconds and runs offline.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -31,29 +30,29 @@ import {
 import { rowsToObservations, type SourceRef } from "./normalize/toObservations.js";
 
 const DIR = new URL("./fixtures/", import.meta.url).pathname;
-const archivos = (await readdir(DIR)).filter((f) => /\.html?$/.test(f));
+const files = (await readdir(DIR)).filter((f) => /\.html?$/.test(f));
 
-if (archivos.length === 0) {
-  console.error(`\n✗ Sin fixtures en ${DIR}. Capturá con: npm run harvest:capture\n`);
+if (files.length === 0) {
+  console.error(`\n✗ No fixtures in ${DIR}. Capture one with: npm run harvest:capture\n`);
   process.exit(1);
 }
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Columna del vendedor: qué encabezado matcheó y qué valores trae");
+console.log("Seller column: which header matched and what values it carries");
 console.log(`${"═".repeat(78)}`);
 
-for (const archivo of archivos) {
-  const html = await readFile(join(DIR, archivo), "utf8");
-  const slug = archivo.replace(/\.html?$/, "");
+for (const file of files) {
+  const html = await readFile(join(DIR, file), "utf8");
+  const slug = file.replace(/\.html?$/, "");
 
-  let nombre = slug;
+  let name = slug;
   try {
     const meta = JSON.parse(await readFile(join(DIR, `${slug}.json`), "utf8")) as {
       companyName?: string;
     };
-    nombre = meta.companyName ?? slug;
+    name = meta.companyName ?? slug;
   } catch {
-    /* sin metadatos: alcanza con el slug */
+    /* no metadata: the slug is enough */
   }
 
   const tables = extractFromHtml(html);
@@ -62,61 +61,61 @@ for (const archivo of archivos) {
   );
   const joined = joinAnnexTables(annexTables);
   if (!joined) {
-    console.log(`\n  \x1b[33m${nombre}: no se pudo armar la tabla\x1b[0m`);
+    console.log(`\n  \x1b[33m${name}: could not assemble the table\x1b[0m`);
     continue;
   }
 
   const filtered = keepLoanRows(joined.rows, joined.headerRowIndex);
   const source: SourceRef = {
-    cik: "0", accession: slug, companyName: nombre, formType: "FWP",
-    filedAt: "", fileName: archivo, fileUrl: "",
+    cik: "0", accession: slug, companyName: name, formType: "FWP",
+    filedAt: "", fileName: file, fileUrl: "",
   };
   const result = rowsToObservations(filtered.rows, joined.headerRowIndex, source);
 
   const col = result.columnsMapped.find((c) => c.metric === "loan_seller");
-  const valores = result.properties
+  const values = result.properties
     .map((p) => p.label.loan_seller)
     .filter((v): v is string => Boolean(v && v.trim()));
-  const distintos = [...new Set(valores)];
+  const distinct = [...new Set(values)];
 
-  console.log(`\n  \x1b[1m${nombre.slice(0, 50)}\x1b[0m`);
+  console.log(`\n  \x1b[1m${name.slice(0, 50)}\x1b[0m`);
   if (!col) {
-    console.log(`    \x1b[33msin columna de vendedor\x1b[0m`);
+    console.log(`    \x1b[33mno seller column\x1b[0m`);
     continue;
   }
 
   console.log(
-    `    encabezado  \x1b[90m"${col.header.replace(/\s+/g, " ").slice(0, 58)}"\x1b[0m`,
+    `    header      \x1b[90m"${col.header.replace(/\s+/g, " ").slice(0, 58)}"\x1b[0m`,
   );
   console.log(
-    `    ${valores.length} de ${result.properties.length} filas con valor · ` +
-      `${distintos.length} vendedores distintos`,
+    `    ${values.length} of ${result.properties.length} rows with a value · ` +
+      `${distinct.length} distinct sellers`,
   );
 
   /**
-   * Los valores crudos. Un nombre de banco confirma el mapeo; un número, una
-   * fecha o un código confirman que agarró la columna de al lado.
+   * The raw values. A bank's name confirms the mapping; a number, a date or a
+   * code confirm it grabbed the column next door.
    */
-  const conteo = new Map<string, number>();
-  for (const v of valores) conteo.set(v, (conteo.get(v) ?? 0) + 1);
-  for (const [v, n] of [...conteo].sort((a, b) => b[1] - a[1]).slice(0, 6)) {
+  const counts = new Map<string, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  for (const [v, n] of [...counts].sort((a, b) => b[1] - a[1]).slice(0, 6)) {
     console.log(`      ${String(n).padStart(3)}×  \x1b[90m"${v.replace(/\s+/g, " ").slice(0, 56)}"\x1b[0m`);
   }
-  if (distintos.length > 6) {
-    console.log(`      \x1b[90m... y ${distintos.length - 6} más\x1b[0m`);
+  if (distinct.length > 6) {
+    console.log(`      \x1b[90m... and ${distinct.length - 6} more\x1b[0m`);
   }
 
   /**
-   * Un conduit tiene entre dos y seis vendedores. Decenas de valores únicos
-   * sobre treinta filas significa que la columna tiene cardinalidad de fila —un
-   * identificador, un monto, un nombre de propiedad— y no es el vendedor.
+   * A conduit has between two and six sellers. Dozens of unique values over
+   * thirty rows means the column has row cardinality —an identifier, an amount,
+   * a property name— and is not the seller.
    */
-  if (valores.length > 0 && distintos.length > Math.max(6, valores.length * 0.5)) {
+  if (values.length > 0 && distinct.length > Math.max(6, values.length * 0.5)) {
     console.log(
-      `    \x1b[31m← demasiados valores únicos para ser un vendedor: el mapeo agarró otra cosa\x1b[0m`,
+      `    \x1b[31m← too many unique values to be a seller: the mapping grabbed something else\x1b[0m`,
     );
-  } else if (valores.length > 0) {
-    console.log(`    \x1b[32m← cardinalidad compatible con un vendedor\x1b[0m`);
+  } else if (values.length > 0) {
+    console.log(`    \x1b[32m← cardinality consistent with a seller\x1b[0m`);
   }
 }
 
