@@ -1,18 +1,18 @@
 /**
- * Harvester de Annex A desde SEC EDGAR.
+ * Annex A harvester for SEC EDGAR.
  *
  *   export SEC_USER_AGENT="Tu Nombre tu@email.com"
  *
  *   npm run harvest -- preflight            verificar acceso
- *   npm run harvest -- trusts               listar trusts de CMBS
- *   npm run harvest -- filings <cik>        ver todos los filings de un trust
- *   npm run harvest -- fetch <cik>          cosechar el Annex A de un trust
- *   npm run harvest -- run --limit 3        descubrir y cosechar en lote
+ *   npm run harvest -- trusts               list CMBS trusts
+ *   npm run harvest -- filings <cik>        see all of a trust's filings
+ *   npm run harvest -- fetch <cik>          harvest a trust's Annex A
+ *   npm run harvest -- run --limit 3        discover and harvest in batch
  *
- * La salida va a harvest/out/ como JSON.
+ * Output goes to harvest/out/ as JSON.
  *
- * El comando `filings` es el de diagnóstico: muestra el puntaje de cada filing
- * como candidato a Annex A. Si `fetch` no encuentra nada, empezá por ahí.
+ * The `filings` command is the diagnostic one: it shows each filing's score as
+ * an Annex A candidate. If `fetch` finds nothing, start there.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -56,15 +56,15 @@ try {
 
 function printHelp() {
   console.log(`
-Harvester de Annex A (SEC EDGAR)
+Annex A harvester (SEC EDGAR)
 
-  preflight              verificar User-Agent y conectividad
-  trusts                 listar trusts de CMBS
-  filings <cik>          ver los filings de un trust, con su puntaje
-  fetch <cik>            cosechar el Annex A de un trust
-  run [--limit N]        descubrir y cosechar en lote
+  preflight              check User-Agent and connectivity
+  trusts                 list CMBS trusts
+  filings <cik>          see a trust's filings, with their scores
+  fetch <cik>            harvest a trust's Annex A
+  run [--limit N]        discover and harvest in batch
 
-Antes de empezar:
+Before you start:
   export SEC_USER_AGENT="Tu Nombre tu@email.com"
 `);
 }
@@ -78,18 +78,18 @@ async function cmdPreflight() {
 }
 
 async function cmdTrusts() {
-  console.log("\nBuscando trusts de CMBS...\n");
+  console.log("\nSearching for CMBS trusts...\n");
   const trusts = await findCmbsTrusts({ limit: 15 });
 
   if (trusts.length === 0) {
-    console.log("  Sin resultados.\n");
+    console.log("  No results.\n");
     return;
   }
 
   for (const t of trusts) {
     console.log(`  cik ${t.cik.padEnd(9)} ${t.name}`);
   }
-  console.log(`\n  ${trusts.length} trusts. Inspeccioná uno con:\n     npm run harvest -- filings <cik>\n`);
+  console.log(`\n  ${trusts.length} trusts. Inspect one with:\n     npm run harvest -- filings <cik>\n`);
 }
 
 async function cmdFilings(cik?: string) {
@@ -97,16 +97,16 @@ async function cmdFilings(cik?: string) {
 
   const filings = await listRecentFilings(cik, { limit: 60 });
   if (filings.length === 0) {
-    console.log("\n  Sin filings.\n");
+    console.log("\n  No filings.\n");
     return;
   }
 
   console.log(`\n${filings.length} filings recientes (score = candidato a Annex A):\n`);
-  console.log(`  ${"score".padEnd(6)} ${"form".padEnd(8)} ${"tamaño".padStart(10)}  documento / descripción`);
+  console.log(`  ${"score".padEnd(6)} ${"form".padEnd(8)} ${"size".padStart(10)}  document / description`);
   console.log(`  ${"─".repeat(70)}`);
 
   for (const f of filings) {
-    if (f.score === 0 && f.sizeBytes < 500_000) continue; // ruido
+    if (f.score === 0 && f.sizeBytes < 500_000) continue; // noise
     const mark = f.score >= 0.5 ? "\x1b[32m" : f.score > 0 ? "\x1b[33m" : "\x1b[90m";
     console.log(
       `  ${mark}${f.score.toFixed(2).padEnd(6)}\x1b[0m ${f.form.padEnd(8)} ${fmtBytes(f.sizeBytes).padStart(10)}  ${f.document}` +
@@ -130,14 +130,14 @@ async function cmdFetch(cik?: string) {
 }
 
 /**
- * Cuando no se identifica el Annex A, mostrar los candidatos más cercanos.
+ * When the Annex A is not identified, show the closest candidates.
  *
- * El modo de falla conocido es un emisor que no pone "annex" en el nombre del
- * archivo. En ese caso el documento correcto casi siempre está entre los FWP
- * más grandes, así que los listamos en vez de dejar al usuario a ciegas.
+ * The known failure mode is an issuer that does not put "annex" in the file
+ * name. In that case the correct document is almost always among the largest
+ * FWPs, so we list them rather than leaving the user blind.
  */
 async function reportNoAnnex(cik: string) {
-  console.log(`\n  ⚠ Sin Annex A identificable para el CIK ${cik}.`);
+  console.log(`\n  ⚠ No identifiable Annex A for CIK ${cik}.`);
 
   const filings = await listRecentFilings(cik, { limit: 60 });
   const candidates = filings
@@ -146,7 +146,7 @@ async function reportNoAnnex(cik: string) {
     .slice(0, 5);
 
   if (candidates.length > 0) {
-    console.log(`\n    Documentos grandes que podrían serlo:\n`);
+    console.log(`\n    Large documents that could be it:\n`);
     for (const c of candidates) {
       console.log(
         `      ${fmtBytes(c.sizeBytes).padStart(9)}  ${c.form.padEnd(7)} ${c.document}` +
@@ -154,8 +154,8 @@ async function reportNoAnnex(cik: string) {
       );
     }
     console.log(
-      `\n    Si alguno es el Annex A, agregá su caso a harvest/test.ts y ajustá\n` +
-        `    scoreAnnexFiling() en harvest/edgar/discover.ts.`,
+      `\n    If one of them is the Annex A, add its case to harvest/test.ts and\n` +
+        `    adjust scoreAnnexFiling() in harvest/edgar/discover.ts.`,
     );
   }
 
@@ -166,7 +166,7 @@ async function cmdRun(args: string[]) {
   const limitIdx = args.indexOf("--limit");
   const limit = limitIdx >= 0 ? Number(args[limitIdx + 1]) || 3 : 3;
 
-  console.log(`\nDescubriendo trusts de CMBS (límite ${limit})...\n`);
+  console.log(`\nDiscovering CMBS trusts (limit ${limit})...\n`);
   const trusts = await findCmbsTrusts({ limit });
 
   let ok = 0;
@@ -188,7 +188,7 @@ async function cmdRun(args: string[]) {
     }
   }
 
-  console.log(`\n${ok}/${trusts.length} trusts cosechados → harvest/out/\n`);
+  console.log(`\n${ok}/${trusts.length} trusts harvested → harvest/out/\n`);
 }
 
 // ---------------------------------------------------------------------------
@@ -202,64 +202,64 @@ async function harvestFiling(filing: FilingRef, score: number) {
 
   if (filing.sizeBytes > LARGE_DOCUMENT_WARN_BYTES) {
     console.log(
-      `  ⚠ documento grande (${fmtBytes(filing.sizeBytes)}): la descarga y el parseo pueden tardar`,
+      `  ⚠ large document (${fmtBytes(filing.sizeBytes)}): downloading and parsing may take a while`,
     );
   }
 
   const startedAt = Date.now();
   const buffer = await fetchBuffer(filing.documentUrl, { timeoutMs: 180_000 });
-  console.log(`  descargado en ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+  console.log(`  downloaded in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
 
   let tables;
   try {
     const parseStart = Date.now();
     tables = extractTables(buffer, filing.documentName);
     console.log(
-      `  ${tables.length} tabla(s) · parseado en ${((Date.now() - parseStart) / 1000).toFixed(1)}s`,
+      `  ${tables.length} table(s) · parsed in ${((Date.now() - parseStart) / 1000).toFixed(1)}s`,
     );
   } catch (err) {
     console.log(`  ⚠ ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 
-  // El Annex A viene partido en bloques horizontales que comparten Loan ID, y
-  // cada bloque se reparte en páginas donde solo la primera trae encabezados.
+  // The Annex A comes split into horizontal blocks sharing a Loan ID, and each
+  // block is spread across pages where only the first carries headers.
   const { tables: annexTables, adopted, orphans } = attachContinuationTables(
     tables,
     (rows) => findHeaderRow(rows),
   );
 
   if (adopted > 0) {
-    console.log(`  ${adopted} tablas de continuación adoptadas${orphans ? `, ${orphans} huérfanas` : ""}`);
+    console.log(`  ${adopted} continuation tables adopted${orphans ? `, ${orphans} orphaned` : ""}`);
   }
 
   if (annexTables.length === 0) {
-    console.log(`  ⚠ ninguna tabla tiene encabezados reconocibles`);
+    console.log(`  ⚠ no table has recognisable headers`);
     const sample = tables[0]?.rows[0];
-    if (sample) console.log(`     primera fila de la tabla 0: ${JSON.stringify(sample).slice(0, 200)}`);
+    if (sample) console.log(`     first row of table 0: ${JSON.stringify(sample).slice(0, 200)}`);
     return null;
   }
 
   const joined = joinAnnexTables(annexTables);
   if (!joined) {
-    console.log(`  ⚠ no se pudo armar la tabla de datos`);
+    console.log(`  ⚠ could not assemble the data table`);
     return null;
   }
 
   if (joined.tablesJoined > 1) {
-    console.log(`  unidas ${joined.tablesJoined} tablas por Loan ID: ${joined.sources.join(", ")}`);
+    console.log(`  joined ${joined.tablesJoined} tables by Loan ID: ${joined.sources.join(", ")}`);
   } else {
-    console.log(`  tabla ${joined.sources[0]} (sin unión: no hay Loan ID común)`);
+    console.log(`  table ${joined.sources[0]} (no join: no common Loan ID)`);
   }
   if (joined.skipped.length > 0) {
     console.log(`  \x1b[90mdescartadas: ${joined.skipped.join(", ")}\x1b[0m`);
   }
 
-  // Un préstamo sobre varias propiedades genera una fila por cada una.
+  // A loan over several properties generates one row per property.
   const filtered = keepLoanRows(joined.rows, joined.headerRowIndex);
   if (filtered.hadFlagColumn) {
     console.log(
-      `  ${filtered.loanRows} préstamos · ${filtered.propertyRows} filas de propiedad descartadas`,
+      `  ${filtered.loanRows} loans · ${filtered.propertyRows} property rows discarded`,
     );
   }
 
@@ -277,7 +277,7 @@ async function harvestFiling(filing: FilingRef, score: number) {
 
   console.log(
     `  ${result.stats.propertiesKept} propiedades · ${result.stats.observations} observations` +
-      ` · ${result.stats.rowsSkipped} filas descartadas`,
+      ` · ${result.stats.rowsSkipped} rows discarded`,
   );
 
   if (result.columnsMapped.length > 0) {
@@ -290,17 +290,17 @@ async function harvestFiling(filing: FilingRef, score: number) {
     console.log(`  ${icon} [${issue.metric}] ${issue.message}`);
     if (issue.sampleValues.length) console.log(`      ej: ${issue.sampleValues.join(", ")}`);
   }
-  if (issues.length === 0) console.log(`  ✓ chequeos de sanidad sin observaciones`);
+  if (issues.length === 0) console.log(`  ✓ sanity checks with no findings`);
 
   return result;
 }
 
 /**
- * Guarda la cosecha.
+ * Saves the harvest.
  *
- * Siempre escribe el JSON —es el formato de intercambio y hace el pipeline
- * inspeccionable sin base de datos. Con `--persist` además la guarda en
- * Postgres, que es lo que permite acumular corpus entre corridas.
+ * It always writes the JSON —that is the interchange format and it makes the
+ * pipeline inspectable without a database. With `--persist` it also stores it in
+ * Postgres, which is what allows the corpus to accumulate across runs.
  */
 async function saveResult(result: Awaited<ReturnType<typeof rowsToObservations>>) {
   await mkdir(OUT_DIR, { recursive: true });
@@ -310,7 +310,7 @@ async function saveResult(result: Awaited<ReturnType<typeof rowsToObservations>>
 
   if (!process.argv.includes("--persist")) return;
 
-  // Import dinámico: sin --persist no hace falta ni que Postgres exista.
+  // Dynamic import: without --persist, Postgres does not even need to exist.
   const { saveHarvest } = await import("../db/corpus.js");
   const { closePool, ping } = await import("../db/client.js");
 
@@ -322,15 +322,15 @@ async function saveResult(result: Awaited<ReturnType<typeof rowsToObservations>>
     return;
   }
   if (!health.schemaReady) {
-    console.log(`  \x1b[33m⚠ el schema no existe. Corré: npm run db:migrate\x1b[0m`);
+    console.log(`  \x1b[33m⚠ the schema does not exist. Run: npm run db:migrate\x1b[0m`);
     await closePool();
     return;
   }
 
   const report = await saveHarvest(result);
   console.log(
-    `  → postgres: ${report.loans} préstamos · ${report.observations} observations · ` +
-      `${report.facts} facts${report.replaced ? " \x1b[90m(reemplazó la versión anterior)\x1b[0m" : ""}`,
+    `  → postgres: ${report.loans} loans · ${report.observations} observations · ` +
+      `${report.facts} facts${report.replaced ? " \x1b[90m(replaced the previous version)\x1b[0m" : ""}`,
   );
   await closePool();
 }

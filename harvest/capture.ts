@@ -1,23 +1,23 @@
 /**
- * Captura un Annex A real de EDGAR y lo recorta como fixture permanente.
+ * Captures a real Annex A from EDGAR and trims it into a permanent fixture.
  *
  *   npm run harvest:capture -- <cik>
  *   npm run harvest:capture -- 2053102
  *
- * POR QUÉ EXISTE
+ * WHY IT EXISTS
  *
- * Los fixtures sintéticos son más limpios que la realidad: markup prolijo,
- * encabezados de una sola línea, sin tags anidados ni estilos inline. Un Annex A
- * de verdad tiene `<font>`, `<div>` dentro de `<td>`, `&nbsp;` por todos lados,
- * filas de separación, y encabezados partidos en tres niveles de `colspan`.
+ * Synthetic fixtures are cleaner than reality: tidy markup, single-line headers,
+ * no nested tags and no inline styles. A real Annex A has `<font>`, `<div>`
+ * inside `<td>`, `&nbsp;` everywhere, separator rows, and headers split across
+ * three levels of `colspan`.
  *
- * Este comando baja el documento real y guarda un recorte con el **markup
- * intacto** pero solo las primeras N filas de datos. Un Annex A pesa entre 4 y
- * 16 MB; recortado a 25 préstamos queda en cientos de KB, que sí se puede
- * versionar y usar como test offline para siempre.
+ * This command downloads the real document and stores a trimmed copy with the
+ * markup **intact** but only the first N data rows. An Annex A weighs between 4
+ * and 16 MB; trimmed to 25 loans it comes down to hundreds of KB, which can be
+ * versioned and used as an offline test forever.
  *
- * La idea es que el corpus crezca: cada emisor nuevo que rompa el mapeo se
- * captura, se commitea, y queda cubierto.
+ * The idea is for the corpus to grow: every new issuer that breaks the mapping
+ * gets captured, committed, and covered from then on.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -29,14 +29,14 @@ import { trimAnnexHtml } from "./parse/trim.js";
 export const FIXTURES_DIR = new URL("./fixtures/", import.meta.url).pathname;
 
 /**
- * Cuántas filas de datos conservar por tabla.
+ * How many data rows to keep per table.
  *
- * 25 parecía suficiente hasta ver el resultado real: un Annex A mezcla filas de
- * préstamo con filas de propiedad, y en un pool con portfolios de varios
- * activos las 25 primeras filas contienen apenas 7 préstamos. El fixture
- * quedaba técnicamente correcto pero demasiado chico para ser representativo.
+ * 25 seemed enough until we saw the real result: an Annex A mixes loan rows with
+ * property rows, and in a pool with multi-asset portfolios the first 25 rows
+ * contain barely 7 loans. The fixture was technically correct but too small to
+ * be representative.
  *
- * 120 deja un fixture de unos pocos MB con la mayor parte del pool.
+ * 120 leaves a fixture of a few MB with most of the pool.
  */
 const DEFAULT_KEEP_ROWS = 120;
 
@@ -44,11 +44,11 @@ const [, , cikArg, ...rest] = process.argv;
 
 if (!cikArg) {
   console.log(`
-Captura un Annex A real como fixture de test.
+Captures a real Annex A as a test fixture.
 
   npm run harvest:capture -- <cik> [--rows N]
 
-Ejemplos de CIK (trusts de CMBS observados en agosto 2026):
+Example CIKs (CMBS trusts observed in August 2026):
 
   2053102   Wells Fargo Commercial Mortgage Trust 2025-C64
   2110410   Benchmark 2026-B42 Mortgage Trust
@@ -79,12 +79,12 @@ try {
 // ---------------------------------------------------------------------------
 
 async function capture(cik: string, rows: number) {
-  console.log(`\nBuscando el Annex A del CIK ${cik}...\n`);
+  console.log(`\nLooking for the Annex A of CIK ${cik}...\n`);
 
   const picks = await findAnnexFilings(cik, { max: 1 });
   if (picks.length === 0) {
-    console.error(`  ✗ Sin Annex A identificable.`);
-    console.error(`    Inspeccioná con: npm run harvest -- filings ${cik}\n`);
+    console.error(`  ✗ No identifiable Annex A.`);
+    console.error(`    Inspect with: npm run harvest -- filings ${cik}\n`);
     process.exit(1);
   }
 
@@ -95,14 +95,14 @@ async function capture(cik: string, rows: number) {
 
   const started = Date.now();
   const buffer = await fetchBuffer(filing.documentUrl, { timeoutMs: 180_000 });
-  console.log(`  descargado: ${fmtBytes(buffer.length)} en ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  console.log(`  downloaded: ${fmtBytes(buffer.length)} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 
   const original = buffer.toString("utf8");
   const { html, report } = trimAnnexHtml(original, rows);
 
   console.log(
-    `  recortado: ${report.tablesKept} tabla(s), ${report.rowsKept} filas conservadas ` +
-      `de ${report.rowsTotal} · ${fmtBytes(Buffer.byteLength(html))}`,
+    `  trimmed: ${report.tablesKept} table(s), ${report.rowsKept} rows kept ` +
+      `of ${report.rowsTotal} · ${fmtBytes(Buffer.byteLength(html))}`,
   );
 
   await mkdir(FIXTURES_DIR, { recursive: true });
@@ -136,8 +136,8 @@ async function capture(cik: string, rows: number) {
 
   console.log(`\n  → harvest/fixtures/${slug}.html`);
   console.log(`  → harvest/fixtures/${slug}.json`);
-  console.log(`\n  Ahora corré:  npm run harvest:fixtures\n`);
-  console.log(`  El fixture queda versionado y el test lo levanta solo.\n`);
+  console.log(`\n  Now run:  npm run harvest:fixtures\n`);
+  console.log(`  The fixture is versioned and the test picks it up on its own.\n`);
 }
 
 // ---------------------------------------------------------------------------
