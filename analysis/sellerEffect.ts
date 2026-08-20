@@ -1,38 +1,38 @@
 /**
- * ¿La brecha es de la emisora o de quién originó el préstamo?
+ * Is the gap the issuer's, or that of whoever originated the loan?
  *
  *   npm run db:seller
  *
- * LA PREGUNTA, Y POR QUÉ ES DISTINTA DE LAS NUEVE ANTERIORES
+ * THE QUESTION, AND WHY IT DIFFERS FROM THE PREVIOUS NINE
  *
- * BANK transfiere a special servicing 4 veces menos que BBCMS, estandarizado por
- * añada, tipo de propiedad y apalancamiento. Eso sobrevivió nueve intentos de
- * matarlo: cobertura del join, población listada, formato del bloque, filtros
- * del parser, valor crudo en veinte emisiones, administrador maestro,
- * administrador especial, composición de cartera, y el bloque de especialmente
- * administrados que el parser no leía.
+ * BANK transfers to special servicing 4 times less than BBCMS, standardised by
+ * vintage, property type and leverage. That survived nine attempts to kill it:
+ * join coverage, listed population, block format, parser filters, raw value in
+ * twenty issuances, master servicer, special servicer, portfolio composition,
+ * and the specially-serviced block the parser was not reading.
  *
- * Los nueve eran defensivos: cada uno preguntaba "¿esto es un artefacto?" y la
- * respuesta fue "no". Nueve "no" no hacen un "sí".
+ * All nine were defensive: each asked "is this an artefact?" and the answer was
+ * "no". Nine "no"s do not make a "yes".
  *
- * Este es el primero que puede CONFIRMAR el efecto, porque propone qué sería si
- * es real. BANK no es un originador: es un vehículo que empaqueta préstamos
- * originados por Bank of America, Morgan Stanley y Wells Fargo. Decir "BANK
- * suscribe mejor" es felicitar a la caja por lo que hizo la fábrica.
+ * This is the first that can CONFIRM the effect, because it proposes what it
+ * would be if real. BANK is not an originator: it is a vehicle that packages
+ * loans originated by Bank of America, Morgan Stanley and Wells Fargo. Saying
+ * "BANK underwrites better" is congratulating the box for what the factory did.
  *
- * POR QUÉ ES IDENTIFICABLE
+ * WHY IT IS IDENTIFIABLE
  *
- * El mismo vendedor coloca en varias emisiones, así que el diseño queda cruzado
- * sin que nadie lo diseñe. Wells Fargo vende hacia BANK (SIR 0,42) y hacia su
- * propio shelf (1,20). Si el vendedor manda, fijarlo aplana esa diferencia.
+ * The same seller places into several issuances, so the design ends up crossed
+ * without anyone designing it. Wells Fargo sells into BANK (SIR 0.42) and into
+ * its own shelf (1.20). If the seller is what matters, holding it fixed flattens
+ * that difference.
  *
- * EL ORDEN ESTÁ FORZADO
+ * THE ORDER IS FORCED
  *
- * Cobertura → valores crudos → identificabilidad → efecto. Cada paso puede
- * cortar el script. En particular los valores crudos van antes de agrupar nada:
- * el Annex A publica abreviaturas —JPMCB, CREFI, GACC, MSMCH— y si dos filings
- * escriben el mismo vendedor distinto, agrupar sin mirar fragmenta el diseño
- * igual que se fragmentó Midland en cinco cadenas.
+ * Coverage → raw values → identifiability → effect. Each step can stop the
+ * script. In particular the raw values come before grouping anything: the Annex
+ * A publishes abbreviations —JPMCB, CREFI, GACC, MSMCH— and if two filings write
+ * the same seller differently, grouping without looking fragments the design the
+ * same way Midland got fragmented into five strings.
  */
 
 import { closePool, ping, query } from "../db/client.js";
@@ -44,126 +44,128 @@ if (!health.ok) {
   process.exit(1);
 }
 
-/** Fijados antes de ver nada. */
-const COBERTURA_MINIMA = 0.5;
+/** Fixed before looking at anything. */
+const MIN_COVERAGE = 0.5;
 const MIN_POOL = 150;
 
 /**
- * `--con-apalancamiento`: agrega el tercil de DSCR al estrato.
+ * `--with-leverage`: adds the DSCR tercile to the stratum.
  *
- * LA DISTINCIÓN QUE DECIDE QUÉ SIGNIFICA EL RESULTADO
+ * THE DISTINCTION THAT DECIDES WHAT THE RESULT MEANS
  *
- * Ajustado por tipo y añada, LMF sale 3,61 y GSMC 0,14: 26 veces. Pero eso es
- * compatible con dos historias muy distintas.
+ * Adjusted for type and vintage, LMF comes out at 3.61 and GSMC at 0.14: 26
+ * times. But that is compatible with two very different stories.
  *
- *   LMF presta más apalancado a propósito, y cobra por ese riesgo. Entonces el
- *   3,61 mide su estrategia, es esperable, y no dice nada sobre su calidad.
+ *   LMF lends more leveraged on purpose, and charges for that risk. Then the
+ *   3.61 measures its strategy, is to be expected, and says nothing about its
+ *   quality.
  *
- *   LMF presta al mismo apalancamiento que los demás y le va peor igual.
- *   Entonces sí es suscripción: elige peores prestatarios o proyecta rentas que
- *   no se cumplen.
+ *   LMF lends at the same leverage as everyone else and still does worse. Then
+ *   it is underwriting: it picks worse borrowers or projects rents that do not
+ *   materialise.
  *
- * Solo la segunda es interesante, y solo se distinguen controlando por
- * apalancamiento. `db:predictors` ya mostró que el DSCR al originar separa
- * fuerte —6,0% contra 0,8% entre quintiles extremos— así que es el control que
- * más puede mover estos números.
+ * Only the second is interesting, and they are only distinguishable by
+ * controlling for leverage. `db:predictors` already showed that DSCR at
+ * origination separates strongly —6.0% against 0.8% between extreme quintiles—
+ * so it is the control most likely to move these numbers.
  *
  * TERCILES Y NO QUINTILES
  *
- * El estrato pasa a ser tipo × añada × tercil: 9 × 5 × 3 son 135 celdas para
- * 168 eventos. Con quintiles serían 225 y la mitad quedaría vacía. Ya vimos qué
- * pasa cuando se sobre-estratifica: los esperados colapsan hacia los observados
- * y el test se come a sí mismo sin avisar.
+ * The stratum becomes type × vintage × tercile: 9 × 5 × 3 is 135 cells for 168
+ * events. With quintiles it would be 225 and half would be empty. We have
+ * already seen what happens when you over-stratify: the expected values collapse
+ * towards the observed and the test eats itself without saying so.
  *
- * QUÉ MIRAR PARA SABER SI PASÓ ESO
+ * WHAT TO WATCH TO KNOW IF THAT HAPPENED
  *
- * Si los esperados de TODOS los vendedores se acercan a sus observados y los
- * SIR convergen a 1 en bloque, el estrato es demasiado fino. Si unos suben y
- * otros bajan, el control está haciendo su trabajo.
+ * If EVERY seller's expected value approaches its observed and the SIRs converge
+ * to 1 as a block, the stratum is too fine. If some rise and others fall, the
+ * control is doing its job.
  */
-const CON_APALANCAMIENTO = process.argv.includes("--con-apalancamiento");
+const WITH_LEVERAGE = process.argv.includes("--with-leverage");
 
 /**
- * `--con-ltv`: agrega también el tercil de LTV.
+ * `--with-ltv`: also adds the LTV tercile.
  *
- * El DSCR y el LTV miden riesgos distintos y se suman: `db:predictors` mostró
- * que con DSCR bajo fijo, pasar de LTV bajo a alto multiplica por 3,7x, y al
- * revés por 3,1x. Controlar uno solo deja la mitad del apalancamiento afuera.
+ * DSCR and LTV measure different risks and add up: `db:predictors` showed that
+ * with DSCR low fixed, going from LTV low to high multiplies by 3.7x, and the
+ * other way round by 3.1x. Controlling only one leaves half the leverage out.
  *
  * EL COSTO
  *
- * El estrato pasa a tipo × añada × 3 × 3: hasta 405 celdas para 168 eventos. Es
- * casi seguro demasiado, y la firma de eso —los SIR convergiendo a 1 en bloque
- * mientras los esperados se pegan a los observados— hay que mirarla ANTES que
- * el resultado. Por eso el script imprime el cociente esperado/observado
- * promedio cuando este flag está activo.
+ * The stratum becomes type × vintage × 3 × 3: up to 405 cells for 168 events.
+ * That is almost certainly too many, and the signature of it —the SIRs
+ * converging to 1 as a block while the expected values stick to the observed—
+ * has to be looked at BEFORE the result. That is why the script prints the mean
+ * expected/observed ratio when this flag is on.
  *
- * Si colapsa, el camino no es bajar el umbral hasta que dé: es aceptar que el
- * corpus no aguanta este control y decirlo.
+ * If it collapses, the way out is not to lower the threshold until it works: it
+ * is to accept that the corpus cannot bear this control, and say so.
  */
-const CON_LTV = process.argv.includes("--con-ltv");
+const WITH_LTV = process.argv.includes("--with-ltv");
 
 /**
- * `--con-tamano`: agrega el tercil de saldo del préstamo.
+ * `--with-size`: adds the loan balance tercile.
  *
- * POR QUÉ APARECE RECIÉN AHORA
+ * WHY IT ONLY APPEARS NOW
  *
- * `db:mechanism` fue a buscar el mecanismo del residuo de LMF —solo-interés,
- * reservas, proyección de NOI— y no encontró ninguno: todos los candidatos
- * salieron planos o en contra. Lo único que se movió fue el saldo: mediana de
- * 5,9M contra 11,3M del resto en los mismos subtipos.
+ * `db:mechanism` went looking for the mechanism behind LMF's residual
+ * —interest-only, reserves, NOI projection— and found none: every candidate came
+ * out flat or against. The only thing that moved was the balance: a median of
+ * 5.9M against 11.3M for the rest in the same subtypes.
  *
- * El tamaño no estaba controlado en ninguno de los doce ataques anteriores.
+ * Size was not controlled in any of the twelve previous attacks.
  *
- * CONFUNDIDO O MEDIADOR: LA DISTINCIÓN IMPORTA
+ * CONFOUNDER OR MEDIATOR: THE DISTINCTION MATTERS
  *
- * Si los préstamos chicos incumplen más por razones ajenas al prestamista
- * —sponsors menos institucionales, mercados secundarios, menos escrutinio— el
- * tamaño es un confundido y hay que controlarlo.
+ * If small loans default more for reasons unrelated to the lender —less
+ * institutional sponsors, secondary markets, less scrutiny— then size is a
+ * confounder and has to be controlled.
  *
- * Si LMF ELIGE prestar chico, el tamaño está en el camino causal de su
- * estrategia, y controlarlo es sobre-controlar: le saca crédito por una decisión
- * que es suya.
+ * If LMF CHOOSES to lend small, size is on the causal path of its strategy, and
+ * controlling for it is over-controlling: it takes credit away for a decision
+ * that is theirs.
  *
- * Las dos lecturas son defendibles y el dato no las separa. Lo que sí hace el
- * control es cambiar la pregunta, y conviene decir cuál queda:
+ * Both readings are defensible and the data does not separate them. What the
+ * control does do is change the question, and it is worth saying which one is
+ * left:
  *
- *   sin control  →  "¿el libro de LMF rinde peor?"           (ya sabemos que sí)
- *   con control  →  "¿LMF rinde peor que otros prestamistas
- *                    haciendo préstamos del mismo tamaño?"   (la de un benchmark)
+ *   uncontrolled  →  "does LMF's book perform worse?"        (we know it does)
+ *   controlled    →  "does LMF perform worse than other
+ *                     lenders making loans of the same size?" (a benchmark's)
  */
-const CON_TAMANO = process.argv.includes("--con-tamano");
+const WITH_SIZE = process.argv.includes("--with-size");
 
 /**
- * `--con-subtipo`: el estrato usa property_type_detailed en vez del tipo grueso.
+ * `--with-subtype`: the stratum uses property_type_detailed instead of the coarse type.
  *
- * POR QUÉ, Y DE DÓNDE SALIÓ
+ * WHY, AND WHERE IT CAME FROM
  *
- * Agregar la corrección por comparaciones múltiples a este script cambió quién es
- * el hallazgo citable. Con DSCR + LTV + saldo, LMF cae a z = 2,28 y NO pasa
- * Bonferroni; UBS AG queda en z = 2,97 contra un umbral de 2,91 y pasa. El
- * proyecto le dedicó trece ataques a LMF y ninguno a UBS.
+ * Adding the multiple-comparisons correction to this script changed which
+ * finding is citable. With DSCR + LTV + balance, LMF falls to z = 2.28 and does
+ * NOT pass Bonferroni; UBS AG sits at z = 2.97 against a threshold of 2.91 and
+ * does pass. The project spent thirteen attacks on LMF and none on UBS.
  *
- * Y la tabla de subtipos dice dónde vive el exceso de UBS: 6 de sus 13 eventos
- * están en 11 préstamos de Limited Service, al 54,5% contra 9,2% del corpus.
+ * And the subtype table says where UBS's excess lives: 6 of its 13 events are in
+ * 11 Limited Service loans, at 54.5% against 9.2% for the corpus.
  *
- * Hoteles de servicio limitado y full service viven los dos dentro de
- * "Hospitality". Son productos distintos, así que estandarizar por el tipo grueso
- * no controla eso. Es el mismo mecanismo de producto-dentro-de-tipo que ya mató el
- * efecto emisora: las cooperativas dentro de multifamily.
+ * Limited service and full service hotels both live inside "Hospitality". They
+ * are different products, so standardising by the coarse type does not control
+ * for that. It is the same product-within-type mechanism that already killed the
+ * issuer effect: the cooperatives inside multifamily.
  *
- * EL COSTO, QUE ES DOBLE
+ * THE COST, WHICH IS DOUBLE
  *
- * La cobertura de property_type_detailed es 75% (71,6% en LMF), así que se pierde
- * un cuarto de la muestra. Y hay más de veinte subtipos: con añada son ~100 celdas
- * para 168 eventos, así que la sobre-estratificación es probable. La firma —los
- * esperados pegándose a los observados— ya se imprime y hay que mirarla ANTES del
- * resultado.
+ * property_type_detailed coverage is 75% (71.6% in LMF), so a quarter of the
+ * sample is lost. And there are more than twenty subtypes: with vintage that is
+ * ~100 cells for 168 events, so over-stratification is likely. The signature
+ * —expected values sticking to observed— is already printed and has to be looked
+ * at BEFORE the result.
  *
- * Si colapsa, la respuesta correcta es que el corpus no aguanta este control, no
- * bajar el umbral hasta que dé.
+ * If it collapses, the right answer is that the corpus cannot bear this control,
+ * not to lower the threshold until it works.
  */
-const CON_SUBTIPO = process.argv.includes("--con-subtipo");
+const WITH_SUBTYPE = process.argv.includes("--with-subtype");
 
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
@@ -193,9 +195,9 @@ const SHELF = `
 const BASE = `
   SELECT l.id,
          ${SHELF} AS shelf,
-         nullif(btrim(l.loan_seller), '') AS vendedor,
-         extract(year FROM f.filed_at)::int AS anada,
-         (d.transfer_date IS NOT NULL)::int AS evento
+         nullif(btrim(l.loan_seller), '') AS seller,
+         extract(year FROM f.filed_at)::int AS vintage,
+         (d.transfer_date IS NOT NULL)::int AS event
     FROM corpus.loans l
     JOIN corpus.filings f ON f.accession = l.accession
     LEFT JOIN corpus.delinquency d ON d.loan_id = l.id
@@ -204,91 +206,91 @@ const BASE = `
 `;
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿Emisora o vendedor del préstamo?");
+console.log("Issuer, or the loan's seller?");
 console.log(`${"═".repeat(78)}`);
 
 // ---------------------------------------------------------------------------
-// 1. Cobertura
+// 1. Coverage
 // ---------------------------------------------------------------------------
 
-const { rows: cob } = await query<{ n: string; con: string; emisiones: string; con_em: string }>(
+const { rows: cov } = await query<{ n: string; with_seller: string; issuances: string; with_col: string }>(
   `WITH base AS (${BASE})
    SELECT count(*)::text AS n,
-          count(*) FILTER (WHERE vendedor IS NOT NULL)::text AS con,
-          (SELECT count(DISTINCT f.accession)::text FROM corpus.filings f) AS emisiones,
+          count(*) FILTER (WHERE seller IS NOT NULL)::text AS with_seller,
+          (SELECT count(DISTINCT f.accession)::text FROM corpus.filings f) AS issuances,
           (SELECT count(DISTINCT l.accession)::text FROM corpus.loans l
-            WHERE nullif(btrim(l.loan_seller), '') IS NOT NULL) AS con_em
+            WHERE nullif(btrim(l.loan_seller), '') IS NOT NULL) AS with_col
      FROM base`,
 );
 
-const n = Number(cob[0]!.n);
-const con = Number(cob[0]!.con);
-const cobertura = n > 0 ? con / n : 0;
+const n = Number(cov[0]!.n);
+const withSeller = Number(cov[0]!.with_seller);
+const coverage = n > 0 ? withSeller / n : 0;
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Cobertura del vendedor");
+console.log("Seller coverage");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
-  `  ${con.toLocaleString("en-US")} de ${n.toLocaleString("en-US")} préstamos  →  ` +
-    `${cobertura >= COBERTURA_MINIMA ? "\x1b[32m" : "\x1b[31m"}${pct(cobertura)}\x1b[0m` +
-    `   \x1b[90m(umbral ${pct(COBERTURA_MINIMA, 0)})\x1b[0m`,
+  `  ${withSeller.toLocaleString("en-US")} of ${n.toLocaleString("en-US")} loans  →  ` +
+    `${coverage >= MIN_COVERAGE ? "\x1b[32m" : "\x1b[31m"}${pct(coverage)}\x1b[0m` +
+    `   \x1b[90m(threshold ${pct(MIN_COVERAGE, 0)})\x1b[0m`,
 );
 console.log(
-  `  \x1b[90m${cob[0]!.con_em} de ${cob[0]!.emisiones} emisiones del corpus tienen la columna\x1b[0m`,
+  `  \x1b[90m${cov[0]!.with_col} of ${cov[0]!.issuances} issuances in the corpus have the column\x1b[0m`,
 );
 
 // ---------------------------------------------------------------------------
-// 2. Valores crudos, antes de agrupar
+// 2. Raw values, before grouping
 // ---------------------------------------------------------------------------
 
-const { rows: crudos } = await query<{ v: string; n: string; ev: string; shelves: string }>(
+const { rows: raw } = await query<{ v: string; n: string; ev: string; shelves: string }>(
   `WITH base AS (${BASE})
-   SELECT vendedor AS v, count(*)::text AS n, sum(evento)::text AS ev,
+   SELECT seller AS v, count(*)::text AS n, sum(event)::text AS ev,
           count(DISTINCT shelf)::text AS shelves
-     FROM base WHERE vendedor IS NOT NULL
-    GROUP BY vendedor ORDER BY count(*) DESC`,
+     FROM base WHERE seller IS NOT NULL
+    GROUP BY seller ORDER BY count(*) DESC`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Valores crudos (${crudos.length} distintos)`);
+console.log(`Valores raw (${raw.length} distintos)`);
 console.log(`${"─".repeat(78)}\n`);
 
-if (crudos.length === 0) {
-  console.log(`  \x1b[33mNinguno. Recosechá con: npm run harvest:batch -- --refresh-stale\x1b[0m\n`);
+if (raw.length === 0) {
+  console.log(`  \x1b[33mNone. Re-harvest with: npm run harvest:batch -- --refresh-stale\x1b[0m\n`);
   await closePool();
   process.exit(0);
 }
 
-for (const r of crudos.slice(0, 25)) {
+for (const r of raw.slice(0, 25)) {
   const nn = Number(r.n), ev = Number(r.ev);
   console.log(
     `  ${r.v.slice(0, 30).padEnd(32)} ${String(nn).padStart(5)}  ${String(ev).padStart(3)} ev  ` +
       `${nn >= 50 ? pct(ev / nn).padStart(6) : "     —"}   \x1b[90men ${r.shelves} emisora(s)\x1b[0m`,
   );
 }
-if (crudos.length > 25) console.log(`  \x1b[90m... y ${crudos.length - 25} más\x1b[0m`);
+if (raw.length > 25) console.log(`  \x1b[90m... and ${raw.length - 25} more\x1b[0m`);
 
 /**
- * Las ventas conjuntas —"JPMCB/CREFI"— son un vendedor compuesto, no un
- * vendedor nuevo. Se cuentan aparte para decidir qué hacer con ellas en vez de
- * que entren como categoría propia sin que nadie lo note.
+ * Joint sales —"JPMCB/CREFI"— are a composite seller, not a new one. They are
+ * counted separately so we can decide what to do with them, rather than having
+ * them enter as their own category without anyone noticing.
  */
-const conjuntas = crudos.filter((r) => /[\/&+]|\band\b/i.test(r.v));
-if (conjuntas.length > 0) {
-  const total = conjuntas.reduce((a, r) => a + Number(r.n), 0);
+const joint = raw.filter((r) => /[\/&+]|\band\b/i.test(r.v));
+if (joint.length > 0) {
+  const total = joint.reduce((a, r) => a + Number(r.n), 0);
   console.log(
-    `\n  \x1b[90m${conjuntas.length} valores son ventas conjuntas (${total} préstamos): ` +
-      `${conjuntas.slice(0, 4).map((r) => r.v).join(", ")}\x1b[0m`,
+    `\n  \x1b[90m${joint.length} values are joint sales (${total} loans): ` +
+      `${joint.slice(0, 4).map((r) => r.v).join(", ")}\x1b[0m`,
   );
 }
 
-if (cobertura < COBERTURA_MINIMA) {
-  console.log(`\n  \x1b[31mCOBERTURA INSUFICIENTE. No se reporta el efecto.\x1b[0m`);
+if (coverage < MIN_COVERAGE) {
+  console.log(`\n  \x1b[31mINSUFFICIENT COVERAGE. The effect is not reported.\x1b[0m`);
   console.log(
-    `  \x1b[90mCon menos de la mitad de los préstamos, el cruce emisora × vendedor\x1b[0m`,
+    `  \x1b[90mWith fewer than half the loans, the issuer × seller cross compares\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mcompara subconjuntos distintos de cada emisora, que es el sesgo que\x1b[0m`,
+    `  \x1b[90mdifferent subsets of each issuer, which is the very bias this\x1b[0m`,
   );
   console.log(`  \x1b[90meste script viene a descartar.\x1b[0m\n`);
   await closePool();
@@ -296,207 +298,207 @@ if (cobertura < COBERTURA_MINIMA) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. ¿Es identificable?
+// 3. Is it identifiable?
 // ---------------------------------------------------------------------------
 
 const { rows: celdas } = await query<{
   shelf: string; v: string; n: string; ev: string;
 }>(
   `WITH base AS (${BASE})
-   SELECT shelf, vendedor AS v, count(*)::text AS n, sum(evento)::text AS ev
-     FROM base WHERE vendedor IS NOT NULL
-    GROUP BY shelf, vendedor
+   SELECT shelf, seller AS v, count(*)::text AS n, sum(event)::text AS ev
+     FROM base WHERE seller IS NOT NULL
+    GROUP BY shelf, seller
    HAVING count(*) >= ${MIN_POOL}
-    ORDER BY vendedor, shelf`,
+    ORDER BY seller, shelf`,
 );
 
-const porVendedor = new Map<string, Array<{ k: string; tasa: number; n: number }>>();
-const porShelf = new Map<string, Array<{ k: string; tasa: number; n: number }>>();
+const bySeller = new Map<string, Array<{ k: string; rate: number; n: number }>>();
+const porShelf = new Map<string, Array<{ k: string; rate: number; n: number }>>();
 for (const c of celdas) {
   const nn = Number(c.n), ev = Number(c.ev);
-  const tasa = ev / nn;
-  (porVendedor.get(c.v) ?? porVendedor.set(c.v, []).get(c.v)!).push({ k: c.shelf, tasa, n: nn });
-  (porShelf.get(c.shelf) ?? porShelf.set(c.shelf, []).get(c.shelf)!).push({ k: c.v, tasa, n: nn });
+  const rate = ev / nn;
+  (bySeller.get(c.v) ?? bySeller.set(c.v, []).get(c.v)!).push({ k: c.shelf, rate, n: nn });
+  (porShelf.get(c.shelf) ?? porShelf.set(c.shelf, []).get(c.shelf)!).push({ k: c.v, rate, n: nn });
 }
 
-const vendedoresCruzados = [...porVendedor].filter(([, xs]) => xs.length > 1);
-const shelvesCruzados = [...porShelf].filter(([, xs]) => xs.length > 1);
+const crossedSellers = [...bySeller].filter(([, xs]) => xs.length > 1);
+const crossedShelves = [...porShelf].filter(([, xs]) => xs.length > 1);
 
 console.log(`\n${"─".repeat(78)}`);
-console.log(`Celdas emisora × vendedor (pool ≥ ${MIN_POOL})`);
+console.log(`Issuer × seller cells (pool ≥ ${MIN_POOL})`);
 console.log(`${"─".repeat(78)}\n`);
-console.log(`  vendedor            emisora        n   ev     tasa         IC 95%`);
+console.log(`  seller              issuer         n   ev     rate         95% CI`);
 console.log(`  ${"─".repeat(68)}`);
 
 let prev = "";
 for (const c of celdas) {
   const nn = Number(c.n), ev = Number(c.ev);
   const [lo, hi] = wilson(ev, nn);
-  const etiqueta = c.v === prev ? "" : c.v.slice(0, 18);
+  const label = c.v === prev ? "" : c.v.slice(0, 18);
   prev = c.v;
   console.log(
-    `  ${etiqueta.padEnd(19)} ${c.shelf.padEnd(10)} ${String(nn).padStart(5)} ${String(ev).padStart(4)}  ` +
+    `  ${label.padEnd(19)} ${c.shelf.padEnd(10)} ${String(nn).padStart(5)} ${String(ev).padStart(4)}  ` +
       `${pct(ev / nn).padStart(6)}  [${pct(lo).padStart(5)} , ${pct(hi).padStart(5)}]`,
   );
 }
 
 console.log(
-  `\n  Vendedores en más de una emisora: \x1b[1m${vendedoresCruzados.length}\x1b[0m` +
-    `   ·   Emisoras con más de un vendedor: \x1b[1m${shelvesCruzados.length}\x1b[0m`,
+  `\n  Sellers in more than one issuer: \x1b[1m${crossedSellers.length}\x1b[0m` +
+    `   ·   Issuers with more than one seller: \x1b[1m${crossedShelves.length}\x1b[0m`,
 );
 
-if (vendedoresCruzados.length === 0 || shelvesCruzados.length === 0) {
+if (crossedSellers.length === 0 || crossedShelves.length === 0) {
   console.log(
-    `\n  \x1b[31mNO IDENTIFICABLE con celdas de pool ≥ ${MIN_POOL}.\x1b[0m`,
+    `\n  \x1b[31mNOT IDENTIFIABLE with cells of pool ≥ ${MIN_POOL}.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mSin celdas fuera de la diagonal, emisora y vendedor son la misma\x1b[0m`,
+    `  \x1b[90mWithout off-diagonal cells, issuer and seller are the same column\x1b[0m`,
   );
-  console.log(`  \x1b[90mcolumna con dos nombres.\x1b[0m\n`);
+  console.log(`  \x1b[90mwith two names.\x1b[0m\n`);
   await closePool();
   process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
-// 4. ¿Qué dispersa más?
+// 4. Which one disperses more?
 // ---------------------------------------------------------------------------
 
 /**
- * En puntos porcentuales, no como cociente: una celda con cero eventos hace que
- * el cociente no exista, y la versión anterior de este test lo tapó con un
- * `max(1e-9, min)` que devolvía 29.333.333x.
+ * In percentage points, not as a ratio: a cell with zero events makes the ratio
+ * undefined, and the previous version of this test papered over that with a
+ * `max(1e-9, min)` that returned 29,333,333x.
  */
 const spread = (xs: number[]) => (xs.length < 2 ? null : Math.max(...xs) - Math.min(...xs));
-const mediana = (xs: number[]) =>
+const median = (xs: number[]) =>
   xs.length === 0 ? null : [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Fijando una variable, ¿cuánto dispersa la otra?");
+console.log("Holding one variable fixed, how much does the other disperse?");
 console.log(`${"─".repeat(78)}\n`);
 
 const spV: number[] = [];
-console.log(`  Con el VENDEDOR fijo, dispersión entre emisoras:\n`);
-for (const [v, xs] of vendedoresCruzados) {
-  const sp = spread(xs.map((x) => x.tasa))!;
+console.log(`  With the SELLER fixed, dispersion across issuers:\n`);
+for (const [v, xs] of crossedSellers) {
+  const sp = spread(xs.map((x) => x.rate))!;
   spV.push(sp);
-  const detalle = [...xs].sort((a, b) => a.tasa - b.tasa)
-    .map((x) => `${x.k} ${pct(x.tasa)}`).join("  ·  ");
-  console.log(`    ${v.slice(0, 18).padEnd(19)} ${(sp * 100).toFixed(1).padStart(5)} pp   \x1b[90m${detalle}\x1b[0m`);
+  const detail = [...xs].sort((a, b) => a.rate - b.rate)
+    .map((x) => `${x.k} ${pct(x.rate)}`).join("  ·  ");
+  console.log(`    ${v.slice(0, 18).padEnd(19)} ${(sp * 100).toFixed(1).padStart(5)} pp   \x1b[90m${detail}\x1b[0m`);
 }
 
 const spS: number[] = [];
-console.log(`\n  Con la EMISORA fija, dispersión entre vendedores:\n`);
-for (const [s, xs] of shelvesCruzados) {
-  const sp = spread(xs.map((x) => x.tasa))!;
+console.log(`\n  With the ISSUER fixed, dispersion across sellers:\n`);
+for (const [s, xs] of crossedShelves) {
+  const sp = spread(xs.map((x) => x.rate))!;
   spS.push(sp);
-  const detalle = [...xs].sort((a, b) => a.tasa - b.tasa)
-    .map((x) => `${x.k.slice(0, 12)} ${pct(x.tasa)}`).join("  ·  ");
-  console.log(`    ${s.padEnd(19)} ${(sp * 100).toFixed(1).padStart(5)} pp   \x1b[90m${detalle}\x1b[0m`);
+  const detail = [...xs].sort((a, b) => a.rate - b.rate)
+    .map((x) => `${x.k.slice(0, 12)} ${pct(x.rate)}`).join("  ·  ");
+  console.log(`    ${s.padEnd(19)} ${(sp * 100).toFixed(1).padStart(5)} pp   \x1b[90m${detail}\x1b[0m`);
 }
 
-const medV = mediana(spV);
-const medS = mediana(spS);
+const medV = median(spV);
+const medS = median(spS);
 
 console.log(`\n${"─".repeat(78)}\n`);
 if (medV === null || medS === null) {
-  console.log(`  \x1b[33mNo hay celdas suficientes en las dos direcciones.\x1b[0m\n`);
+  console.log(`  \x1b[33mNot enough cells in both directions.\x1b[0m\n`);
 } else {
-  console.log(`  Mediana con vendedor fijo: \x1b[1m${(medV * 100).toFixed(1)} pp\x1b[0m entre emisoras`);
-  console.log(`  Mediana con emisora fija:  \x1b[1m${(medS * 100).toFixed(1)} pp\x1b[0m entre vendedores`);
+  console.log(`  Median with seller fixed: \x1b[1m${(medV * 100).toFixed(1)} pp\x1b[0m across issuers`);
+  console.log(`  Median with issuer fixed: \x1b[1m${(medS * 100).toFixed(1)} pp\x1b[0m across sellers`);
 
   /**
-   * EL FACTOR 1,5 NO TIENE NULO, Y CONVIENE QUE SE SEPA.
+   * THE 1.5 FACTOR HAS NO NULL, AND THAT SHOULD BE KNOWN.
    *
-   * Las dos medianas se calculan sobre cantidades distintas de celdas, y una
-   * dispersión tiene valor esperado POSITIVO aunque no haya efecto: con celdas de
-   * ~200 préstamos y tasas del 5%, el rango entre dos celdas se mueve varios
-   * puntos por muestreo solo.
+   * The two medians are computed over different numbers of cells, and a
+   * dispersion has a POSITIVE expected value even with no effect: with cells of
+   * ~200 loans and rates of 5%, the range between two cells moves several points
+   * from sampling alone.
    *
-   * Comparar las dos medianas con un factor fijo es el mismo error que el umbral
-   * del top-2 en db:cohort. Falta simular: permutar la etiqueta de vendedor dentro
-   * de cada emisora y ver cuánto dispersa por azar.
+   * Comparing the two medians against a fixed factor is the same error as the
+   * top-2 threshold in db:cohort. What is missing is a simulation: permute the
+   * seller label within each issuer and see how much it disperses by chance.
    *
-   * Se deja el veredicto porque la conclusión que produjo —el vendedor manda, no la
-   * emisora— fue confirmada después por la vía independiente del SIR por
-   * originador, que sí tiene referencia. Pero el factor en sí es arbitrario.
+   * The verdict stays because the conclusion it produced —the seller rules, not
+   * the issuer— was later confirmed by the independent route of the SIR by
+   * originator, which does have a reference. But the factor itself is arbitrary.
    */
   if (medS > medV * 1.5) {
     console.log(
-      `\n  \x1b[32mEL VENDEDOR MANDA.\x1b[0m Fijar la emisora deja diferencias grandes entre`,
+      `\n  \x1b[32mTHE SELLER RULES.\x1b[0m Fixing the issuer leaves large differences between`,
     );
     console.log(
-      `  \x1b[90mvendedores, y fijar el vendedor aplana las emisoras. Lo que veníamos\x1b[0m`,
+      `  \x1b[90msellers, and fixing the seller flattens the issuers. What we had been\x1b[0m`,
     );
     console.log(
-      `  \x1b[90mllamando "efecto emisora" era el mix de originadores de cada shelf.\x1b[0m`,
+      `  \x1b[90mcalling an "issuer effect" was each shelf's mix of originators.\x1b[0m`,
     );
   } else if (medV > medS * 1.5) {
     console.log(
-      `\n  \x1b[33mLA EMISORA MANDA.\x1b[0m El mismo vendedor rinde distinto según a qué`,
+      `\n  \x1b[33mTHE ISSUER RULES.\x1b[0m The same seller performs differently depending on which`,
     );
     console.log(
-      `  \x1b[90memisión coloque. Eso no es "quién suscribe mejor": es que el shelf\x1b[0m`,
+      `  \x1b[90missuance it places into. That is not "who underwrites better": it is that\x1b[0m`,
     );
     console.log(
-      `  \x1b[90melige qué préstamos acepta de cada vendedor, o los agrupa distinto.\x1b[0m`,
+      `  \x1b[90mthe shelf chooses which loans it accepts from each seller, or pools them\x1b[0m`,
     );
   } else {
-    console.log(`\n  \x1b[33mLas dos dispersan parecido.\x1b[0m No se separan con estas celdas.`);
+    console.log(`\n  \x1b[33mBoth disperse similarly.\x1b[0m They do not separate with these cells.`);
   }
   console.log(
-    `\n  \x1b[90mSin estandarizar por añada ni por tipo: las celdas de ~200 préstamos no\x1b[0m`,
+    `\n  \x1b[90mNot standardised by vintage or type: cells of ~200 loans cannot bear\x1b[0m`,
   );
-  console.log(`  \x1b[90maguantan estratificarse. Es una limitación declarada.\x1b[0m`);
+  console.log(`  \x1b[90mstratifying. It is a declared limitation.\x1b[0m`);
   console.log(
-    `  \x1b[33mY el factor 1,5 de este veredicto no tiene nulo:\x1b[0m \x1b[90muna dispersión tiene\x1b[0m`,
-  );
-  console.log(
-    `  \x1b[90mvalor esperado positivo aunque no haya efecto. La conclusión se sostiene por\x1b[0m`,
+    `  \x1b[33mAnd the 1.5 factor in this verdict has no null:\x1b[0m \x1b[90ma dispersion has a\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mel SIR por originador, que sí tiene referencia — no por este cociente.\x1b[0m\n`,
+    `  \x1b[90mpositive expected value even with no effect. The conclusion holds because of\x1b[0m`,
+  );
+  console.log(
+    `  \x1b[90mthe SIR by originator, which does have a reference — not because of this ratio.\x1b[0m\n`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// 5. El SIR invertido: ¿qué originadores se apartan, ajustados?
+// 5. The inverted SIR: which originators depart, adjusted?
 // ---------------------------------------------------------------------------
 
 /**
- * La pregunta que queda después de matar el efecto emisora.
+ * The question that remains after killing the issuer effect.
  *
- * Estandarizar por vendedor mostró que ninguna emisora se aparta: BANK 1,01 ·
- * BBCMS 1,10 · BMO 1,03. La variación estaba un nivel más abajo, entre
- * originadores — de 0% (NCB) a 11,2% (LMF).
+ * Standardising by seller showed that no issuer departs: BANK 1.01 · BBCMS 1.10
+ * · BMO 1.03. The variation was one level down, among originators — from 0%
+ * (NCB) to 11.2% (LMF).
  *
- * Pero esas son tasas CRUDAS. LMF puede estar concentrado en 2021-2022, o en
- * hotelería, y entonces su 11,2% mediría la añada o el activo. Este es el mismo
- * SIR de `db:composition` con los roles cambiados: el vendedor es la unidad y el
- * estrato es tipo de propiedad × añada.
+ * But those are RAW rates. LMF may be concentrated in 2021-2022, or in
+ * hospitality, in which case its 11.2% would be measuring the vintage or the
+ * asset. This is the same SIR as `db:composition` with the roles swapped: the
+ * seller is the unit and the stratum is property type × vintage.
  *
- * A DIFERENCIA DE LA EMISORA, ACÁ LA PREGUNTA TIENE SENTIDO
+ * UNLIKE THE ISSUER, HERE THE QUESTION MAKES SENSE
  *
- * El originador sí decide a quién le presta, con qué apalancamiento y contra qué
- * proyección de renta. Es el nivel donde la suscripción ocurre. La emisora solo
- * elige a quién comprarle.
+ * The originator does decide who it lends to, at what leverage and against what
+ * rent projection. It is the level where underwriting happens. The issuer only
+ * chooses who to buy from.
  *
- * LO QUE SIGUE SIN CONTROLARSE
+ * WHAT IS STILL NOT CONTROLLED
  *
- * El apalancamiento. Un originador con SIR alto puede estar prestando más caro y
- * más apalancado a propósito, y cobrando por ese riesgo. "Se aparta" acá
- * significa "más transferencias que lo esperable por su mezcla de activos y
- * añadas", no "peor negocio".
+ * Leverage. An originator with a high SIR may be lending more expensively and
+ * more leveraged on purpose, and charging for that risk. "Departs" here means
+ * "more transfers than expected given its mix of assets and vintages", not
+ * "worse business".
  */
-const { rows: sirTodos } = await query<{
-  v: string; n: string; obs: string; esp: string; shelves: string; auto: string;
+const { rows: sirAll } = await query<{
+  v: string; n: string; obs: string; expected: string; shelves: string; self: string;
 }>(
   `WITH base AS (
      SELECT b.*,
             CASE
-              -- Con --con-subtipo el estrato es el PRODUCTO, no la categoría
-              -- gruesa. Se toma property_type_detailed crudo: agruparlo sería
-              -- reintroducir la decisión que este control viene a evitar.
-              WHEN ${CON_SUBTIPO ? "TRUE" : "FALSE"} THEN nullif(btrim(sub.value), '')
+              -- With --with-subtype the stratum is the PRODUCT, not the coarse
+              -- category. property_type_detailed is taken raw: grouping it would
+              -- reintroduce the very decision this control exists to avoid.
+              WHEN ${WITH_SUBTYPE ? "TRUE" : "FALSE"} THEN nullif(btrim(sub.value), '')
               WHEN t.property_type IS NULL THEN NULL
               WHEN t.property_type ~* 'multifamily|cooperative|garden|low rise|mid rise|high rise|student' THEN 'Multifamily'
               WHEN t.property_type ~* 'manufactured' THEN 'Manufactured'
@@ -507,15 +509,15 @@ const { rows: sirTodos } = await query<{
               WHEN t.property_type ~* 'hospitality|hotel|full service|limited service|extended stay' THEN 'Hospitality'
               WHEN t.property_type ~* 'mixed' THEN 'Mixed Use'
               ELSE 'Otro'
-            END AS tipo
+            END AS type
        FROM (${BASE}) b
        JOIN corpus.loans t ON t.id = b.id
        LEFT JOIN corpus.facts sub ON sub.loan_id = b.id
                                  AND sub.metric_key = 'property_type_detailed'
    ),
-   con_dscr AS (
+   with_dscr AS (
      SELECT b.*, ds.value::numeric AS dscr, lt.value::numeric AS ltv,
-            am.value::numeric AS saldo
+            am.value::numeric AS balance
        FROM base b
        LEFT JOIN corpus.facts am ON am.loan_id = b.id AND am.metric_key = 'loan_amount'
                                 AND am.value ~ '^[0-9.]+$'
@@ -524,192 +526,193 @@ const { rows: sirTodos } = await query<{
        LEFT JOIN corpus.facts lt ON lt.loan_id = b.id AND lt.metric_key = 'ltv'
                                 AND lt.value ~ '^[0-9.]+$' AND lt.value::numeric <= 2
    ),
-   con_tipo AS (
+   with_type AS (
      SELECT c.*,
-            ${CON_APALANCAMIENTO || CON_LTV ? "ntile(3) OVER (ORDER BY dscr NULLS LAST)" : "0"}::int AS tercil,
-            ${CON_LTV ? "ntile(3) OVER (ORDER BY ltv NULLS LAST)" : "0"}::int AS tercil_ltv,
-            ${CON_TAMANO ? "ntile(3) OVER (ORDER BY saldo NULLS LAST)" : "0"}::int AS tercil_saldo
-       FROM con_dscr c
-      WHERE vendedor IS NOT NULL AND tipo IS NOT NULL
-        ${CON_APALANCAMIENTO || CON_LTV ? "AND dscr IS NOT NULL" : ""}
-        ${CON_LTV ? "AND ltv IS NOT NULL" : ""}
-        ${CON_TAMANO ? "AND saldo IS NOT NULL" : ""}
+            ${WITH_LEVERAGE || WITH_LTV ? "ntile(3) OVER (ORDER BY dscr NULLS LAST)" : "0"}::int AS tercile,
+            ${WITH_LTV ? "ntile(3) OVER (ORDER BY ltv NULLS LAST)" : "0"}::int AS ltv_tercile,
+            ${WITH_SIZE ? "ntile(3) OVER (ORDER BY balance NULLS LAST)" : "0"}::int AS balance_tercile
+       FROM with_dscr c
+      WHERE seller IS NOT NULL AND type IS NOT NULL
+        ${WITH_LEVERAGE || WITH_LTV ? "AND dscr IS NOT NULL" : ""}
+        ${WITH_LTV ? "AND ltv IS NOT NULL" : ""}
+        ${WITH_SIZE ? "AND balance IS NOT NULL" : ""}
    ),
-   -- Las tasas por estrato incluyen al propio vendedor que después se evalúa.
-   -- Es estandarización indirecta estándar, pero tiene una consecuencia: para un
-   -- vendedor que domina un estrato, el esperado se acerca al observado y el SIR
-   -- se corre hacia 1. Sesga en contra de encontrar efecto, no a favor, así que
-   -- un SIR alto sobrevive a pesar de esto y no gracias a esto.
-   tasas AS (
-     SELECT tipo, anada, tercil, tercil_ltv, tercil_saldo,
-            sum(evento)::numeric / count(*) AS tasa
-       FROM con_tipo GROUP BY tipo, anada, tercil, tercil_ltv, tercil_saldo
+   -- The per-stratum rates include the very seller that is then evaluated.
+   -- It is standard indirect standardisation, but it has a consequence: for a
+   -- seller that dominates a stratum, the expected approaches the observed and
+   -- the SIR moves towards 1. It biases against finding an effect, not for it,
+   -- so a high SIR survives despite this and not thanks to it.
+   rates AS (
+     SELECT type, vintage, tercile, ltv_tercile, balance_tercile,
+            sum(event)::numeric / count(*) AS rate
+       FROM with_type GROUP BY type, vintage, tercile, ltv_tercile, balance_tercile
    ),
-   -- CUÁNTO DE LA TASA ESPERADA DE UN VENDEDOR ES SU PROPIA TASA.
+   -- HOW MUCH OF A SELLER'S EXPECTED RATE IS ITS OWN RATE.
    --
-   -- El comentario de arriba dice que la autorreferencia sesga hacia 1 y por eso
-   -- es conservadora. Eso vale cuando el vendedor es una parte grande del estrato.
-   -- Cuando es el estrato ENTERO, la estandarización deja de ser conservadora y
-   -- pasa a ser vacía: el esperado es el observado por construcción.
+   -- The comment above says self-reference biases towards 1 and is therefore
+   -- conservative. That holds when the seller is a large part of the stratum.
+   -- When it IS the whole stratum, standardisation stops being conservative and
+   -- becomes empty: the expected is the observed by construction.
    --
-   -- Con subtipo eso deja de ser hipotético. NCB tiene 355 préstamos y todos los
-   -- Cooperative del corpus son suyos, así que su esperado sale exactamente 0,0 y
-   -- su SIR es 0/0. El intervalo de Byar devuelve [0,0], que excluye el 1, y el
-   -- script lo contaba como "se aparta". Es una prueba que no puede fallar.
-   dominio AS (
-     SELECT vendedor, tipo, anada, tercil, tercil_ltv, tercil_saldo,
+   -- With subtype that stops being hypothetical. NCB has 355 loans and every
+   -- Cooperative in the corpus is theirs, so its expected comes out at exactly
+   -- 0.0 and its SIR is 0/0. Byar's interval returns [0,0], which excludes 1,
+   -- and the script counted it as "departs". It is a test that cannot fail.
+   dominance AS (
+     SELECT seller, type, vintage, tercile, ltv_tercile, balance_tercile,
             count(*)::numeric AS nc,
             count(*)::numeric / sum(count(*)) OVER (
-              PARTITION BY tipo, anada, tercil, tercil_ltv, tercil_saldo
+              PARTITION BY type, vintage, tercile, ltv_tercile, balance_tercile
             ) AS share
-       FROM con_tipo
-      GROUP BY vendedor, tipo, anada, tercil, tercil_ltv, tercil_saldo
+       FROM with_type
+      GROUP BY seller, type, vintage, tercile, ltv_tercile, balance_tercile
    ),
-   auto_v AS (
-     SELECT vendedor,
-            coalesce(sum(nc) FILTER (WHERE share >= 0.8), 0) / nullif(sum(nc), 0) AS auto
-       FROM dominio GROUP BY vendedor
+   self_v AS (
+     SELECT seller,
+            coalesce(sum(nc) FILTER (WHERE share >= 0.8), 0) / nullif(sum(nc), 0) AS self
+       FROM dominance GROUP BY seller
    )
-   SELECT c.vendedor AS v, count(*)::text AS n,
-          sum(c.evento)::text AS obs,
-          round(sum(t.tasa), 2)::text AS esp,
+   SELECT c.seller AS v, count(*)::text AS n,
+          sum(c.event)::text AS obs,
+          round(sum(t.rate), 2)::text AS expected,
           count(DISTINCT c.shelf)::text AS shelves,
-          round(coalesce(max(a.auto), 0) * 100)::text AS auto
-     FROM con_tipo c JOIN tasas t
-       ON t.tipo = c.tipo AND t.anada = c.anada AND t.tercil = c.tercil
-      AND t.tercil_ltv = c.tercil_ltv AND t.tercil_saldo = c.tercil_saldo
-     LEFT JOIN auto_v a ON a.vendedor = c.vendedor
-    GROUP BY c.vendedor
-    ORDER BY sum(c.evento)::numeric / nullif(sum(t.tasa), 0)`,
+          round(coalesce(max(a.self), 0) * 100)::text AS self
+     FROM with_type c JOIN rates t
+       ON t.type = c.type AND t.vintage = c.vintage AND t.tercile = c.tercile
+      AND t.ltv_tercile = c.ltv_tercile AND t.balance_tercile = c.balance_tercile
+     LEFT JOIN self_v a ON a.seller = c.seller
+    GROUP BY c.seller
+    ORDER BY sum(c.event)::numeric / nullif(sum(t.rate), 0)`,
 );
 
 /**
- * QUIÉNES SALIERON DE LA TABLA, QUE ES LO PRIMERO QUE HAY QUE MIRAR.
+ * WHO FELL OUT OF THE TABLE, WHICH IS THE FIRST THING TO LOOK AT.
  *
- * El filtro `pool >= MIN_POOL` se aplicaba dentro del SQL, así que un vendedor que
- * quedaba corto simplemente no aparecía. Con los controles activos eso deja de ser
- * inocente: cada control descarta los préstamos sin el dato, y un vendedor con
- * cobertura peor que el promedio se cae de la tabla sin dejar rastro.
+ * The `pool >= MIN_POOL` filter was applied inside the SQL, so a seller that
+ * came up short simply did not appear. With the controls on, that stops being
+ * innocent: each control discards the loans missing that datum, and a seller
+ * with worse-than-average coverage drops out of the table without a trace.
  *
- * Pasó exactamente eso, y con el vendedor que motivó el control. UBS AG tiene 177
- * préstamos y la cobertura de subtipo es 75%, así que al estratificar por subtipo
- * quedó abajo de 150 y desapareció. La corrida no dijo "UBS no sobrevive": dijo
- * nada sobre UBS, y sin esta lista las dos cosas se leen igual.
+ * That is exactly what happened, and with the seller that motivated the control.
+ * UBS AG has 177 loans and subtype coverage is 75%, so stratifying by subtype
+ * put it below 150 and it disappeared. The run did not say "UBS does not
+ * survive": it said nothing about UBS, and without this list the two read the
+ * same.
  *
- * Un control que saca de la muestra justamente al caso que venía a examinar no
- * responde la pregunta. Puede ser el control correcto igual — pero entonces la
- * conclusión es "el corpus no alcanza", no "no se aparta".
+ * A control that removes from the sample precisely the case it came to examine
+ * does not answer the question. It may still be the correct control — but then
+ * the conclusion is "the corpus is not enough", not "it does not depart".
  */
-const sirV = sirTodos.filter((r) => Number(r.n) >= MIN_POOL);
+const sirV = sirAll.filter((r) => Number(r.n) >= MIN_POOL);
 const enTabla = new Set(sirV.map((r) => r.v));
-const caidos = crudos
+const dropped = raw
   .filter((r) => Number(r.n) >= MIN_POOL && !enTabla.has(r.v))
   .map((r) => {
-    const dentro = sirTodos.find((x) => x.v === r.v);
-    return { v: r.v, crudo: Number(r.n), conEstrato: Number(dentro?.n ?? 0) };
+    const inside = sirAll.find((x) => x.v === r.v);
+    return { v: r.v, raw: Number(r.n), withStratum: Number(inside?.n ?? 0) };
   });
 
-/** Byar: con 0 eventos observados el intervalo normal no existe. */
-function byar(obs: number, esp: number): [number, number] {
-  if (esp <= 0) return [0, 0];
+/** Byar: with 0 observed events the normal interval does not exist. */
+function byar(obs: number, expected: number): [number, number] {
+  if (expected <= 0) return [0, 0];
   const lo =
-    obs === 0 ? 0 : (obs * Math.pow(1 - 1 / (9 * obs) - 1.96 / (3 * Math.sqrt(obs)), 3)) / esp;
+    obs === 0 ? 0 : (obs * Math.pow(1 - 1 / (9 * obs) - 1.96 / (3 * Math.sqrt(obs)), 3)) / expected;
   const o1 = obs + 1;
-  const hi = (o1 * Math.pow(1 - 1 / (9 * o1) + 1.96 / (3 * Math.sqrt(o1)), 3)) / esp;
+  const hi = (o1 * Math.pow(1 - 1 / (9 * o1) + 1.96 / (3 * Math.sqrt(o1)), 3)) / expected;
   return [Math.max(0, lo), hi];
 }
 
 console.log(`\n${"═".repeat(78)}`);
 console.log(
-  `Originadores: SIR por ${CON_SUBTIPO ? "SUBTIPO" : "TIPO"} × AÑADA${CON_APALANCAMIENTO || CON_LTV ? " × DSCR" : ""}` +
-    `${CON_LTV ? " × LTV" : ""}${CON_TAMANO ? " × SALDO" : ""} (pool ≥ ${MIN_POOL})`,
+  `Originators: SIR by ${WITH_SUBTYPE ? "SUBTYPE" : "TYPE"} × VINTAGE${WITH_LEVERAGE || WITH_LTV ? " × DSCR" : ""}` +
+    `${WITH_LTV ? " × LTV" : ""}${WITH_SIZE ? " × BALANCE" : ""} (pool ≥ ${MIN_POOL})`,
 );
 console.log(`${"═".repeat(78)}\n`);
-console.log(`  vendedor          emis.       n   obs   esperado    SIR         IC 95%      auto`);
+console.log(`  seller            iss.        n   obs   expected    SIR         95% CI      self`);
 console.log(`  ${"─".repeat(72)}`);
 
-let apartados = 0;
+let departing = 0;
 let sumObs = 0;
 let sumEsp = 0;
-let pegados = 0;
+let stuck = 0;
 for (const r of sirV) {
   sumObs += Number(r.obs);
-  sumEsp += Number(r.esp);
-  // "Pegado" = el esperado quedó a menos de 15% del observado: el estrato ya no
-  // aporta contraste porque el préstamo se compara casi contra sí mismo.
-  if (Number(r.esp) > 0 && Math.abs(Number(r.obs) - Number(r.esp)) / Number(r.esp) < 0.15) {
-    pegados++;
+  sumEsp += Number(r.expected);
+  // "Stuck" = the expected came within 15% of the observed: the stratum no
+  // longer adds contrast because the loan is compared almost against itself.
+  if (Number(r.expected) > 0 && Math.abs(Number(r.obs) - Number(r.expected)) / Number(r.expected) < 0.15) {
+    stuck++;
   }
 }
-let tautologicos = 0;
+let tautological = 0;
 for (const r of sirV) {
-  const obs = Number(r.obs), esp = Number(r.esp), nn = Number(r.n);
-  const auto = Number(r.auto);
-  const s = esp > 0 ? obs / esp : 0;
-  const [lo, hi] = byar(obs, esp);
+  const obs = Number(r.obs), expected = Number(r.expected), nn = Number(r.n);
+  const self = Number(r.self);
+  const s = expected > 0 ? obs / expected : 0;
+  const [lo, hi] = byar(obs, expected);
   /**
-   * Con esperado 0 el intervalo de Byar es [0,0], que excluye el 1 siempre. No
-   * es un hallazgo: es la aritmética de dividir por cero con otro nombre.
+   * With expected 0, Byar's interval is [0,0], which always excludes 1. That is
+   * not a finding: it is dividing by zero under another name.
    */
-  const evaluable = esp > 0;
-  if (!evaluable) tautologicos++;
+  const evaluable = expected > 0;
+  if (!evaluable) tautological++;
   const aparta = evaluable && (lo > 1 || hi < 1);
-  if (aparta) apartados++;
+  if (aparta) departing++;
   console.log(
     `  ${r.v.slice(0, 16).padEnd(17)} ${String(r.shelves).padStart(4)} ${String(nn).padStart(7)} ` +
-      `${String(obs).padStart(5)} ${esp.toFixed(1).padStart(9)}  ${(evaluable ? s.toFixed(2) : "—").padStart(6)}   ` +
+      `${String(obs).padStart(5)} ${expected.toFixed(1).padStart(9)}  ${(evaluable ? s.toFixed(2) : "—").padStart(6)}   ` +
       `${evaluable ? `[${lo.toFixed(2)} , ${hi.toFixed(2)}]` : "         —      "}  ` +
-      `${auto >= 50 ? "\x1b[33m" : "\x1b[90m"}${String(auto).padStart(3)}%\x1b[0m` +
+      `${self >= 50 ? "\x1b[33m" : "\x1b[90m"}${String(self).padStart(3)}%\x1b[0m` +
       (aparta ? `  \x1b[1m← se aparta\x1b[0m` : "") +
       (!evaluable ? `  \x1b[31m← esperado 0: no evaluable\x1b[0m` : ""),
   );
 }
 
-if (caidos.length > 0) {
+if (dropped.length > 0) {
   console.log(
-    `\n  \x1b[33mEl control sacó de la tabla a ${caidos.length} vendedor(es) que sí llegan al pool sin él:\x1b[0m`,
+    `\n  \x1b[33mThe control dropped ${dropped.length} seller(s) from the table that do reach the pool without it:\x1b[0m`,
   );
-  for (const c of caidos) {
+  for (const c of dropped) {
     console.log(
-      `  \x1b[90m  ${c.v.slice(0, 20).padEnd(21)} ${c.crudo} préstamos → ${c.conEstrato} con el estrato completo\x1b[0m`,
+      `  \x1b[90m  ${c.v.slice(0, 20).padEnd(21)} ${c.raw} loans → ${c.withStratum} with the full stratum\x1b[0m`,
     );
   }
   console.log(
-    `  \x1b[90mSobre ellos esta corrida no dice que no se apartan: no dice nada.\x1b[0m`,
+    `  \x1b[90mAbout them this run does not say they do not depart: it says nothing.\x1b[0m`,
   );
 }
 
 /**
- * CUÁNTOS SE APARTARÍAN POR AZAR, QUE FALTABA.
+ * HOW MANY WOULD DEPART BY CHANCE, WHICH WAS MISSING.
  *
- * Este conteo usaba intervalos individuales al 95% y se imprimía sin referencia.
- * Con M originadores probados, el esperado bajo la nula es M × 0,05: con doce
- * originadores, 0,6. Así que UN "se aparta" es lo que produce el azar, y dos
- * apenas lo superan.
+ * This count used individual 95% intervals and printed with no reference. With M
+ * originators tested, the expectation under the null is M × 0.05: with twelve
+ * originators, 0.6. So ONE "departs" is what chance produces, and two barely
+ * exceed it.
  *
- * El documento del hallazgo sí aplicó Bonferroni —LMF pasaba con z = 3,49— pero el
- * script no lo hacía, así que su conteo y el del documento no eran comparables.
+ * The finding document did apply Bonferroni —LMF passed with z = 3.49— but the
+ * script did not, so its count and the document's were not comparable.
  *
- * Bonferroni sobre el SIR se hace en escala log: el error estándar de log(SIR) es
- * aproximadamente 1/√obs, y el umbral pasa de 1,96 a z(0,05/M).
+ * Bonferroni on the SIR is done on the log scale: the standard error of log(SIR)
+ * is approximately 1/√obs, and the threshold goes from 1.96 to z(0.05/M).
  */
-const esperadosPorAzar = sirV.length * 0.05;
+const expectedByChance = sirV.length * 0.05;
 
-/** z bilateral para alfa/M, por búsqueda: no hace falta la inversa exacta. */
+/** Two-sided z for alpha/M, by search: the exact inverse is not needed. */
 function zBonferroni(m: number): number {
-  const alfa = 0.05 / Math.max(1, m);
-  // Φ(z) = 1 - alfa/2  →  búsqueda binaria sobre la normal acumulada.
+  const alpha = 0.05 / Math.max(1, m);
+  // Φ(z) = 1 - alpha/2  →  binary search over the cumulative normal.
   const Phi = (z: number) => 0.5 * (1 + erf(z / Math.SQRT2));
   let lo = 1, hi = 6;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
-    if (Phi(mid) < 1 - alfa / 2) lo = mid;
+    if (Phi(mid) < 1 - alpha / 2) lo = mid;
     else hi = mid;
   }
   return (lo + hi) / 2;
 }
 
-/** Aproximación de Abramowitz-Stegun, error < 1,5e-7. */
+/** Abramowitz-Stegun approximation, error < 1.5e-7. */
 function erf(x: number): number {
   const signo = x < 0 ? -1 : 1;
   const t = 1 / (1 + 0.3275911 * Math.abs(x));
@@ -722,151 +725,152 @@ function erf(x: number): number {
   return signo * y;
 }
 
-const zUmbral = zBonferroni(sirV.length);
-let apartadosBonf = 0;
+const zThreshold = zBonferroni(sirV.length);
+let departingBonf = 0;
 for (const r of sirV) {
-  const obs = Number(r.obs), esp = Number(r.esp);
-  if (obs < 1 || esp <= 0) continue;
-  const z = Math.abs(Math.log(obs / esp)) * Math.sqrt(obs);
-  if (z > zUmbral) apartadosBonf++;
+  const obs = Number(r.obs), expected = Number(r.expected);
+  if (obs < 1 || expected <= 0) continue;
+  const z = Math.abs(Math.log(obs / expected)) * Math.sqrt(obs);
+  if (z > zThreshold) departingBonf++;
 }
 
 console.log(
-  `\n  ${apartados} de ${sirV.length} originadores se apartan del promedio ajustado por ` +
-    `${CON_SUBTIPO ? "subtipo" : "tipo"} y añada${CON_APALANCAMIENTO || CON_LTV || CON_TAMANO ? ", DSCR" : ""}` +
-    `${CON_LTV ? ", LTV" : ""}${CON_TAMANO ? " y saldo" : ""}.`,
+  `\n  ${departing} of ${sirV.length} originators depart from the average adjusted for ` +
+    `${WITH_SUBTYPE ? "subtype" : "type"} and vintage${WITH_LEVERAGE || WITH_LTV || WITH_SIZE ? ", DSCR" : ""}` +
+    `${WITH_LTV ? ", LTV" : ""}${WITH_SIZE ? " and balance" : ""}.`,
 );
-if (tautologicos > 0) {
+if (tautological > 0) {
   console.log(
-    `  \x1b[90m${tautologicos} de esos ${sirV.length} no son evaluables: su esperado es 0 porque son\x1b[0m`,
+    `  \x1b[90m${tautological} of those ${sirV.length} are not evaluable: their expected is 0 because they\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mdueños de su estrato, y ahí la estandarización compara al préstamo consigo mismo.\x1b[0m`,
+    `  \x1b[90mown their stratum, and there standardisation compares the loan with itself.\x1b[0m`,
   );
 }
 console.log(
-  `  \x1b[90mPor azar se esperarían ${esperadosPorAzar.toFixed(1)} con ${sirV.length} pruebas al 5%.\x1b[0m` +
-    (apartados <= Math.ceil(esperadosPorAzar)
-      ? `  \x1b[33m← dentro de lo esperable\x1b[0m`
+  `  \x1b[90mBy chance you would expect ${expectedByChance.toFixed(1)} with ${sirV.length} tests at 5%.\x1b[0m` +
+    (departing <= Math.ceil(expectedByChance)
+      ? `  \x1b[33m← within what is expected\x1b[0m`
       : ""),
 );
 console.log(
-  `  \x1b[90mCon Bonferroni (z > ${zUmbral.toFixed(2)} en escala log): \x1b[0m` +
-    `${apartadosBonf === 0 ? "\x1b[33mninguno\x1b[0m" : `\x1b[32m${apartadosBonf}\x1b[0m`}` +
-    `\x1b[90m. Ese es el conteo citable con ${sirV.length} comparaciones.\x1b[0m`,
+  `  \x1b[90mWith Bonferroni (z > ${zThreshold.toFixed(2)} on the log scale): \x1b[0m` +
+    `${departingBonf === 0 ? "\x1b[33mnone\x1b[0m" : `\x1b[32m${departingBonf}\x1b[0m`}` +
+    `\x1b[90m. That is the citable count with ${sirV.length} comparisons.\x1b[0m`,
 );
 
 /**
- * La firma de la sobre-estratificación, impresa ANTES de que uno se crea el
- * resultado: si casi todos los esperados quedan pegados a sus observados, el
- * estrato se volvió tan fino que cada préstamo se compara contra sí mismo y
- * todos los SIR tienden a 1 sin que eso signifique nada.
+ * The signature of over-stratification, printed BEFORE anyone believes the
+ * result: if almost every expected ends up stuck to its observed, the stratum
+ * has become so fine that each loan is compared against itself and all the SIRs
+ * tend to 1 without that meaning anything.
  */
 console.log(
-  `\n  \x1b[90mControl de sobre-estratificación: ${pegados} de ${sirV.length} originadores tienen\x1b[0m`,
+  `\n  \x1b[90mOver-stratification control: ${stuck} of ${sirV.length} originators have\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mel esperado a menos de 15% del observado.\x1b[0m` +
-    (pegados > sirV.length * 0.6
-      ? `  \x1b[31m← el estrato es demasiado fino\x1b[0m`
-      : `  \x1b[32m← el estrato sigue aportando contraste\x1b[0m`),
+  `  \x1b[90mthe expected within 15% of the observed.\x1b[0m` +
+    (stuck > sirV.length * 0.6
+      ? `  \x1b[31m← the stratum is too fine\x1b[0m`
+      : `  \x1b[32m← the stratum still adds contrast\x1b[0m`),
 );
 console.log(
-  `\n  \x1b[90m"auto" es qué porción de los préstamos del vendedor cae en estratos donde él\x1b[0m`,
+  `\n  \x1b[90m"self" is what share of a seller's loans falls in strata where it is itself\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mmismo es el 80% o más. Ahí su tasa esperada es en buena medida su propia\x1b[0m`,
+  `  \x1b[90m80% or more. There its expected rate is largely its own rate, and the SIR\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mtasa, y el SIR mide menos de lo que parece. Arriba de 50% conviene desconfiar.\x1b[0m`,
+  `  \x1b[90mmeasures less than it appears. Above 50% it is worth distrusting.\x1b[0m`,
 );
 console.log(
-  `\n  \x1b[90m"emis." es en cuántas emisoras coloca cada uno. Uno que aparece en una\x1b[0m`,
+  `\n  \x1b[90m"iss." is how many issuers each one places into. One that appears in a\x1b[0m`,
 );
 console.log(
-  `  \x1b[90msola no se distingue de esa emisión: ahí vendedor y shelf son lo mismo.\x1b[0m`,
+  `  \x1b[90msingle issuer is indistinguishable from that issuance: there seller and\x1b[0m` +
+    `  \x1b[90mshelf are the same thing.\x1b[0m`,
 );
-if (CON_APALANCAMIENTO || CON_LTV) {
+if (WITH_LEVERAGE || WITH_LTV) {
   console.log(
-    `\n  \x1b[90mSe controla DSCR${CON_LTV ? " y LTV" : " por tercil, no LTV"}. Y el tipo de propiedad no captura\x1b[0m`,
+    `\n  \x1b[90mDSCR${WITH_LTV ? " and LTV are" : " is"} controlled${WITH_LTV ? "" : " by tercile, not LTV"}. And property type does not capture\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mPRODUCTO: las cooperativas viven dentro de multifamily, y ese mismo\x1b[0m`,
+    `  \x1b[90mPRODUCT: the cooperatives live inside multifamily, and that same\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mmecanismo ya mató una vez el efecto emisora. Puede estar operando acá.\x1b[0m\n`,
+    `  \x1b[90mmechanism already killed the issuer effect once. It may be operating here.\x1b[0m\n`,
   );
 } else {
   console.log(
-    `\n  \x1b[90mNo se controla apalancamiento. Un SIR alto puede ser la estrategia de\x1b[0m`,
+    `\n  \x1b[90mLeverage is not controlled. A high SIR may be the strategy of lending\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mprestar más caro y más apalancado, cobrando por ese riesgo.\x1b[0m`,
+    `  \x1b[90mmore expensively and more leveraged, charging for that risk.\x1b[0m`,
   );
   console.log(
-    `  \x1b[90mPara distinguirlo:  npm run db:seller -- --con-apalancamiento\x1b[0m\n`,
+    `  \x1b[90mTo tell them apart:  npm run db:seller -- --with-leverage\x1b[0m\n`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// 6. ¿El exceso está concentrado en una añada?
+// 6. Is the excess concentrated in one vintage?
 // ---------------------------------------------------------------------------
 
 /**
- * La pregunta que puede CONFIRMAR en vez de solo achicar.
+ * The question that can CONFIRM rather than only shrink.
  *
- * El residuo de LMF se encogió con cada control: 3,61 con tipo × añada, 2,26
- * agregando DSCR, 1,90 agregando LTV. Ese patrón monótono es ambiguo — puede
- * converger arriba de 1 o seguir bajando con los controles que faltan.
+ * LMF's residual shrank with every control: 3.61 with type × vintage, 2.26
+ * adding DSCR, 1.90 adding LTV. That monotone pattern is ambiguous — it may
+ * converge above 1 or keep falling with the controls still missing.
  *
- * Un control que REDUCE el efecto es débilmente informativo. Uno que NO lo
- * reduce sería fuerte. Este test es de la segunda clase.
+ * A control that REDUCES the effect is weakly informative. One that does NOT
+ * reduce it would be strong. This test is of the second kind.
  *
- * QUÉ DISTINGUE
+ * WHAT IT DISTINGUISHES
  *
- * Si los eventos de un originador están concentrados en 2021-2022, hizo una
- * apuesta de ciclo: prestó fuerte en el pico de valuaciones. Eso no es
- * suscripción, y estandarizar por añada NO lo corrige — ajusta el nivel de cada
- * año, pero no captura que un originador haya prestado distinto DENTRO del año.
+ * If an originator's events are concentrated in 2021-2022, it made a cycle bet:
+ * it lent heavily at the peak of valuations. That is not underwriting, and
+ * standardising by vintage does NOT correct it — it adjusts each year's level,
+ * but does not capture an originator having lent differently WITHIN the year.
  *
- * Si están repartidos entre 2020 y 2024, es un estilo persistente, y ahí el
- * residuo empieza a significar algo sobre cómo suscribe.
+ * If they are spread between 2020 and 2024, it is a persistent style, and there
+ * the residual starts to mean something about how it underwrites.
  *
- * CÓMO SE LEE
+ * HOW TO READ IT
  *
- * La columna "concentración" es la porción de eventos que cae en la añada donde
- * el originador tiene su mayor exceso, comparada contra la porción de su pool
- * en esa misma añada. Si evento y pool coinciden, el exceso está repartido.
+ * The "concentration" column is the share of events falling in the vintage where
+ * the originator has its largest excess, compared against the share of its pool
+ * in that same vintage. If event and pool coincide, the excess is spread.
  */
-const { rows: porAnada } = await query<{
-  v: string; anada: string; n: string; ev: string;
+const { rows: byVintage } = await query<{
+  v: string; vintage: string; n: string; ev: string;
 }>(
   `WITH base AS (${BASE})
-   SELECT vendedor AS v, anada::text, count(*)::text AS n, sum(evento)::text AS ev
+   SELECT seller AS v, vintage::text, count(*)::text AS n, sum(event)::text AS ev
      FROM base
-    WHERE vendedor IS NOT NULL
-      AND vendedor IN (
-        SELECT vendedor FROM base WHERE vendedor IS NOT NULL
-         GROUP BY vendedor HAVING count(*) >= ${MIN_POOL} AND sum(evento) >= 10
+    WHERE seller IS NOT NULL
+      AND seller IN (
+        SELECT seller FROM base WHERE seller IS NOT NULL
+         GROUP BY seller HAVING count(*) >= ${MIN_POOL} AND sum(event) >= 10
       )
-    GROUP BY vendedor, anada
-    ORDER BY vendedor, anada`,
+    GROUP BY seller, vintage
+    ORDER BY seller, vintage`,
 );
 
-const porV = new Map<string, Array<{ anada: string; n: number; ev: number }>>();
-for (const r of porAnada) {
-  const xs = porV.get(r.v) ?? [];
-  xs.push({ anada: r.anada, n: Number(r.n), ev: Number(r.ev) });
-  porV.set(r.v, xs);
+const byV = new Map<string, Array<{ vintage: string; n: number; ev: number }>>();
+for (const r of byVintage) {
+  const xs = byV.get(r.v) ?? [];
+  xs.push({ vintage: r.vintage, n: Number(r.n), ev: Number(r.ev) });
+  byV.set(r.v, xs);
 }
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("¿El exceso está concentrado en una añada, o repartido?");
+console.log("Is the excess concentrated in one vintage, or spread?");
 console.log(`${"═".repeat(78)}\n`);
-console.log(`  vendedor      eventos   añadas con evento   peor añada      % ev / % pool`);
+console.log(`  seller        events   vintages with event  worst vintage   % ev / % pool`);
 console.log(`  ${"─".repeat(72)}`);
 
-for (const [v, xs] of [...porV].sort((a, b) => {
+for (const [v, xs] of [...byV].sort((a, b) => {
   const s = (z: typeof a) => z[1].reduce((t, x) => t + x.ev, 0);
   return s(b) - s(a);
 })) {
@@ -874,259 +878,259 @@ for (const [v, xs] of [...porV].sort((a, b) => {
   const totN = xs.reduce((t, x) => t + x.n, 0);
   if (totEv === 0) continue;
 
-  const conEvento = xs.filter((x) => x.ev > 0).length;
-  const peor = xs.reduce((a, b) => (b.ev / Math.max(1, b.n) > a.ev / Math.max(1, a.n) ? b : a));
-  const shareEv = peor.ev / totEv;
-  const sharePool = peor.n / totN;
+  const withEvent = xs.filter((x) => x.ev > 0).length;
+  const worst = xs.reduce((a, b) => (b.ev / Math.max(1, b.n) > a.ev / Math.max(1, a.n) ? b : a));
+  const shareEv = worst.ev / totEv;
+  const sharePool = worst.n / totN;
 
   /**
-   * Si la porción de eventos de la peor añada supera con holgura a su porción
-   * del pool, el exceso vive en ese año. Repartido significa que las dos
-   * porciones se parecen.
+   * If the worst vintage's share of events comfortably exceeds its share of the
+   * pool, the excess lives in that year. Spread means the two shares are
+   * similar.
    */
   const concentrado = shareEv > sharePool * 2 && shareEv > 0.5;
   console.log(
-    `  ${v.slice(0, 12).padEnd(13)} ${String(totEv).padStart(7)}   ${String(conEvento).padStart(10)} de ${xs.length}` +
-      `      ${peor.anada}  ${pct(shareEv, 0).padStart(7)} / ${pct(sharePool, 0).padStart(5)}` +
+    `  ${v.slice(0, 12).padEnd(13)} ${String(totEv).padStart(7)}   ${String(withEvent).padStart(10)} of ${xs.length}` +
+      `      ${worst.vintage}  ${pct(shareEv, 0).padStart(7)} / ${pct(sharePool, 0).padStart(5)}` +
       (concentrado ? `  \x1b[33m← concentrado\x1b[0m` : `  \x1b[90mrepartido\x1b[0m`),
   );
 }
 
 console.log(
-  `\n  \x1b[90mConcentrado = el exceso vive en un año: es una apuesta de ciclo, y\x1b[0m`,
+  `\n  \x1b[90mConcentrated = the excess lives in one year: it is a cycle bet, and\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mestandarizar por añada NO lo corrige —ajusta el nivel del año, no cómo\x1b[0m`,
+  `  \x1b[90mstandardising by vintage does NOT correct it —it adjusts the year's level,\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mprestó cada uno dentro de él—. Repartido = estilo persistente.\x1b[0m\n`,
+  `  \x1b[90mnot how each one lent within it. Spread = a persistent style.\x1b[0m\n`,
 );
 
 // ---------------------------------------------------------------------------
-// 7. Producto dentro de tipo: el ataque con más prior de acertar
+// 7. Product within type: the attack with the best prior of landing
 // ---------------------------------------------------------------------------
 
 /**
- * El mecanismo que ya mató una vez a este proyecto.
+ * The mechanism that already killed this project once.
  *
- * BANK parecía suscribir 4 veces mejor. La explicación era NCB: cooperativas de
- * vivienda, un producto que casi no incumple, viviendo DENTRO de la categoría
- * multifamily —la de mayor riesgo del corpus—. `property_type` no distingue
- * producto, así que la estandarización le asignaba a esos préstamos una tasa
- * esperada alta y le regalaba a BANK un SIR bajo.
+ * BANK appeared to underwrite 4 times better. The explanation was NCB: housing
+ * cooperatives, a product that almost never defaults, living INSIDE the
+ * multifamily category —the corpus's riskiest. `property_type` does not
+ * distinguish product, so standardisation assigned those loans a high expected
+ * rate and handed BANK a low SIR.
  *
- * Si LMF se especializa en algo análogo —hotelería de servicio limitado dentro
- * de hospitality, un subtipo de multifamily, retail sin ancla— su 1,89 es el
- * mismo artefacto con otro nombre.
+ * If LMF specialises in something analogous —limited service hospitality inside
+ * hospitality, a multifamily subtype, unanchored retail— its 1.89 is the same
+ * artefact under another name.
  *
- * LA COLUMNA QUE NUNCA USAMOS
+ * THE COLUMN WE NEVER USED
  *
- * `property_type_detailed` está en la taxonomía desde el principio y jamás entró
- * a un análisis. Vive en `corpus.facts`, no en `corpus.loans`, porque es una
- * métrica y no una etiqueta de fila.
+ * `property_type_detailed` has been in the taxonomy from the start and has never
+ * entered an analysis. It lives in `corpus.facts`, not `corpus.loans`, because
+ * it is a metric and not a row label.
  *
- * EL ORDEN, OTRA VEZ
+ * THE ORDER, AGAIN
  *
- * Cobertura primero. Si la columna aparece en pocos filings, el test no se puede
- * hacer sobre los 270 préstamos de LMF y la respuesta correcta es "no se sabe" —
- * peor que matarlo o confirmarlo, pero es la que hay.
+ * Coverage first. If the column appears in few filings, the test cannot be done
+ * over LMF's 270 loans and the correct answer is "unknown" — worse than killing
+ * it or confirming it, but it is the one available.
  */
 const { rows: covDet } = await query<{
-  n: string; con: string; lmf_n: string; lmf_con: string;
+  n: string; with_detail: string; lmf_n: string; lmf_with: string;
 }>(
   `WITH base AS (${BASE}),
    det AS (
-     SELECT b.*, nullif(btrim(fd.value), '') AS detalle
+     SELECT b.*, nullif(btrim(fd.value), '') AS detail
        FROM base b
        LEFT JOIN corpus.facts fd ON fd.loan_id = b.id
                                 AND fd.metric_key = 'property_type_detailed'
    )
    SELECT count(*)::text AS n,
-          count(*) FILTER (WHERE detalle IS NOT NULL)::text AS con,
-          count(*) FILTER (WHERE vendedor = 'LMF')::text AS lmf_n,
-          count(*) FILTER (WHERE vendedor = 'LMF' AND detalle IS NOT NULL)::text AS lmf_con
+          count(*) FILTER (WHERE detail IS NOT NULL)::text AS with_detail,
+          count(*) FILTER (WHERE seller = 'LMF')::text AS lmf_n,
+          count(*) FILTER (WHERE seller = 'LMF' AND detail IS NOT NULL)::text AS lmf_with
      FROM det`,
 );
 
 const detN = Number(covDet[0]!.n);
-const detCon = Number(covDet[0]!.con);
+const detWith = Number(covDet[0]!.with_detail);
 const lmfN = Number(covDet[0]!.lmf_n);
-const lmfCon = Number(covDet[0]!.lmf_con);
+const lmfWith = Number(covDet[0]!.lmf_with);
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Producto dentro de tipo: ¿el subtipo explica el residuo?");
+console.log("Product within type: does the subtype explain the residual?");
 console.log(`${"═".repeat(78)}\n`);
 console.log(
-  `  property_type_detailed: ${detCon.toLocaleString("en-US")} de ${detN.toLocaleString("en-US")} ` +
-    `préstamos  →  ${detN > 0 && detCon / detN >= 0.5 ? "\x1b[32m" : "\x1b[31m"}` +
-    `${pct(detN > 0 ? detCon / detN : 0)}\x1b[0m`,
+  `  property_type_detailed: ${detWith.toLocaleString("en-US")} of ${detN.toLocaleString("en-US")} ` +
+    `loans  →  ${detN > 0 && detWith / detN >= 0.5 ? "\x1b[32m" : "\x1b[31m"}` +
+    `${pct(detN > 0 ? detWith / detN : 0)}\x1b[0m`,
 );
 console.log(
-  `  \x1b[90men LMF: ${lmfCon} de ${lmfN}` +
-    `${lmfN > 0 ? ` (${pct(lmfCon / lmfN)})` : ""}\x1b[0m`,
+  `  \x1b[90min LMF: ${lmfWith} of ${lmfN}` +
+    `${lmfN > 0 ? ` (${pct(lmfWith / lmfN)})` : ""}\x1b[0m`,
 );
 
-if (detCon === 0) {
+if (detWith === 0) {
   console.log(
-    `\n  \x1b[33mLa métrica no está poblada. Puede que el mapeo la capture y el corpus\x1b[0m`,
+    `\n  \x1b[33mThe metric is not populated. The mapping may capture it and the corpus\x1b[0m`,
   );
-  console.log(`  \x1b[90mno la haya guardado como fact. No se puede testear.\x1b[0m\n`);
+  console.log(`  \x1b[90mmay not have stored it as a fact. It cannot be tested.\x1b[0m\n`);
 } else {
   /**
-   * La mezcla de subtipos de los que se apartan, contra la del corpus.
+   * The subtype mix of those that depart, against the corpus's.
    *
-   * Si un originador concentra en un subtipo que el corpus tiene poco, ese
-   * subtipo es candidato a explicar su exceso — igual que las cooperativas
-   * explicaron a BANK.
+   * If an originator concentrates in a subtype the corpus has little of, that
+   * subtype is a candidate to explain its excess — just as the cooperatives
+   * explained BANK.
    */
-  const { rows: mezcla } = await query<{
-    v: string; detalle: string; n: string; ev: string; corpus_tasa: string;
+  const { rows: mix } = await query<{
+    v: string; detail: string; n: string; ev: string; corpus_rate: string;
   }>(
     `WITH base AS (${BASE}),
      det AS (
-       SELECT b.*, nullif(btrim(fd.value), '') AS detalle
+       SELECT b.*, nullif(btrim(fd.value), '') AS detail
          FROM base b
          LEFT JOIN corpus.facts fd ON fd.loan_id = b.id
                                   AND fd.metric_key = 'property_type_detailed'
      ),
-     tasa_corpus AS (
-       SELECT detalle, sum(evento)::numeric / count(*) AS tasa
-         FROM det WHERE detalle IS NOT NULL GROUP BY detalle
+     corpus_rate AS (
+       SELECT detail, sum(event)::numeric / count(*) AS rate
+         FROM det WHERE detail IS NOT NULL GROUP BY detail
      )
-     SELECT d.vendedor AS v, d.detalle, count(*)::text AS n,
-            sum(d.evento)::text AS ev,
-            round(tc.tasa * 100, 1)::text AS corpus_tasa
-       FROM det d JOIN tasa_corpus tc ON tc.detalle = d.detalle
-      WHERE d.vendedor IN ('LMF', 'UBS AG', 'NCB') AND d.detalle IS NOT NULL
-      GROUP BY d.vendedor, d.detalle, tc.tasa
+     SELECT d.seller AS v, d.detail, count(*)::text AS n,
+            sum(d.event)::text AS ev,
+            round(tc.rate * 100, 1)::text AS corpus_rate
+       FROM det d JOIN corpus_rate tc ON tc.detail = d.detail
+      WHERE d.seller IN ('LMF', 'UBS AG', 'NCB') AND d.detail IS NOT NULL
+      GROUP BY d.seller, d.detail, tc.rate
      HAVING count(*) >= 10
-      ORDER BY d.vendedor, count(*) DESC`,
+      ORDER BY d.seller, count(*) DESC`,
   );
 
-  if (mezcla.length === 0) {
+  if (mix.length === 0) {
     console.log(
-      `\n  \x1b[33mNingún subtipo llega a 10 préstamos en los originadores que se apartan.\x1b[0m\n`,
+      `\n  \x1b[33mNo subtype reaches 10 loans among the originators that depart.\x1b[0m\n`,
     );
   } else {
-    console.log(`\n  vendedor    subtipo                     n   ev    tasa   tasa corpus`);
+    console.log(`\n  seller      subtype                     n   ev    rate   corpus rate`);
     console.log(`  ${"─".repeat(70)}`);
     let prev = "";
-    for (const r of mezcla) {
+    for (const r of mix) {
       const nn = Number(r.n), ev = Number(r.ev);
       const et = r.v === prev ? "" : r.v;
       prev = r.v;
       console.log(
-        `  ${et.padEnd(11)} ${r.detalle.slice(0, 24).padEnd(26)} ${String(nn).padStart(4)} ` +
-          `${String(ev).padStart(4)}  ${pct(ev / nn).padStart(6)}   ${r.corpus_tasa.padStart(5)}%`,
+        `  ${et.padEnd(11)} ${r.detail.slice(0, 24).padEnd(26)} ${String(nn).padStart(4)} ` +
+          `${String(ev).padStart(4)}  ${pct(ev / nn).padStart(6)}   ${r.corpus_rate.padStart(5)}%`,
       );
     }
     console.log(
-      `\n  \x1b[90mSi la tasa del originador en un subtipo se parece a la del corpus EN ESE\x1b[0m`,
+      `\n  \x1b[90mIf an originator's rate in a subtype resembles the corpus's rate IN THAT\x1b[0m`,
     );
     console.log(
-      `  \x1b[90mmismo subtipo, su exceso es composición: elige subtipos peores. Si es\x1b[0m`,
+      `  \x1b[90msame subtype, its excess is composition: it picks worse subtypes. If it is\x1b[0m`,
     );
     console.log(
-      `  \x1b[90mmás alta dentro del mismo subtipo, suscribe peor adentro de él.\x1b[0m\n`,
+      `  \x1b[90mhigher within the same subtype, it underwrites worse inside it.\x1b[0m\n`,
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// 8. El último corte, con las celdas al límite
+// 8. The last cut, with the cells at the limit
 // ---------------------------------------------------------------------------
 
 /**
- * El exceso de LMF en multifamily, añada por añada.
+ * LMF's excess in multifamily, vintage by vintage.
  *
- * El test de subtipo mostró que LMF no elige subtipos peores: está más alto
- * DENTRO de Garden, Mid Rise y Multifamily/Retail —59 préstamos, 18 eventos,
- * 30,5% contra ~8% del corpus en esos mismos subtipos—.
+ * The subtype test showed LMF does not pick worse subtypes: it is higher WITHIN
+ * Garden, Mid Rise and Multifamily/Retail —59 loans, 18 events, 30.5% against
+ * ~8% for the corpus in those same subtypes.
  *
- * Queda una pregunta y no da para más: ¿ese exceso vive en 2021-2022, cuando
- * todo el mercado suscribió multifamily sobre crecimiento de renta que no se
- * cumplió, o está en todas las añadas?
+ * One question remains and there is no room for more: does that excess live in
+ * 2021-2022, when the whole market underwrote multifamily on rent growth that
+ * did not materialise, or is it in every vintage?
  *
- * POR QUÉ SE IMPRIME AUNQUE NO ALCANCE
+ * WHY IT IS PRINTED EVEN THOUGH IT IS NOT ENOUGH
  *
- * Las celdas van a quedar de cinco o seis préstamos. Eso NO permite concluir, y
- * el script lo dice en vez de dejar que los porcentajes parezcan una respuesta.
- * Se imprime igual porque la forma —todo en un año contra repartido— se puede
- * mirar aunque cada celda individual no signifique nada, y porque la alternativa
- * es no mirarlo y suponer.
+ * The cells will end up at five or six loans. That does NOT support a
+ * conclusion, and the script says so rather than letting the percentages look
+ * like an answer. It is printed anyway because the shape —all in one year versus
+ * spread— can be looked at even if no individual cell means anything, and
+ * because the alternative is not looking and assuming.
  *
- * Es el mismo criterio que con el bloque de especialmente administrados: ver el
- * dato crudo aunque el conteo no aguante una prueba formal.
+ * It is the same criterion as with the specially-serviced block: see the raw
+ * datum even when the count cannot bear a formal test.
  */
-const SUBTIPOS_MF = ["Garden", "Mid Rise", "Multifamily/Retail"];
+const MF_SUBTYPES = ["Garden", "Mid Rise", "Multifamily/Retail"];
 
-const { rows: mfAnada } = await query<{
-  anada: string; n: string; ev: string; corpus_n: string; corpus_ev: string;
+const { rows: mfVintage } = await query<{
+  vintage: string; n: string; ev: string; corpus_n: string; corpus_ev: string;
 }>(
   `WITH base AS (${BASE}),
    det AS (
-     SELECT b.*, nullif(btrim(fd.value), '') AS detalle
+     SELECT b.*, nullif(btrim(fd.value), '') AS detail
        FROM base b
        LEFT JOIN corpus.facts fd ON fd.loan_id = b.id
                                 AND fd.metric_key = 'property_type_detailed'
    ),
-   mf AS (SELECT * FROM det WHERE detalle = ANY($1))
-   SELECT anada::text,
-          count(*) FILTER (WHERE vendedor = 'LMF')::text AS n,
-          sum(evento) FILTER (WHERE vendedor = 'LMF')::text AS ev,
-          count(*) FILTER (WHERE vendedor IS DISTINCT FROM 'LMF')::text AS corpus_n,
-          sum(evento) FILTER (WHERE vendedor IS DISTINCT FROM 'LMF')::text AS corpus_ev
-     FROM mf GROUP BY anada ORDER BY anada`,
-  [SUBTIPOS_MF],
+   mf AS (SELECT * FROM det WHERE detail = ANY($1))
+   SELECT vintage::text,
+          count(*) FILTER (WHERE seller = 'LMF')::text AS n,
+          sum(event) FILTER (WHERE seller = 'LMF')::text AS ev,
+          count(*) FILTER (WHERE seller IS DISTINCT FROM 'LMF')::text AS corpus_n,
+          sum(event) FILTER (WHERE seller IS DISTINCT FROM 'LMF')::text AS corpus_ev
+     FROM mf GROUP BY vintage ORDER BY vintage`,
+  [MF_SUBTYPES],
 );
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("LMF en multifamily, añada por añada  —  celdas al límite");
+console.log("LMF in multifamily, vintage by vintage  —  cells at the limit");
 console.log(`${"═".repeat(78)}\n`);
-console.log(`  añada     LMF n   ev     tasa      resto n   ev     tasa`);
+console.log(`  vintage   LMF n   ev     rate      rest n   ev     rate`);
 console.log(`  ${"─".repeat(62)}`);
 
 let mfN = 0;
 let mfEv = 0;
-let anadasConEvento = 0;
-for (const r of mfAnada) {
+let vintagesWithEvent = 0;
+for (const r of mfVintage) {
   const nn = Number(r.n ?? 0);
   const ev = Number(r.ev ?? 0);
   const cn = Number(r.corpus_n ?? 0);
   const cev = Number(r.corpus_ev ?? 0);
   mfN += nn;
   mfEv += ev;
-  if (ev > 0) anadasConEvento++;
+  if (ev > 0) vintagesWithEvent++;
   console.log(
-    `  ${r.anada}   ${String(nn).padStart(7)} ${String(ev).padStart(4)}  ` +
+    `  ${r.vintage}   ${String(nn).padStart(7)} ${String(ev).padStart(4)}  ` +
       `${(nn > 0 ? pct(ev / nn) : "—").padStart(7)}   ${String(cn).padStart(7)} ${String(cev).padStart(4)}  ` +
       `${(cn > 0 ? pct(cev / cn) : "—").padStart(7)}`,
   );
 }
 
 console.log(
-  `\n  \x1b[1mLMF total: ${mfEv} eventos sobre ${mfN} préstamos` +
-    `${mfN > 0 ? ` (${pct(mfEv / mfN)})` : ""}, en ${anadasConEvento} añadas\x1b[0m`,
+  `\n  \x1b[1mLMF total: ${mfEv} events over ${mfN} loans` +
+    `${mfN > 0 ? ` (${pct(mfEv / mfN)})` : ""}, across ${vintagesWithEvent} vintages\x1b[0m`,
 );
 
 /**
- * El veredicto de tamaño va ANTES que la lectura, no después.
+ * The size verdict comes BEFORE the reading, not after.
  */
-const celdaMediana = mfAnada.length > 0 ? mfN / mfAnada.length : 0;
+const medianCell = mfVintage.length > 0 ? mfN / mfVintage.length : 0;
 console.log(
-  `\n  \x1b[90mCelda promedio de LMF: ${celdaMediana.toFixed(0)} préstamos.\x1b[0m` +
-    (celdaMediana < 15
-      ? `  \x1b[31m← no alcanza para concluir por añada\x1b[0m`
-      : `  \x1b[32m← suficiente para leer\x1b[0m`),
+  `\n  \x1b[90mLMF's average cell: ${medianCell.toFixed(0)} loans.\x1b[0m` +
+    (medianCell < 15
+      ? `  \x1b[31m← not enough to conclude by vintage\x1b[0m`
+      : `  \x1b[32m← enough to read\x1b[0m`),
 );
 console.log(
-  `\n  \x1b[90mCon celdas así, lo único legible es la FORMA: si los eventos aparecen\x1b[0m`,
+  `\n  \x1b[90mWith cells like these, the only legible thing is the SHAPE: if the events\x1b[0m`,
 );
 console.log(
-  `  \x1b[90men una sola añada es la apuesta de 2021-22 que hizo todo el mercado.\x1b[0m`,
+  `  \x1b[90mappear in a single vintage it is the 2021-22 bet the whole market made.\x1b[0m`,
 );
 console.log(
-  `  \x1b[90mSi aparecen en varias, es un estilo. Ninguna celda individual prueba nada.\x1b[0m\n`,
+  `  \x1b[90mIf they appear across several, it is a style. No individual cell proves anything.\x1b[0m\n`,
 );
 
 await closePool();
