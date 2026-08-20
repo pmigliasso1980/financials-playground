@@ -1,58 +1,58 @@
 /**
- * Descubrimiento de reportes del servicer (10-D) en EDGAR.
+ * Servicer report (10-D) discovery on EDGAR.
  *
- * QUÉ ES ESTO Y POR QUÉ IMPORTA
+ * WHAT THIS IS AND WHY IT MATTERS
  *
- * Todo lo que cosechamos hasta ahora sale del Annex A, que es una foto al cierre:
- * dice qué prometió el suscriptor. Nunca dice qué pasó después. Con eso se puede
- * medir cuánto se despegó la suscripción del histórico, pero no si estuvo
- * equivocada.
+ * Everything harvested so far comes from the Annex A, which is a snapshot at
+ * closing: it says what the underwriter promised. It never says what happened
+ * afterwards. With that you can measure how far underwriting departed from the
+ * trailing figures, but not whether it was wrong.
  *
- * El 10-D es el reporte periódico que los trusts de CMBS presentan todos los
- * meses. Su EX-99.1 es el informe del certificate administrator, y adentro trae
- * una tabla llamada "Mortgage Loan Detail (Part 2)" con NOI a nivel préstamo
- * posterior al cierre. Eso es lo que mide Griffin.
+ * The 10-D is the periodic report CMBS trusts file every month. Its EX-99.1 is
+ * the certificate administrator's report, and inside it is a table called
+ * "Mortgage Loan Detail (Part 2)" with post-closing loan-level NOI. That is what
+ * Griffin measures.
  *
- * LO QUE SE VIO EN EL DATO REAL
+ * WHAT THE REAL DATA SHOWED
  *
- * Benchmark 2024-V7 (CIK 2016841), 10-D de julio 2026, EX-99.1:
+ * Benchmark 2024-V7 (CIK 2016841), 10-D from July 2026, EX-99.1:
  *
  *   | Pros ID | Most Recent Fiscal NOI | Most Recent NOI | NOI Start | NOI End |
  *   | 1A-1    |          21,466,533.53 |    6,590,191.56 | 01/01/26  | 03/31/26 |
  *   | 4A-2    |          12,379,213.40 |   12,854,060.24 | 04/01/25  | 03/31/26 |
  *   | 5       |           5,065,434.64 |            0.00 |    --     |    --    |
  *
- * Cuatro trampas, todas visibles en esas tres filas:
+ * Four traps, all visible in those three rows:
  *
- *   1. "Most Recent NOI" NO está anualizado. La fila 1A-1 cubre un trimestre
- *      (01/01 a 31/03) y la 4A-2 cubre doce meses. Sin mirar las fechas, comparar
- *      esos dos números es comparar un trimestre contra un año.
+ *   1. "Most Recent NOI" is NOT annualised. Row 1A-1 covers a quarter (01/01 to
+ *      31/03) and 4A-2 covers twelve months. Without looking at the dates,
+ *      comparing those two numbers is comparing a quarter against a year.
  *
- *   2. 0.00 con fechas "--" significa NO REPORTADO, no NOI cero. Tomarlo como
- *      cero hunde cualquier promedio. Es el mismo error que las columnas "N/A"
- *      del Annex A.
+ *   2. 0.00 with "--" dates means NOT REPORTED, not zero NOI. Taking it as zero
+ *      sinks any average. It is the same error as the "N/A" columns in the
+ *      Annex A.
  *
- *   3. Los pari passu se repiten. 1A-1, 1A-4 y 1A-5 son tramos del mismo
- *      préstamo y traen el NOI de la propiedad entera, repetido. Sumar sin
- *      deduplicar cuenta la misma propiedad tres veces —de hecho el total de
- *      "Fiscal NOI" del reporte da 438M contra un trust de 821M, que sería un
- *      debt yield del 53% si uno se lo creyera.
+ *   3. Pari passu tranches repeat. 1A-1, 1A-4 and 1A-5 are tranches of the same
+ *      loan and carry the whole property's NOI, repeated. Summing without
+ *      deduplicating counts the same property three times —in fact the report's
+ *      "Fiscal NOI" total gives 438M against an 821M trust, which would be a
+ *      debt yield of 53% if you believed it.
  *
- *   4. "Most Recent Fiscal NOI" no tiene columna de fecha propia. No se sabe qué
- *      ejercicio cubre. Por eso preferimos "Most Recent NOI", que sí viene
- *      fechado, aunque haya que anualizarlo.
+ *   4. "Most Recent Fiscal NOI" has no date column of its own. There is no way
+ *      to know which fiscal year it covers. That is why we prefer "Most Recent
+ *      NOI", which is dated, even though it has to be annualised.
  *
- * El "Pros ID" es el número de préstamo del prospecto, o sea el Loan ID del
- * Annex A con un sufijo de tramo. Esa es la llave de join que hace posible todo
- * esto.
+ * The "Pros ID" is the loan number from the prospectus, that is, the Annex A's
+ * Loan ID with a tranche suffix. That is the join key that makes all of this
+ * possible.
  *
  * FORMATO
  *
- * Los dos trusts que inspeccionamos —Benchmark 2024-V7 y BANK5 2024-5YR5— usan
- * la misma plantilla de Computershare, 27 páginas, con "Mortgage Loan Detail
- * (Part 2)" en la página 16. No asumimos que sea universal: igual que con el
- * Annex A, va a haber familias de formato. Por eso la tabla se localiza por
- * contenido de encabezado y no por posición.
+ * The two trusts we inspected —Benchmark 2024-V7 and BANK5 2024-5YR5— use the
+ * same Computershare template, 27 pages, with "Mortgage Loan Detail (Part 2)" on
+ * page 16. We do not assume it is universal: just as with the Annex A, there
+ * will be format families. That is why the table is located by header content
+ * and not by position.
  */
 
 import { fetchJson, type FetchOptions } from "./client.js";
@@ -64,11 +64,11 @@ export interface ServicerReportRef {
   cik: string;
   accession: string;
   companyName: string;
-  /** Fecha de presentación del 10-D. */
+  /** The 10-D's filing date. */
   filedAt: string;
-  /** Período que reporta (distribution date). */
+  /** The period being reported (distribution date). */
   periodOfReport: string;
-  /** Documento EX-99.1 con el informe del servicer. */
+  /** The EX-99.1 document with the servicer's report. */
   documentName: string;
   documentUrl: string;
   sizeBytes: number;
@@ -89,7 +89,7 @@ interface SubmissionsResponse {
   };
 }
 
-/** Listado de archivos de un filing, para ubicar el exhibit. */
+/** A filing's file listing, to locate the exhibit. */
 interface DirectoryListing {
   directory?: {
     item?: Array<{ name?: string; size?: string; type?: string }>;
@@ -97,16 +97,16 @@ interface DirectoryListing {
 }
 
 /**
- * Puntúa un archivo del filing como candidato a informe del servicer.
+ * Scores a filing's file as a servicer report candidate.
  *
- * El nombre es la señal primaria, igual que con el Annex A. Los filers usan
- * "ex991", "ex-99_1" y "ex99-1" indistintamente.
+ * The name is the primary signal, just as with the Annex A. Filers use
+ * "ex991", "ex-99_1" and "ex99-1" interchangeably.
  */
 export function scoreServicerExhibit(f: { name: string; sizeBytes: number }): number {
   const name = f.name.toLowerCase();
 
   if (!/\.(htm|html|txt)$/.test(name)) return 0;
-  // El documento principal del 10-D es la carátula, no el informe.
+  // The 10-D's main document is the cover page, not the report.
   if (/_10-?d[-_.]/.test(name)) return 0;
 
   let score = 0;
@@ -116,8 +116,8 @@ export function scoreServicerExhibit(f: { name: string; sizeBytes: number }): nu
 
   if (score === 0) return 0;
 
-  // Un informe mensual completo pesa decenas de KB. Los certificados de
-  // cumplimiento que también van como EX-99 pesan poco.
+  // A complete monthly report weighs tens of KB. The compliance certificates
+  // that also go out as EX-99 are small.
   if (f.sizeBytes > 200_000) score += 0.3;
   else if (f.sizeBytes > 40_000) score += 0.2;
   else if (f.sizeBytes < 8_000) score -= 0.3;
@@ -126,56 +126,56 @@ export function scoreServicerExhibit(f: { name: string; sizeBytes: number }): nu
 }
 
 /**
- * Encuentra los 10-D de un trust y ubica el EX-99.1 de cada uno.
+ * Finds a trust's 10-D filings and locates each one's EX-99.1.
  *
- * La API de submissions da el 10-D pero no sus exhibits, así que hay que pedir
- * el índice de cada filing. Para no gastar una request por mes de vida del
- * trust, `pickMonths` selecciona primero y recién después se resuelven los
- * exhibits de los elegidos.
+ * The submissions API gives the 10-D but not its exhibits, so each filing's
+ * index has to be requested. To avoid spending one request per month of the
+ * trust's life, `pickMonths` selects first and only then resolves the exhibits
+ * of the chosen ones.
  */
 export async function findServicerReports(
   cik: string,
   opts: {
-    /** Solo filings presentados desde esta fecha (YYYY-MM-DD). */
+    /** Only filings submitted from this date onwards (YYYY-MM-DD). */
     since?: string;
-    /** Cuántos reportes resolver. Default 1. */
+    /** How many reports to resolve. Default 1. */
     max?: number;
     /**
-     * Meses de preferencia (1-12), en orden. Los filings cuyo período caiga en
-     * el primero de la lista se resuelven antes que los demás.
+     * Preferred months (1-12), in order. Filings whose period falls in the first
+     * of the list are resolved before the rest.
      *
-     * Esto sale del dato, no de una intuición. Sobre Benchmark 2024-V7 medimos
-     * cuántos préstamos traen NOI de año completo según el mes del informe:
+     * This comes from the data, not from intuition. Over Benchmark 2024-V7 we
+     * measured how many loans carry a full-year NOI by report month:
      *
      *   febrero  8 · marzo 12 · ABRIL 21 · mayo 0 · junio 1 · julio 2
      *
-     * El motivo es el ciclo contable: los prestatarios entregan el estado
-     * operativo anual entre 90 y 120 días después de cerrar el ejercicio, así
-     * que en abril está consolidado. En mayo el servicer blanquea los campos
-     * para arrancar el ciclo nuevo —34 filas, ninguna con fechas— y de ahí en
-     * adelante solo hay parciales del año en curso.
+     * The reason is the accounting cycle: borrowers deliver the annual
+     * operating statement between 90 and 120 days after the fiscal year closes,
+     * so by April it is consolidated. In May the servicer blanks the fields to
+     * start the new cycle —34 rows, none with dates— and from then on there are
+     * only partials of the current year.
      *
-     * Bajar seis meses por trust no compensa: abril solo ya trae 21 de los 22
-     * años completos que da combinar todo.
+     * Downloading six months per trust does not pay off: April alone already
+     * brings 21 of the 22 full years that combining everything gives.
      */
     preferMonths?: number[];
     minScore?: number;
     /**
-     * Muestreo temporal: en vez de preferir abril, tomar un informe cada N
-     * meses hacia atrás desde el más reciente.
+     * Temporal sampling: instead of preferring April, take one report every N
+     * months going back from the most recent.
      *
-     * POR QUÉ EXISTE
+     * WHY IT EXISTS
      *
-     * El orden por defecto sirve para el NOI, donde abril es el único mes que
-     * trae ejercicios cerrados. Para la morosidad es al revés: lo que importa
-     * es la historia, porque la tabla del 10-D lista los préstamos que están en
-     * special servicing HOY y pierde los que entraron y se resolvieron.
+     * The default ordering works for NOI, where April is the only month that
+     * carries closed fiscal years. For delinquency it is the opposite: what
+     * matters is the history, because the 10-D's table lists the loans that are
+     * in special servicing TODAY and loses those that entered and were resolved.
      *
-     * Un préstamo que transfirió en 2022 y se resolvió en 2023 es invisible en
-     * el informe de 2026, pero aparece en los de esos meses con su
-     * `transfer_date`. Como un caso suele quedarse seis meses o más en special
-     * servicing, muestrear semestralmente atrapa casi todos sin bajar los
-     * sesenta informes de cada trust.
+     * A loan that transferred in 2022 and was resolved in 2023 is invisible in
+     * the 2026 report, but appears in those months' reports with its
+     * `transfer_date`. Since a case usually stays six months or more in special
+     * servicing, sampling every six months catches almost all of them without
+     * downloading each trust's sixty reports.
      */
     everyMonths?: number;
     fetchOpts?: FetchOptions;
@@ -200,7 +200,7 @@ export async function findServicerReports(
   }> = [];
 
   for (let i = 0; i < recent.accessionNumber.length; i++) {
-    // 10-D/A son correcciones; se aceptan porque suelen reemplazar datos malos.
+    // 10-D/A are corrections; they are accepted because they usually replace bad data.
     if (!/^10-D/.test(recent.form?.[i] ?? "")) continue;
 
     const filedAt = recent.filingDate?.[i] ?? "";
@@ -214,10 +214,10 @@ export async function findServicerReports(
   }
 
   /**
-   * Orden: primero por preferencia de mes, después el más reciente.
+   * Order: month preference first, then most recent.
    *
-   * Un informe de abril de este año vale más que uno de abril del anterior, y
-   * los dos valen más que cualquier julio.
+   * An April report from this year is worth more than one from April of the
+   * previous year, and both are worth more than any July.
    */
   const monthRank = (periodOrFiled: string): number => {
     const m = Number(periodOrFiled.slice(5, 7));
@@ -227,30 +227,30 @@ export async function findServicerReports(
 
   if (opts.everyMonths && opts.everyMonths > 0) {
     /**
-     * Cronológico descendente y después uno cada N meses.
+     * Chronological descending, then one every N months.
      *
-     * El filtro es por distancia real entre períodos, no "uno de cada N de la
-     * lista": los trusts no publican todos los meses y contar posiciones daría
-     * espaciados distintos según cuántos informes falten.
+     * The filter is by real distance between periods, not "one out of every N in
+     * the list": trusts do not publish every month and counting positions would
+     * give different spacings depending on how many reports are missing.
      */
     candidates.sort((a, b) =>
       (b.periodOfReport || b.filedAt).localeCompare(a.periodOfReport || a.filedAt),
     );
-    const espaciados: typeof candidates = [];
-    let ultimo: Date | null = null;
+    const spaced: typeof candidates = [];
+    let last: Date | null = null;
     for (const c of candidates) {
       const f = new Date(c.periodOfReport || c.filedAt);
       if (Number.isNaN(f.getTime())) continue;
       if (
-        ultimo === null ||
-        (ultimo.getTime() - f.getTime()) / 86_400_000 >= opts.everyMonths * 30.44 - 10
+        last === null ||
+        (last.getTime() - f.getTime()) / 86_400_000 >= opts.everyMonths * 30.44 - 10
       ) {
-        espaciados.push(c);
-        ultimo = f;
+        spaced.push(c);
+        last = f;
       }
     }
     candidates.length = 0;
-    candidates.push(...espaciados);
+    candidates.push(...spaced);
   } else {
     candidates.sort((a, b) => {
       const ra = monthRank(a.periodOfReport || a.filedAt);
@@ -301,23 +301,23 @@ export async function findServicerReports(
 }
 
 /**
- * Normaliza un "Pros ID" del servicer al Loan ID del Annex A.
+ * Normalises a servicer "Pros ID" to the Annex A's Loan ID.
  *
- *   "1A-1"      → "1"     (tramo pari passu del préstamo 1)
+ *   "1A-1"      → "1"     (pari passu tranche of loan 1)
  *   "14A-3-C1"  → "14"
  *   "20A-1-3"   → "20"
  *   "27"        → "27"
  *
- * El Annex A numera préstamos con enteros; el servicer les agrega el sufijo del
- * tramo. Como los tramos del mismo préstamo reportan el NOI de la propiedad
- * entera repetido, quedarse con el entero inicial además deduplica.
+ * The Annex A numbers loans with integers; the servicer adds the tranche
+ * suffix. Since the tranches of the same loan report the whole property's NOI
+ * repeated, keeping the leading integer also deduplicates.
  */
 export function normalizeProsId(prosId: string): string | null {
   const m = /^\s*(\d+)/.exec(prosId);
   return m ? m[1]! : null;
 }
 
-/** True si el Pros ID trae sufijo de tramo (o sea, hay pari passu). */
+/** True if the Pros ID carries a tranche suffix (that is, there is pari passu). */
 export function hasTrancheSuffix(prosId: string): boolean {
   return /^\s*\d+\s*[A-Za-z-]/.test(prosId);
 }

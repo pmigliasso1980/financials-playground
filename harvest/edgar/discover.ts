@@ -1,27 +1,27 @@
 /**
- * Descubrimiento de Annex A en EDGAR.
+ * Annex A discovery on EDGAR.
  *
- * CÓMO SE LLEGÓ A ESTE DISEÑO
+ * HOW THIS DESIGN WAS ARRIVED AT
  *
- * La primera versión buscaba adjuntos .xlsx dentro del prospecto, porque los
- * filings de CMBS de los 2000 publicaban el Annex A como planilla Excel.
- * Contra filings modernos eso devuelve cero: hoy el Annex A es un **filing FWP
- * propio** cuyo documento principal es un .htm de varios MB con tablas.
+ * The first version looked for .xlsx attachments inside the prospectus, because
+ * 2000s-era CMBS filings published the Annex A as an Excel spreadsheet. Against
+ * modern filings that returns zero: today the Annex A is a **FWP filing of its
+ * own** whose main document is a multi-MB .htm full of tables.
  *
  * Ejemplo real (Wells Fargo Commercial Mortgage Trust 2025-C64, CIK 2053102):
  *
  *   accession 0001539497-25-000290
  *   form      FWP
  *   documento n4801_x5-annexa1.htm
- *   descripción "ANNEX A-1"
- *   tamaño    4.088.848 bytes
+ *   description "ANNEX A-1"
+ *   size        4,088,848 bytes
  *
- * Los otros FWP del mismo deal pesan entre 8 KB y 25 KB. El tamaño es la señal
- * más confiable, porque el nombre y la descripción varían entre emisores.
+ * The other FWPs in the same deal weigh between 8 KB and 25 KB. Size is the most
+ * reliable signal, because the name and the description vary between issuers.
  *
- * Por eso el descubrimiento va por la API de submissions (data.sec.gov), que
- * devuelve forma, documento, descripción y tamaño de cada filing — todo lo que
- * hace falta para elegir, sin bajar nada.
+ * That is why discovery goes through the submissions API (data.sec.gov), which
+ * returns the form, document, description and size of every filing — everything
+ * needed to choose, without downloading anything.
  */
 
 import { fetchJson, type FetchOptions } from "./client.js";
@@ -35,7 +35,7 @@ export interface FilingRef {
   companyName: string;
   formType: string;
   filedAt: string;
-  /** Documento principal del filing. */
+  /** The filing's main document. */
   documentName: string;
   documentDescription: string;
   sizeBytes: number;
@@ -50,7 +50,7 @@ export function archiveBase(cik: string, accession: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Paso 1: encontrar trusts de CMBS
+// Step 1: find CMBS trusts
 // ---------------------------------------------------------------------------
 
 interface FtsResponse {
@@ -63,15 +63,15 @@ interface FtsResponse {
 }
 
 /**
- * Busca CIKs de trusts de CMBS por texto completo.
+ * Searches for CMBS trust CIKs by full text.
  *
- * Devuelve CIKs únicos, no filings: el filing correcto se elige después con la
- * API de submissions, que da mucha más información.
+ * Returns unique CIKs, not filings: the correct filing is chosen later with the
+ * submissions API, which gives much more information.
  */
 export async function findCmbsTrusts(opts: {
   query?: string;
   limit?: number;
-  /** Ventana de fechas, para llegar a emisiones más viejas. */
+  /** Date window, to reach older issuances. */
   dateFrom?: string;
   dateTo?: string;
   fetchOpts?: FetchOptions;
@@ -82,12 +82,12 @@ export async function findCmbsTrusts(opts: {
   const seen = new Map<string, string>();
 
   /**
-   * La búsqueda de EDGAR devuelve 10 resultados por página. Para juntar
-   * decenas de trusts hay que paginar con `from`.
+   * EDGAR's search returns 10 results per page. To gather dozens of trusts you
+   * have to paginate with `from`.
    *
-   * El tope de 100 no es arbitrario: EDGAR corta ahí para una misma consulta.
-   * Para ir más lejos hay que variar la consulta o la ventana de fechas, que es
-   * lo que hace el comando de lote.
+   * The cap of 100 is not arbitrary: EDGAR cuts off there for a single query.
+   * To go further you have to vary the query or the date window, which is what
+   * the batch command does.
    */
   const MAX_OFFSET = 100;
   const PAGE = 10;
@@ -103,28 +103,29 @@ export async function findCmbsTrusts(opts: {
       data = await fetchJson<FtsResponse>(`${FTS}?${params.toString()}`, opts.fetchOpts);
     } catch (err) {
       /**
-       * Una página que falla a mitad de camino no invalida las anteriores: nos
-       * quedamos con lo que juntamos. Pero si falla la PRIMERA, no hay nada, y
-       * devolver una lista vacía convierte un rechazo de la SEC en algo
-       * indistinguible de "no existen trusts".
+       * A page that fails halfway does not invalidate the previous ones: we
+       * keep what we gathered. But if the FIRST one fails there is nothing, and
+       * returning an empty list turns a rejection from the SEC into something
+       * indistinguishable from "no trusts exist".
        *
-       * Eso pasó de verdad: después de varias corridas seguidas del lote, EDGAR
-       * empezó a rechazar y el batch reportó "Se encontraron 0 de 100", que
-       * manda a revisar la consulta cuando el problema es el rate limit. Un
-       * fallo que se ve igual que una ausencia es el peor tipo de fallo, y es
-       * el mismo error que ya nos costó iteraciones del lado de los datos.
+       * That actually happened: after several consecutive batch runs, EDGAR
+       * started rejecting and the batch reported "Found 0 of 100", which sends
+       * you to check the query when the problem is the rate limit. A failure
+       * that looks identical to an absence is the worst kind of failure, and it
+       * is the same error that already cost us iterations on the data side.
        */
       if (seen.size === 0) {
         /**
-         * El error se propaga tal cual, sin agregarle diagnóstico.
+         * The error propagates as-is, with no diagnosis added.
          *
-         * La primera versión de esto adjuntaba un párrafo explicando el límite
-         * de pedidos de la SEC, porque era mi hipótesis. La causa real era otra
-         * —faltaba SEC_USER_AGENT— y el mensaje verdadero quedó sepultado bajo
-         * mi conjetura, repetida quince veces.
+         * The first version of this attached a paragraph explaining the SEC's
+         * request limit, because that was my hypothesis. The real cause was
+         * something else —SEC_USER_AGENT was missing— and the true message was
+         * buried under my conjecture, repeated fifteen times.
          *
-         * Un error que ya se explica solo no necesita ayuda. Adivinar la causa
-         * en el mensaje es peor que no decir nada: manda a buscar donde no está.
+         * An error that already explains itself does not need help. Guessing
+         * the cause in the message is worse than saying nothing: it sends you
+         * looking where the problem is not.
          */
         throw err;
       }
@@ -145,8 +146,8 @@ export async function findCmbsTrusts(opts: {
       if (seen.size >= limit) break;
     }
 
-    // Si una página entera no aportó CIKs nuevos, seguir no va a cambiar nada:
-    // los filings restantes son del mismo puñado de emisores.
+    // If a whole page contributed no new CIKs, continuing will not change that:
+    // the remaining filings are from the same handful of issuers.
     if (seen.size === before) break;
   }
 
@@ -154,7 +155,7 @@ export async function findCmbsTrusts(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Paso 2: elegir el Annex A entre los filings de un trust
+// Step 2: choose the Annex A among a trust's filings
 // ---------------------------------------------------------------------------
 
 interface SubmissionsResponse {
@@ -173,11 +174,11 @@ interface SubmissionsResponse {
 }
 
 /**
- * Puntúa un filing como candidato a Annex A.
+ * Scores a filing as an Annex A candidate.
  *
- * PESOS DERIVADOS DE DATOS REALES
+ * WEIGHTS DERIVED FROM REAL DATA
  *
- * Se compararon tres familias de emisores en EDGAR (agosto 2026):
+ * Three issuer families were compared on EDGAR (August 2026):
  *
  *   Wells Fargo 2025-C64   n4801_x5-annexa1.htm   "ANNEX A-1"                 4,1 MB
  *   Benchmark 2026-B42     n5676_x3-annexa.htm    "FWP"                       8,9 MB
@@ -185,13 +186,14 @@ interface SubmissionsResponse {
  *
  * Conclusiones:
  *
- *   - El NOMBRE es la única señal confiable: los tres traen "annexa", con o sin
- *     dígito. Por eso pesa más que todo lo demás.
- *   - La DESCRIPCIÓN es ruido: tres valores distintos para el mismo documento.
- *     Suma si dice "annex", pero no se puede depender de ella.
- *   - El TAMAÑO no discrimina por sí solo. Los term sheets del mismo deal pesan
- *     6-8 MB, así que un umbral de tamaño los dejaría pasar. Sirve nada más
- *     para descartar los FWP chicos (15-30 KB) de pricing y announcements.
+ *   - The NAME is the only reliable signal: all three carry "annexa", with or
+ *     without a digit. That is why it weighs more than everything else.
+ *   - The DESCRIPTION is noise: three different values for the same document.
+ *     It adds if it says "annex", but it cannot be relied on.
+ *   - SIZE does not discriminate on its own. The term sheets of the same deal
+ *     weigh 6-8 MB, so a size threshold would let them through. It is only
+ *     useful for discarding the small FWPs (15-30 KB) for pricing and
+ *     announcements.
  */
 export function scoreAnnexFiling(f: {
   form: string;
@@ -199,7 +201,7 @@ export function scoreAnnexFiling(f: {
   documentDescription: string;
   sizeBytes: number;
 }): number {
-  // El Annex A se publica como FWP o dentro del prospecto.
+  // The Annex A is published as an FWP or inside the prospectus.
   if (!/^(FWP|424B[0-9]?|424H)$/i.test(f.form)) return 0;
 
   const name = f.documentName.toLowerCase();
@@ -208,40 +210,40 @@ export function scoreAnnexFiling(f: {
   let score = 0;
 
   /**
-   * Señal primaria: el nombre del archivo.
+   * Primary signal: the file name.
    *
-   * Los emisores usan tres familias de abreviatura, descubiertas revisando 107
-   * trusts reales:
+   * Issuers use three families of abbreviation, discovered by reviewing 107
+   * real trusts:
    *
    *   annexa1, annexa    → la forma completa
    *   anxa1, anxa, anx1  → "annex" abreviado a "anx"
-   *   a1                 → solo el número de anexo
+   *   a1                 → just the annex number
    *
-   * Sin las dos últimas se perdían 17 de 36 trusts.
+   * Without the last two, 17 of 36 trusts were being lost.
    */
   if (/annex[-_]?a/.test(name)) score += 0.55;
   else if (/anx\s*a?-?\d?/.test(name)) score += 0.5;
   else if (/annex/.test(name)) score += 0.3;
   /**
-   * "a1" a secas es la señal más débil, así que el patrón es estricto:
-   * separador, "a", dígito opcional, y fin de nombre antes de la extensión.
-   * Así no se confunde con los "xa" de pricing y launch del mismo deal, que
-   * además pesan 15-25 KB.
+   * Plain "a1" is the weakest signal, so the pattern is strict: separator, "a",
+   * optional digit, and end of name before the extension. That way it is not
+   * confused with the "xa" pricing and launch documents of the same deal, which
+   * also weigh 15-25 KB.
    */
   else if (/[-_]a-?1?(?=\.[a-z]+$)/.test(name)) score += 0.45;
 
-  // Señal secundaria: la descripción. Cuando está, confirma.
+  // Secondary signal: the description. When present, it confirms.
   if (/annex\s*_?-?a/.test(desc)) score += 0.2;
   else if (/annex/.test(desc)) score += 0.1;
 
-  // Filtro de tamaño: descarta los FWP chicos, no promueve a los grandes.
+  // Size filter: discards the small FWPs, does not promote the large ones.
   if (f.sizeBytes > 500_000) score += 0.2;
   else if (f.sizeBytes < 100_000) score -= 0.4;
 
   return Math.min(Math.max(score, 0), 1);
 }
 
-/** Un Annex A de 15 MB es normal; más que eso conviene avisar. */
+/** A 15 MB Annex A is normal; beyond that it is worth warning. */
 export const LARGE_DOCUMENT_WARN_BYTES = 20_000_000;
 
 export interface AnnexPick {
@@ -251,20 +253,20 @@ export interface AnnexPick {
 }
 
 /**
- * Busca el Annex A entre los filings recientes de un trust.
- * Devuelve todos los candidatos que superen el umbral, del mejor al peor.
+ * Looks for the Annex A among a trust's recent filings.
+ * Returns every candidate above the threshold, best to worst.
  */
 /**
- * Puntúa un prospecto como respaldo.
+ * Scores a prospectus as a fallback.
  *
- * Algunos emisores no publican el Annex A como filing propio: lo incluyen como
- * sección del prospecto (424B2 o 424H), documentos de 15-22 MB. En una revisión
- * de 36 trusts fallidos, 11 estaban en esta situación.
+ * Some issuers do not publish the Annex A as a filing of its own: they include
+ * it as a section of the prospectus (424B2 or 424H), documents of 15-22 MB. In a
+ * review of 36 failed trusts, 11 were in this situation.
  *
- * Vale intentarlo porque el parser es agnóstico al formato: busca tablas cuyos
- * encabezados mapeen a métricas conocidas, y esas tablas están adentro del
- * prospecto igual. El costo es descargar y parsear un documento cinco veces más
- * grande, así que solo se usa cuando no hay un Annex dedicado.
+ * It is worth trying because the parser is format-agnostic: it looks for tables
+ * whose headers map to known metrics, and those tables are inside the prospectus
+ * just the same. The cost is downloading and parsing a document five times
+ * larger, so it is only used when there is no dedicated Annex.
  */
 export function scoreProspectusFallback(f: {
   form: string;
@@ -272,10 +274,10 @@ export function scoreProspectusFallback(f: {
   sizeBytes: number;
 }): number {
   if (!/^(424B[0-9]?|424H)$/i.test(f.form)) return 0;
-  // Un prospecto con el pool completo no baja de varios MB.
+  // A prospectus with the full pool does not come in under several MB.
   if (f.sizeBytes < 5_000_000) return 0;
-  // El preliminar (424H) suele traer el mismo anexo que el final y pesa igual;
-  // preferimos el final por ser el definitivo.
+  // The preliminary (424H) usually carries the same annex as the final and
+  // weighs the same; we prefer the final as the definitive one.
   return /424b/i.test(f.form) ? 0.4 : 0.35;
 }
 
@@ -284,7 +286,7 @@ export async function findAnnexFilings(
   opts: {
     minScore?: number;
     max?: number;
-    /** Permite caer al prospecto si no hay Annex dedicado. Default true. */
+    /** Allows falling back to the prospectus if there is no dedicated Annex. Default true. */
     allowProspectusFallback?: boolean;
     fetchOpts?: FetchOptions;
   } = {},
@@ -337,7 +339,7 @@ export async function findAnnexFilings(
 
   let picks = scored.filter((s) => s.score >= minScore).slice(0, opts.max ?? 3);
 
-  // Sin Annex dedicado, probamos con el prospecto: el anexo suele estar adentro.
+  // No dedicated Annex: we try the prospectus, where the annex usually sits.
   if (picks.length === 0 && opts.allowProspectusFallback !== false) {
     const fallbacks: Array<{ filing: FilingRef; score: number }> = [];
 
@@ -387,7 +389,7 @@ export async function findAnnexFilings(
   }));
 }
 
-/** Lista los filings de un trust, para inspección manual cuando algo no cierra. */
+/** Lists a trust's filings, for manual inspection when something does not add up. */
 export async function listRecentFilings(
   cik: string,
   opts: { limit?: number; fetchOpts?: FetchOptions } = {},
