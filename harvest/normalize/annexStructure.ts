@@ -1,33 +1,33 @@
 /**
- * Estructura real de un Annex A.
+ * The real structure of an Annex A.
  *
- * Descubierto inspeccionando Wells Fargo 2025-C64 en EDGAR. Dos cosas que la
- * versión sintética no tenía y que rompen el modelado si se ignoran:
+ * Discovered by inspecting Wells Fargo 2025-C64 on EDGAR. Two things the
+ * synthetic version did not have, and that break the modelling if ignored:
  *
  * 1. EL ANNEX A VIENE PARTIDO EN BLOQUES HORIZONTALES
  *
- *    No es una tabla: son varias, cada una con las mismas columnas clave
- *    (Loan ID, Flag, Property Name) más un conjunto distinto de datos.
+ *    It is not one table: it is several, each with the same key columns
+ *    (Loan ID, Flag, Property Name) plus a different set of data.
  *
- *      bloque 1: Loan ID | Flag | Property Name | Tipo | Año | Unidades | Balance | Tasa
- *      bloque 2: Loan ID | Flag | Property Name | EGI  | Gastos | NOI | DSCR | Debt Yield
+ *      block 1: Loan ID | Flag | Property Name | Type | Year | Units | Balance | Rate
+ *      block 2: Loan ID | Flag | Property Name | EGI  | Expenses | NOI | DSCR | Debt Yield
  *
- *    Quedarse con una sola pierde la mitad de las métricas. Hay que unirlas
- *    por Loan ID.
+ *    Keeping only one loses half the metrics. They have to be joined by
+ *    Loan ID.
  *
- * 2. HAY FILAS DE PRÉSTAMO Y FILAS DE PROPIEDAD
+ * 2. THERE ARE LOAN ROWS AND PROPERTY ROWS
  *
  *      3.00  Loan      Soho Grand & The Roxy Hotel   2 propiedades
  *      3.01  Property  Soho Grand Hotel
  *      3.02  Property  Roxy Hotel
  *
- *    Un préstamo sobre varias propiedades genera una fila por cada una. Tratar
- *    cada fila como un deal independiente triplica el portfolio y suma dos
- *    veces el mismo balance.
+ *    A loan over several properties generates one row per property. Treating
+ *    each row as an independent deal triples the portfolio and counts the same
+ *    balance twice.
  *
- * PENDIENTE (no MVP): hoy conservamos las filas de préstamo y descartamos las
- * de propiedad. Lo correcto sería modelar el préstamo como deal con N
- * properties colgando, que es exactamente lo que el store ya soporta.
+ * PENDING (not MVP): today we keep the loan rows and discard the property ones.
+ * The right model would be the loan as a deal with N properties hanging off it,
+ * which is exactly what the store already supports.
  */
 
 import { mapColumns, type MetricKey } from "./columnMap.js";
@@ -38,7 +38,7 @@ export interface AnnexTable {
   headerRowIndex: number;
 }
 
-/** Encuentra el índice de columna de una métrica dentro de una tabla. */
+/** Finds the column index of a metric within a table. */
 function columnOf(headers: string[], key: MetricKey): number | null {
   const { matches } = mapColumns(headers);
   return matches.find((m) => m.metric.key === key)?.columnIndex ?? null;
@@ -51,7 +51,7 @@ function headersOf(table: AnnexTable): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Filas de préstamo vs. filas de propiedad
+// Loan rows vs. property rows
 // ---------------------------------------------------------------------------
 
 export type RowKind = "loan" | "property" | "unknown";
@@ -68,58 +68,59 @@ export interface FlagFilterResult {
   loanRows: number;
   propertyRows: number;
   /**
-   * Las filas de propiedad, que hasta ahora se contaban y se tiraban.
+   * The property rows, which until now were counted and thrown away.
    *
-   * POR QUÉ AHORA SE DEVUELVEN
+   * WHY THEY ARE RETURNED NOW
    *
-   * Cada una trae el nombre, la dirección, la ciudad y el estado de UNA propiedad
-   * que garantiza el préstamo. Medido sobre los tres fixtures: 138 filas
-   * descartadas, 138 con estado no vacío. No es residuo, es el dato.
+   * Each one carries the name, address, city and state of ONE property securing
+   * the loan. Measured over the three fixtures: 138 rows discarded, 138 with a
+   * non-empty state. It is not residue, it is the data.
    *
-   * Tirarlas dejaba 585 préstamos sin ningún estado —los que garantizan
-   * propiedades en más de uno— invisibles para toda consulta de /comps. Y también
-   * perdía las direcciones de los multi-propiedad que SÍ tienen estado guardado.
+   * Throwing them away left 585 loans with no state at all —those securing
+   * properties in more than one— invisible to every /comps query. And it also
+   * lost the addresses of the multi-property loans that DO have a stored state.
    *
-   * Se devuelven crudas y con su índice de fila original. Quien las quiera las
-   * normaliza; quien no, sigue leyendo `rows` como antes.
+   * They are returned raw and with their original row index. Whoever wants them
+   * normalises them; whoever does not keeps reading `rows` as before.
    */
   droppedPropertyRows: Array<{ rowIndex: number; row: unknown[] }>;
-  /** true si la tabla tenía columna de flag; si no, se devolvió todo sin tocar. */
+  /** true if the table had a flag column; if not, everything was returned untouched. */
   hadFlagColumn: boolean;
-  /** Filas descartadas por no ser préstamos: sin nombre de propiedad ni saldo. */
+  /** Rows discarded for not being loans: no property name and no balance. */
   phantomRows: number;
 }
 
 /**
- * Máximo de filas que el filtro estructural puede descartar antes de abstenerse.
+ * Maximum share of rows the structural filter may discard before abstaining.
  *
- * Si supera esto, lo más probable es que las columnas de nombre y saldo no estén
- * donde creemos —no que el 20% del pool sean filas fantasma— y borrar medio
- * Annex A en silencio es peor que dejar entrar unas filas de más.
+ * If it exceeds this, the likeliest explanation is that the name and balance
+ * columns are not where we think —not that 20% of the pool are phantom rows—
+ * and silently deleting half an Annex A is worse than letting a few extra rows
+ * through.
  */
 const MAX_PHANTOM_SHARE = 0.15;
 
 /**
- * Descarta las filas que no son préstamos.
+ * Discards the rows that are not loans.
  *
- * POR QUÉ NO ALCANZA CON EL FILTRO DE FLAG NI CON EL DE LOAN ID
+ * WHY THE FLAG FILTER AND THE LOAN ID FILTER ARE NOT ENOUGH
  *
- * Los dos anteriores separan préstamos de propiedades. Ninguno detecta una fila
- * que no es ninguna de las dos cosas: en el Annex A conduit, la primera fila
- * después del encabezado suele numerar las columnas (1, 2, 3...) y entraba como
- * préstamo. Aparecían 7 en la cohorte 2026, con `property_type = "2"` — el
- * número de columna leído como tipo de propiedad.
+ * Both of those separate loans from properties. Neither detects a row that is
+ * neither: in the conduit Annex A, the first row after the header often numbers
+ * the columns (1, 2, 3...) and was entering as a loan. Seven appeared in the
+ * 2026 cohort, with `property_type = "2"` — the column number read as a
+ * property type.
  *
- * POR QUÉ ESTRUCTURAL Y NO POR CANTIDAD DE OBSERVATIONS
+ * WHY STRUCTURAL AND NOT BY OBSERVATION COUNT
  *
- * `rowsToObservations` ya descarta filas con menos de 3 observations, y las 7
- * fantasma tenían exactamente 3. Subir ese umbral no sirve: sobre las 9.751
- * filas del corpus la distribución es continua desde 3 —hay filas en 3, 4, 5,
- * 6, 7, 9 y 10— así que cualquier corte por conteo elimina préstamos reales. El
- * hueco que parecía existir era un artefacto de mirar 28 emisiones de 233.
+ * `rowsToObservations` already discards rows with fewer than 3 observations, and
+ * the 7 phantoms had exactly 3. Raising that threshold does not help: across the
+ * corpus's 9,751 rows the distribution is continuous from 3 —there are rows at
+ * 3, 4, 5, 6, 7, 9 and 10— so any cut by count removes real loans. The gap that
+ * appeared to exist was an artefact of looking at 28 issuances out of 233.
  *
- * Un préstamo tiene nombre de propiedad o tiene saldo. Una fila sin ninguno de
- * los dos no es un préstamo, tenga 3 observations o 30.
+ * A loan has a property name or has a balance. A row with neither is not a
+ * loan, whether it has 3 observations or 30.
  */
 function dropPhantomRows(
   data: unknown[][],
@@ -128,7 +129,7 @@ function dropPhantomRows(
   const nameCol = columnOf(headers, "property_name");
   const amountCol = columnOf(headers, "loan_amount");
 
-  // Sin ninguna de las dos columnas no hay con qué decidir: se conserva todo.
+  // Without either column there is nothing to decide on: everything is kept.
   if (nameCol === null && amountCol === null) return { kept: data, dropped: 0 };
 
   const tiene = (row: unknown[], col: number | null, conDigito: boolean) => {
@@ -139,22 +140,22 @@ function dropPhantomRows(
   };
 
   /**
-   * SEGUNDO CRITERIO, SIN UMBRALES: una fila sin una sola letra no es un préstamo.
+   * SECOND CRITERION, NO THRESHOLDS: a row without a single letter is not a loan.
    *
-   * El primero —nombre vacío y saldo vacío— no alcanzaba. La fila que numera las
-   * columnas trae un número en CADA celda, así que la de nombre no está vacía:
-   * tiene "5", el número de esa columna. En la base aparecía con nombre vacío
-   * porque aguas abajo un nombre puramente numérico se rechaza al guardarlo, y
-   * eso me hizo creer que la celda venía vacía del documento.
+   * The first —empty name and empty balance— was not enough. The row that
+   * numbers the columns carries a number in EVERY cell, so the name cell is not
+   * empty: it holds "5", that column's number. In the database it appeared with
+   * an empty name because downstream a purely numeric name is rejected on write,
+   * and that made me believe the cell came empty from the document.
    *
-   * Peor: el test que escribí primero usaba la forma correcta —números en todas
-   * las columnas—, falló, y en vez de arreglar el filtro ajusté el test para que
-   * coincidiera con lo que el filtro hacía. Test verde, bug vivo. Las dos filas
-   * de BMO 2026-5C15 sobrevivieron a la recosecha y lo dejaron a la vista.
+   * Worse: the test I wrote first used the correct shape —numbers in every
+   * column— it failed, and instead of fixing the filter I adjusted the test to
+   * match what the filter did. Green test, live bug. The two rows of BMO
+   * 2026-5C15 survived the re-harvest and put it in plain sight.
    *
-   * Un préstamo del Annex A tiene nombre de propiedad, tipo, ciudad, estado:
-   * texto en varias columnas. Una fila de numeración es todo dígitos. No hace
-   * falta elegir ningún número para distinguirlas.
+   * An Annex A loan has a property name, type, city, state: text in several
+   * columns. A numbering row is all digits. No number has to be chosen to tell
+   * them apart.
    */
   const sinLetras = (row: unknown[]) =>
     !row?.some((c) => /[a-zA-Z]/.test(String(c ?? "")));
@@ -168,18 +169,18 @@ function dropPhantomRows(
   }
 
   if (data.length > 0 && fantasma.length / data.length > MAX_PHANTOM_SHARE) {
-    // Demasiadas: la hipótesis sobre las columnas es la que está mal.
+    // Too many: it is the hypothesis about the columns that is wrong.
     return { kept: data, dropped: 0 };
   }
   return { kept, dropped: fantasma.length };
 }
 
 /**
- * Deja solo las filas de préstamo.
+ * Keeps only the loan rows.
  *
- * Si la tabla no tiene columna de flag —Annex A viejos, o emisores que no la
- * publican— devuelve todo sin cambios. Preferimos datos de más a datos
- * silenciosamente perdidos.
+ * If the table has no flag column —old Annex A documents, or issuers that do not
+ * publish it— it returns everything unchanged. We prefer too much data to data
+ * silently lost.
  */
 export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFilterResult {
   const headers = (rows[headerRowIndex] ?? []).map((c) =>
@@ -188,7 +189,7 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
   const flagCol = columnOf(headers, "loan_property_flag");
 
   if (flagCol === null) {
-    // Sin columna de flag, el propio Loan ID distingue préstamos de propiedades.
+    // Without a flag column, the Loan ID itself separates loans from properties.
     return keepLoanRowsByLoanId(rows, headerRowIndex, headers);
   }
 
@@ -196,14 +197,14 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
   const data = rows.slice(headerRowIndex + 1);
 
   /**
-   * El filtro estructural va ANTES de clasificar, no después.
+   * The structural filter runs BEFORE classifying, not after.
    *
-   * La primera versión restaba las fantasma de `loanRows`, pero una fila que no
-   * es un préstamo tampoco tiene la columna de flag cargada, así que nunca se
-   * había contado: el descuento restaba algo que no estaba sumado y devolvía un
-   * conteo bajo por uno.
+   * The first version subtracted the phantoms from `loanRows`, but a row that is
+   * not a loan does not have the flag column populated either, so it had never
+   * been counted: the deduction subtracted something that was not added and
+   * returned a count that was low by one.
    *
-   * Filtrando primero, `loanRows` cuenta lo que quedó y no hay que corregirlo.
+   * Filtering first, `loanRows` counts what is left and needs no correction.
    */
   const limpio = dropPhantomRows(data, headers);
 
@@ -234,27 +235,26 @@ export function keepLoanRows(rows: unknown[][], headerRowIndex: number): FlagFil
 }
 
 /**
- * Distingue préstamos de propiedades usando la numeración del Loan ID.
+ * Separates loans from properties using the Loan ID numbering.
  *
- * DESCUBIERTO REVISANDO LA INTEGRIDAD DEL CORPUS
+ * DISCOVERED WHILE REVIEWING CORPUS INTEGRITY
  *
- * La columna "Loan / Property Flag" solo se mapea en el 79% de los filings. En
- * el resto, `keepLoanRows` conservaba todas las filas y cada propiedad de un
- * portfolio entraba como un préstamo: BANK5 2026-5YR23 aparecía con 173
- * préstamos cuando tiene 33.
+ * The "Loan / Property Flag" column is only mapped in 79% of filings. In the
+ * rest, `keepLoanRows` kept every row and each property of a portfolio entered
+ * as a loan: BANK5 2026-5YR23 appeared with 173 loans when it has 33.
  *
- * El síntoma fue aritmético: 173 IDs distintos con un máximo de 33. Eso solo
- * ocurre si los identificadores son decimales.
+ * The symptom was arithmetic: 173 distinct IDs with a maximum of 33. That only
+ * happens if the identifiers are decimals.
  *
- * La convención es consistente entre emisores:
+ * The convention is consistent across issuers:
  *
- *   3.00  ← el préstamo
- *   3.01  ← primera propiedad que lo garantiza
- *   3.02  ← segunda
+ *   3.00  ← the loan
+ *   3.01  ← first property securing it
+ *   3.02  ← second
  *
- * Así que la parte decimal alcanza para filtrar. Los filings que numeran con
- * enteros (1, 2, 3) pasan todos, que es el comportamiento correcto: ahí no hay
- * filas de propiedad.
+ * So the decimal part is enough to filter on. Filings that number with integers
+ * (1, 2, 3) all pass, which is the correct behaviour: there are no property rows
+ * there.
  */
 function keepLoanRowsByLoanId(
   rows: unknown[][],
@@ -266,9 +266,9 @@ function keepLoanRowsByLoanId(
   const data = rows.slice(headerRowIndex + 1);
 
   if (loanIdCol === null) {
-    // Sin flag ni Loan ID no hay forma de distinguir préstamo de propiedad,
-    // pero el filtro estructural sigue valiendo: una fila sin nombre ni saldo no
-    // es ninguna de las dos.
+    // Without a flag or a Loan ID there is no way to tell a loan from a
+    // property, but the structural filter still applies: a row with no name and
+    // no balance is neither.
     const limpio = dropPhantomRows(data, headers);
     return {
       rows: [...rows.slice(0, headerRowIndex + 1), ...limpio.kept],
@@ -292,12 +292,12 @@ function keepLoanRowsByLoanId(
     const n = Number(raw);
 
     if (!raw || !Number.isFinite(n)) {
-      // Sin ID legible no podemos clasificarla; la conservamos.
+      // With no readable ID we cannot classify it; we keep it.
       kept.push(row);
       continue;
     }
 
-    // Tolerancia por ruido de punto flotante: 3.00 puede llegar como 2.9999999.
+    // Tolerance for floating-point noise: 3.00 can arrive as 2.9999999.
     const fractional = Math.abs(n - Math.round(n));
     if (fractional > 0.001) {
       propertyRows++;
@@ -314,46 +314,46 @@ function keepLoanRowsByLoanId(
     loanRows,
     propertyRows,
     droppedPropertyRows,
-    // Se filtró, aunque no por la columna de flag.
+      // It was filtered, though not by the flag column.
     hadFlagColumn: propertyRows > 0,
     phantomRows: limpio.dropped,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Unión de bloques horizontales
+// Joining horizontal blocks
 // ---------------------------------------------------------------------------
 
 export interface JoinResult {
   rows: unknown[][];
   headerRowIndex: number;
   tablesJoined: number;
-  /** Nombres de las tablas que se unieron. */
+  /** Names of the tables that were joined. */
   sources: string[];
-  /** Tablas descartadas por no tener Loan ID. */
+  /** Tables discarded for having no Loan ID. */
   skipped: string[];
-  /** Cuántos grupos de páginas se apilaron antes de unir. */
+  /** How many page groups were stacked before joining. */
   stackedGroups?: number;
 }
 
 /**
- * Adopta las tablas de continuación, que no repiten el encabezado.
+ * Adopts the continuation tables, which do not repeat the header.
  *
- * DESCUBIERTO CON DATOS REALES, SEGUNDA VUELTA
+ * DISCOVERED WITH REAL DATA, SECOND ROUND
  *
- * El Annex A de Wells Fargo tiene 126 tablas, pero solo 18 con encabezados
- * reconocibles. Las otras 108 son continuaciones: la primera página de cada
- * bloque trae los encabezados y las siguientes solo filas de datos.
+ * The Wells Fargo Annex A has 126 tables, but only 18 with recognisable headers.
+ * The other 108 are continuations: the first page of each block carries the
+ * headers and the following ones only data rows.
  *
- * Al filtrar por "tiene encabezados" se descartaban esas 108 tablas y con ellas
- * la mayor parte del pool. La primera corrida real devolvía 7 préstamos.
+ * Filtering by "has headers" discarded those 108 tables and with them most of
+ * the pool. The first real run returned 7 loans.
  *
- * La heurística para adoptarlas: misma cantidad de columnas que la última tabla
- * con encabezado, y aparecer después en el documento. El ancho de columna es
- * una firma bastante confiable porque cada bloque tiene su propio conjunto.
+ * The heuristic for adopting them: the same number of columns as the last table
+ * with a header, and appearing after it in the document. Column width is a
+ * fairly reliable signature because each block has its own set.
  *
- * Ante la duda no se adopta: sumar filas al bloque equivocado desalinea los
- * datos, que es peor que perderlos.
+ * When in doubt it does not adopt: adding rows to the wrong block misaligns the
+ * data, which is worse than losing it.
  */
 export function attachContinuationTables(
   allTables: Array<{ name: string; rows: unknown[][] }>,
@@ -362,17 +362,17 @@ export function attachContinuationTables(
   const result: AnnexTable[] = [];
   let current: AnnexTable | null = null;
   let currentWidth = 0;
-  /** Columna de Loan ID del bloque actual, si la tiene. */
+  /** The current block's Loan ID column, if it has one. */
   let currentLoanIdCol: number | null = null;
-  /** Último Loan ID visto, para verificar que la continuación siga la serie. */
+  /** Last Loan ID seen, to check the continuation follows the series. */
   let lastLoanId = -Infinity;
   let adopted = 0;
   let orphans = 0;
   let rejected = 0;
 
   const widthOf = (rows: unknown[][]) => {
-    // Ancho representativo: la moda de las filas de datos, no el máximo, que
-    // se distorsiona con filas de separación o notas al pie.
+    // Representative width: the mode of the data rows, not the maximum, which
+    // gets distorted by separator rows or footnotes.
     const counts = new Map<number, number>();
     for (const row of rows) {
       const w = row.filter((c) => c !== null && c !== undefined).length;
@@ -412,8 +412,8 @@ export function attachContinuationTables(
     }
 
     const width = widthOf(table.rows);
-    // Tolerancia de una columna: las filas reales a veces traen una celda de
-    // más o de menos por el colspan de los bordes.
+    // One-column tolerance: real rows sometimes carry one cell more or less
+    // because of colspan at the edges.
     const widthOk = currentWidth > 0 && Math.abs(width - currentWidth) <= 1;
 
     if (!widthOk) {
@@ -422,33 +422,33 @@ export function attachContinuationTables(
     }
 
     /**
-     * El ancho no alcanza como validación.
+     * Width alone is not enough validation.
      *
-     * Dos bloques distintos del mismo Annex A pueden tener la misma cantidad de
-     * columnas, y adoptar el equivocado pega filas con los datos corridos: el
-     * encabezado dice "Interest Rate %" pero los valores vienen de otra columna.
+     * Two different blocks of the same Annex A can have the same number of
+     * columns, and adopting the wrong one glues rows on with the data shifted:
+     * the header says "Interest Rate %" but the values come from another column.
      *
-     * Pasó con datos reales. En BANK 2026-BNK52 aparecieron tasas de 480% —que
-     * en realidad eran plazos de amortización de 480 meses— y el filing devolvió
-     * 165 préstamos cuando un pool típico tiene entre 25 y 50.
+     * It happened with real data. In BANK 2026-BNK52 rates of 480% appeared
+     * —which were really amortisation terms of 480 months— and the filing
+     * returned 165 loans when a typical pool has between 25 and 50.
      *
-     * Cuando el bloque tiene columna de Loan ID, exigimos que la continuación
-     * traiga IDs que sigan la serie. Es una verificación barata y difícil de
-     * pasar por casualidad.
+     * When the block has a Loan ID column, we require the continuation to carry
+     * IDs that follow the series. It is a cheap check and hard to pass by
+     * accident.
      */
     if (currentLoanIdCol !== null) {
       const ids = loanIdsOf(table.rows, currentLoanIdCol);
 
       if (ids.length === 0) {
-        // Sin IDs reconocibles en la posición esperada, no es continuación.
+        // With no recognisable IDs in the expected position, it is not a continuation.
         rejected++;
         continue;
       }
 
       const minId = Math.min(...ids);
-      // Los Annex A numeran los préstamos de forma creciente. Una continuación
-      // legítima empieza donde terminó la página anterior; si arranca por
-      // debajo, es otro bloque que vuelve a empezar desde el préstamo 1.
+      // Annex A documents number loans in increasing order. A legitimate
+      // continuation starts where the previous page ended; if it starts below,
+      // it is another block starting again from loan 1.
       if (Number.isFinite(lastLoanId) && minId <= lastLoanId) {
         rejected++;
         continue;
@@ -464,15 +464,15 @@ export function attachContinuationTables(
   return { tables: result, adopted, orphans, rejected };
 }
 
-/** Loan IDs numéricos de una columna. "3.00" y "3" son el mismo préstamo. */
+/** Numeric Loan IDs from a column. "3.00" and "3" are the same loan. */
 function loanIdsOf(rows: unknown[][], col: number): number[] {
   const ids: number[] = [];
   for (const row of rows) {
     const raw = String(row?.[col] ?? "").trim();
     if (!raw) continue;
     const n = Number(raw);
-    // Los IDs de préstamo son números chicos y positivos; un balance o una
-    // tasa en esa posición delata que la tabla no es continuación.
+    // Loan IDs are small positive numbers; a balance or a rate in that
+    // position gives away that the table is not a continuation.
     if (Number.isFinite(n) && n > 0 && n < 10_000) ids.push(n);
   }
   return ids;
@@ -485,22 +485,22 @@ function maxLoanId(rows: unknown[][], col: number | null): number {
 }
 
 /**
- * Apila verticalmente las tablas que son páginas del mismo bloque.
+ * Vertically stacks the tables that are pages of the same block.
  *
- * DESCUBIERTO CON DATOS REALES
+ * DISCOVERED WITH REAL DATA
  *
- * Un Annex A no tiene una tabla por bloque de columnas: tiene una por PÁGINA.
- * El documento de Wells Fargo 2025-C64 trae 126 tablas para unos 40 préstamos,
- * porque cada bloque de columnas se repite página tras página con los mismos
- * encabezados y distintas filas.
+ * An Annex A does not have one table per column block: it has one per PAGE. The
+ * Wells Fargo 2025-C64 document carries 126 tables for about 40 loans, because
+ * each column block repeats page after page with the same headers and different
+ * rows.
  *
- * Sin este paso, cada página se toma como un bloque de columnas diferente y la
- * unión horizontal las cruza por Loan ID, quedándose solo con los préstamos que
- * aparecen en la primera página de todos los bloques. En la primera corrida
- * real eso dio 7 préstamos de un pool que tiene muchos más.
+ * Without this step, each page is taken as a different column block and the
+ * horizontal join crosses them by Loan ID, keeping only the loans that appear on
+ * the first page of every block. On the first real run that gave 7 loans out of
+ * a pool that has many more.
  *
- * La regla: encabezados iguales → misma tabla lógica, apilar. Encabezados
- * distintos → bloques de columnas distintos, unir horizontalmente después.
+ * The rule: identical headers → same logical table, stack them. Different
+ * headers → different column blocks, join horizontally afterwards.
  */
 export function stackPagedTables(tables: AnnexTable[]): {
   tables: AnnexTable[];
@@ -545,20 +545,20 @@ export function stackPagedTables(tables: AnnexTable[]): {
 }
 
 /**
- * Une los bloques horizontales del Annex A por Loan ID.
+ * Joins the Annex A's horizontal blocks by Loan ID.
  *
- * Toma la tabla con más métricas como base y le pega las columnas de las demás
- * que compartan Loan ID. Las columnas repetidas (Flag, Property Name) se
- * agregan una sola vez.
+ * It takes the table with the most metrics as the base and attaches the columns
+ * of the others that share a Loan ID. Repeated columns (Flag, Property Name) are
+ * added only once.
  *
- * Si ninguna tabla tiene Loan ID, devuelve la mejor sola: sin clave no hay
- * forma confiable de unir, y unir por posición sería inventar datos.
+ * If no table has a Loan ID, it returns the best one alone: without a key there
+ * is no reliable way to join, and joining by position would be inventing data.
  */
 export function joinAnnexTables(rawTables: AnnexTable[]): JoinResult | null {
   if (rawTables.length === 0) return null;
 
-  // Primero apilamos las páginas del mismo bloque; recién después unimos
-  // bloques distintos por Loan ID.
+  // First we stack the pages of the same block; only then do we join different
+  // blocks by Loan ID.
   const { tables, groups: stackedGroups } = stackPagedTables(rawTables);
   if (tables.length === 0) return null;
 
@@ -573,7 +573,7 @@ export function joinAnnexTables(rawTables: AnnexTable[]): JoinResult | null {
 
   const joinable = withKey.filter((t) => t.loanIdCol !== null);
 
-  // Sin clave común: la mejor tabla sola.
+  // No common key: the best table alone.
   if (joinable.length < 2) {
     const best = withKey
       .map((t) => ({ ...t, score: mapColumns(t.headers).matches.length }))
@@ -596,7 +596,7 @@ export function joinAnnexTables(rawTables: AnnexTable[]): JoinResult | null {
   const baseHeaders = [...base.headers];
   const baseData = base.table.rows.slice(base.table.headerRowIndex + 1);
 
-  // Indexamos las filas base por Loan ID.
+  // We index the base rows by Loan ID.
   const byLoanId = new Map<string, unknown[]>();
   for (const row of baseData) {
     const id = normalizeLoanId(row?.[base.loanIdCol!]);
@@ -610,7 +610,7 @@ export function joinAnnexTables(rawTables: AnnexTable[]): JoinResult | null {
   for (const other of scored.slice(1)) {
     const otherData = other.table.rows.slice(other.table.headerRowIndex + 1);
 
-    // Qué columnas aporta que la base no tenga.
+    // Which columns it contributes that the base does not have.
     const newCols = other.headers
       .map((h, i) => ({ header: h, index: i }))
       .filter((c) => {
@@ -623,7 +623,7 @@ export function joinAnnexTables(rawTables: AnnexTable[]): JoinResult | null {
       continue;
     }
 
-    // Verificamos que las claves se solapen antes de unir.
+    // We check that the keys overlap before joining.
     let overlap = 0;
     for (const row of otherData) {
       const id = normalizeLoanId(row?.[other.loanIdCol!]);
@@ -663,7 +663,7 @@ export function joinAnnexTables(rawTables: AnnexTable[]): JoinResult | null {
   };
 }
 
-/** "3.00" y "3" son el mismo préstamo. */
+/** "3.00" and "3" are the same loan. */
 function normalizeLoanId(raw: unknown): string | null {
   const s = String(raw ?? "").trim();
   if (!s) return null;
