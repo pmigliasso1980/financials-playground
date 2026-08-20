@@ -41,7 +41,7 @@ if (!health.ok) {
 }
 
 /** Fixed before looking at anything. */
-const COBERTURA_MINIMA = 0.9;
+const MIN_COVERAGE = 0.9;
 const MIN_POOL_SHELF = 150;
 
 /**
@@ -102,14 +102,14 @@ const MIN_POOL_SHELF = 150;
  * three loans would produce strata where expected = observed by construction, which
  * dilute without contributing contrast.
  */
-const estratoFlag = process.argv.indexOf("--stratum");
-const ESTRATO = estratoFlag === -1 ? "tipo" : (process.argv[estratoFlag + 1] ?? "tipo");
-const POR_VENDEDOR = ESTRATO === "seller";
+const stratumFlag = process.argv.indexOf("--stratum");
+const STRATUM = stratumFlag === -1 ? "type" : (process.argv[stratumFlag + 1] ?? "type");
+const BY_SELLER = STRATUM === "seller";
 const TOP_SELLERS = 15;
 
-const sinFlag = process.argv.indexOf("--without-seller");
-const WITHOUT_SELLER = sinFlag === -1 ? null : (process.argv[sinFlag + 1] ?? null);
-const FILTRO_VENDEDOR = WITHOUT_SELLER
+const withoutFlag = process.argv.indexOf("--without-seller");
+const WITHOUT_SELLER = withoutFlag === -1 ? null : (process.argv[withoutFlag + 1] ?? null);
+const SELLER_FILTER = WITHOUT_SELLER
   ? `AND coalesce(btrim(l.loan_seller), '') <> '${WITHOUT_SELLER.replace(/'/g, "''")}'`
   : "";
 
@@ -129,7 +129,7 @@ const SHELF = `
   END`;
 
 /**
- * Los 41 valores crudos colapsados a nueve tipos.
+ * The 41 raw values collapsed into nine types.
  *
  * WHY IT IS NEEDED
  *
@@ -152,7 +152,7 @@ const SHELF = `
  * why it is taken in the analysis, printed, and can be argued with without
  * re-harvesting.
  */
-const TIPO = `
+const TYPE = `
   CASE
     WHEN l.property_type IS NULL THEN NULL
     WHEN l.property_type ~* 'multifamily|cooperative|garden|low rise|mid rise|high rise|student|military' THEN 'Multifamily'
@@ -169,17 +169,17 @@ const TIPO = `
 const BASE = `
   SELECT l.id,
          ${SHELF} AS shelf,
-         ${TIPO} AS tipo_crudo,
+         ${TYPE} AS raw_type,
          nullif(btrim(l.loan_seller), '') AS seller,
-         l.property_type AS tipo_original,
+         l.property_type AS original_type,
          extract(year FROM f.filed_at)::int AS vintage,
-         (d.transfer_date IS NOT NULL)::int AS evento
+         (d.transfer_date IS NOT NULL)::int AS event
     FROM corpus.loans l
     JOIN corpus.filings f ON f.accession = l.accession
     LEFT JOIN corpus.delinquency d ON d.loan_id = l.id
    WHERE f.accession IN (SELECT deal_accession FROM corpus.servicer_reports
                           WHERE deal_accession IS NOT NULL)
-     ${FILTRO_VENDEDOR}
+     ${SELLER_FILTER}
 `;
 
 console.log(`\n${"═".repeat(78)}`);
@@ -196,30 +196,30 @@ if (WITHOUT_SELLER) {
 // ---------------------------------------------------------------------------
 
 const { rows: cob } = await query<{
-  n: string; con_tipo: string; weak_shelves: string;
+  n: string; with_type: string; weak_shelves: string;
 }>(
   `WITH base AS (${BASE})
    SELECT count(*)::text AS n,
-          count(*) FILTER (WHERE tipo_crudo IS NOT NULL)::text AS con_tipo,
+          count(*) FILTER (WHERE raw_type IS NOT NULL)::text AS with_type,
           (SELECT count(*)::text FROM (
              SELECT shelf FROM base GROUP BY shelf
-              HAVING count(*) FILTER (WHERE tipo_crudo IS NOT NULL)::numeric
-                     / count(*) < ${COBERTURA_MINIMA}
+              HAVING count(*) FILTER (WHERE raw_type IS NOT NULL)::numeric
+                     / count(*) < ${MIN_COVERAGE}
            ) x) AS weak_shelves
      FROM base`,
 );
 
 const n = Number(cob[0]!.n);
-const withType = Number(cob[0]!.con_tipo);
-const cobertura = withType / n;
+const withType = Number(cob[0]!.with_type);
+const coverage = withType / n;
 
 console.log(`\n${"─".repeat(78)}`);
-console.log("Cobertura de property_type");
+console.log("property_type coverage");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
   `  ${withType.toLocaleString("en-US")} of ${n.toLocaleString("en-US")} loans  →  ` +
-    `${cobertura >= COBERTURA_MINIMA ? "\x1b[32m" : "\x1b[31m"}${pct(cobertura)}\x1b[0m` +
-    `   \x1b[90m(umbral ${pct(COBERTURA_MINIMA, 0)})\x1b[0m`,
+    `${coverage >= MIN_COVERAGE ? "\x1b[32m" : "\x1b[31m"}${pct(coverage)}\x1b[0m` +
+    `   \x1b[90m(threshold ${pct(MIN_COVERAGE, 0)})\x1b[0m`,
 );
 
 /**
@@ -231,15 +231,15 @@ console.log(
  * lado.
  */
 const { rows: porShelfCob } = await query<{
-  shelf: string; n: string; con_tipo: string;
+  shelf: string; n: string; with_type: string;
 }>(
   `WITH base AS (${BASE})
    SELECT shelf, count(*)::text AS n,
-          count(*) FILTER (WHERE tipo_crudo IS NOT NULL)::text AS con_tipo
+          count(*) FILTER (WHERE raw_type IS NOT NULL)::text AS with_type
      FROM base GROUP BY shelf ORDER BY count(*) DESC`,
 );
 
-console.log(`\n  por issuer:`);
+console.log(`\n  by issuer:`);
 /**
  * This filter was CALCULATED and unused: the query returned `weak_shelves` and the
  * script never looked at it. Benchmark entered the SIR with 88.3% coverage,
@@ -249,57 +249,57 @@ console.log(`\n  por issuer:`);
  * Writing the check and not wiring it up is worse than not writing it: it leaves
  * the appearance that the control exists.
  */
-const excluidos: string[] = [];
+const excluded: string[] = [];
 for (const r of porShelfCob) {
-  const c = Number(r.con_tipo) / Number(r.n);
-  const pasa = c >= COBERTURA_MINIMA;
-  if (!pasa) excluidos.push(r.shelf);
+  const c = Number(r.with_type) / Number(r.n);
+  const passes = c >= MIN_COVERAGE;
+  if (!passes) excluded.push(r.shelf);
   console.log(
     `    ${r.shelf.padEnd(12)} ${String(r.n).padStart(5)}  ` +
-      `${pasa ? "\x1b[90m" : "\x1b[31m"}${pct(c).padStart(6)}\x1b[0m` +
-      `${pasa ? "" : "  \x1b[31m← excluida del SIR\x1b[0m"}`,
+      `${passes ? "\x1b[90m" : "\x1b[31m"}${pct(c).padStart(6)}\x1b[0m` +
+      `${passes ? "" : "  \x1b[31m← excluded from the SIR\x1b[0m"}`,
   );
 }
-const FILTRO_SHELF = excluidos.length
-  ? `AND ${SHELF} NOT IN (${excluidos.map((s) => `'${s}'`).join(", ")})`
+const FILTRO_SHELF = excluded.length
+  ? `AND ${SHELF} NOT IN (${excluded.map((s) => `'${s}'`).join(", ")})`
   : "";
 
 // ---------------------------------------------------------------------------
 // 2. The raw values, before grouping
 // ---------------------------------------------------------------------------
 
-const { rows: crudos } = await query<{
-  tipo: string; n: string; ev: string; originales: string; variantes: string;
+const { rows: raw } = await query<{
+  type: string; n: string; ev: string; originals: string; variants: string;
 }>(
   `WITH base AS (${BASE})
-   SELECT tipo_crudo AS tipo, count(*)::text AS n, sum(evento)::text AS ev,
-          count(DISTINCT tipo_original)::text AS variantes,
-          string_agg(DISTINCT tipo_original, ', ' ORDER BY tipo_original) AS originales
-     FROM base WHERE tipo_crudo IS NOT NULL
-    GROUP BY tipo_crudo ORDER BY count(*) DESC`,
+   SELECT raw_type AS type, count(*)::text AS n, sum(event)::text AS ev,
+          count(DISTINCT original_type)::text AS variants,
+          string_agg(DISTINCT original_type, ', ' ORDER BY original_type) AS originals
+     FROM base WHERE raw_type IS NOT NULL
+    GROUP BY raw_type ORDER BY count(*) DESC`,
 );
 
 console.log(`\n${"─".repeat(78)}`);
 console.log(`Canonical types and which raw values each absorbed`);
 console.log(`${"─".repeat(78)}\n`);
 
-for (const r of crudos) {
+for (const r of raw) {
   const nn = Number(r.n), ev = Number(r.ev);
   console.log(
-    `  ${r.tipo.padEnd(22)} ${String(nn).padStart(5)}  ${String(ev).padStart(3)} ev  ` +
-      `${nn >= 30 ? pct(ev / nn).padStart(6) : "     —"}   \x1b[90m${r.variantes} variantes\x1b[0m`,
+    `  ${r.type.padEnd(22)} ${String(nn).padStart(5)}  ${String(ev).padStart(3)} ev  ` +
+      `${nn >= 30 ? pct(ev / nn).padStart(6) : "     —"}   \x1b[90m${r.variants} variants\x1b[0m`,
   );
-  console.log(`      \x1b[90m${(r.originales ?? "").slice(0, 110)}\x1b[0m`);
+  console.log(`      \x1b[90m${(r.originals ?? "").slice(0, 110)}\x1b[0m`);
 }
 
 /**
  * If there are many spelling variants, any later standardisation is noise in the
  * shape of a stratum. It is flagged here and not afterwards.
  */
-const suspects = crudos.filter((r) => {
-  const t = (r.tipo || "").toLowerCase().trim();
-  return crudos.some(
-    (o) => o !== r && (o.tipo || "").toLowerCase().trim() === t,
+const suspects = raw.filter((r) => {
+  const t = (r.type || "").toLowerCase().trim();
+  return raw.some(
+    (o) => o !== r && (o.type || "").toLowerCase().trim() === t,
   );
 });
 if (suspects.length > 0) {
@@ -311,7 +311,7 @@ if (suspects.length > 0) {
   );
 }
 
-if (cobertura < COBERTURA_MINIMA) {
+if (coverage < MIN_COVERAGE) {
   console.log(
     `\n  \x1b[31mINSUFFICIENT COVERAGE. No SIR is reported.\x1b[0m`,
   );
@@ -327,28 +327,28 @@ if (cobertura < COBERTURA_MINIMA) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Mezcla por issuer
+// 3. Mix by issuer
 // ---------------------------------------------------------------------------
 
-const { rows: mezcla } = await query<{
-  shelf: string; tipo: string; n: string; total: string;
+const { rows: mix } = await query<{
+  shelf: string; type: string; n: string; total: string;
 }>(
   `WITH base AS (${BASE} AND l.property_type IS NOT NULL),
    tot AS (SELECT shelf, count(*) AS total FROM base GROUP BY shelf)
-   SELECT b.shelf, b.tipo_crudo AS tipo, count(*)::text AS n, t.total::text
+   SELECT b.shelf, b.raw_type AS type, count(*)::text AS n, t.total::text
      FROM base b JOIN tot t ON t.shelf = b.shelf
     WHERE t.total >= ${MIN_POOL_SHELF}
-    GROUP BY b.shelf, b.tipo_crudo, t.total
+    GROUP BY b.shelf, b.raw_type, t.total
     ORDER BY b.shelf, count(*) DESC`,
 );
 
-const tiposTop = crudos.slice(0, 6).map((r) => r.tipo);
-const mezclaMap = new Map<string, Map<string, number>>();
+const topTypes = raw.slice(0, 6).map((r) => r.type);
+const mixMap = new Map<string, Map<string, number>>();
 const totales = new Map<string, number>();
-for (const r of mezcla) {
-  const m = mezclaMap.get(r.shelf) ?? new Map<string, number>();
-  m.set(r.tipo, Number(r.n));
-  mezclaMap.set(r.shelf, m);
+for (const r of mix) {
+  const m = mixMap.get(r.shelf) ?? new Map<string, number>();
+  m.set(r.type, Number(r.n));
+  mixMap.set(r.shelf, m);
   totales.set(r.shelf, Number(r.total));
 }
 
@@ -356,14 +356,14 @@ console.log(`\n${"─".repeat(78)}`);
 console.log("Type mix by issuer (% of the pool with a known type)");
 console.log(`${"─".repeat(78)}\n`);
 console.log(
-  `  issuer     ` + tiposTop.map((t) => (t || "?").slice(0, 9).padStart(10)).join(""),
+  `  issuer     ` + topTypes.map((t) => (t || "?").slice(0, 9).padStart(10)).join(""),
 );
 console.log(`  ${"─".repeat(72)}`);
-for (const [shelf, m] of [...mezclaMap].sort()) {
+for (const [shelf, m] of [...mixMap].sort()) {
   const total = totales.get(shelf)!;
   console.log(
     `  ${shelf.padEnd(12)}` +
-      tiposTop.map((t) => pct((m.get(t) ?? 0) / total, 0).padStart(10)).join(""),
+      topTypes.map((t) => pct((m.get(t) ?? 0) / total, 0).padStart(10)).join(""),
   );
 }
 
@@ -382,7 +382,7 @@ for (const [shelf, m] of [...mezclaMap].sort()) {
 const { rows: sir } = await query<{
   shelf: string; n: string; obs: string; esp: string;
 }>(
-  POR_VENDEDOR
+  BY_SELLER
     ? `WITH base0 AS (${BASE} AND l.loan_seller IS NOT NULL ${FILTRO_SHELF}),
        top AS (
          SELECT seller FROM base0 GROUP BY seller
@@ -394,30 +394,30 @@ const { rows: sir } = await query<{
            FROM base0 b
        ),
        tasas AS (
-         SELECT v, vintage, sum(evento)::numeric / count(*) AS tasa
+         SELECT v, vintage, sum(event)::numeric / count(*) AS rate
            FROM base GROUP BY v, vintage
        )
        SELECT b.shelf, count(*)::text AS n,
-              sum(b.evento)::text AS obs,
-              round(sum(t.tasa), 2)::text AS esp
+              sum(b.event)::text AS obs,
+              round(sum(t.rate), 2)::text AS esp
          FROM base b JOIN tasas t ON t.v = b.v AND t.vintage = b.vintage
         GROUP BY b.shelf
        HAVING count(*) >= ${MIN_POOL_SHELF}
-        ORDER BY sum(b.evento)::numeric / nullif(sum(t.tasa), 0)`
+        ORDER BY sum(b.event)::numeric / nullif(sum(t.rate), 0)`
     : `WITH base AS (${BASE} AND l.property_type IS NOT NULL ${FILTRO_SHELF}),
    tasas AS (
-     SELECT tipo_crudo, vintage,
-            sum(evento)::numeric / count(*) AS tasa
-       FROM base GROUP BY tipo_crudo, vintage
+     SELECT raw_type, vintage,
+            sum(event)::numeric / count(*) AS rate
+       FROM base GROUP BY raw_type, vintage
    )
    SELECT b.shelf, count(*)::text AS n,
-          sum(b.evento)::text AS obs,
-          round(sum(t.tasa), 2)::text AS esp
+          sum(b.event)::text AS obs,
+          round(sum(t.rate), 2)::text AS esp
      FROM base b JOIN tasas t
-       ON t.tipo_crudo = b.tipo_crudo AND t.vintage = b.vintage
+       ON t.raw_type = b.raw_type AND t.vintage = b.vintage
     GROUP BY b.shelf
    HAVING count(*) >= ${MIN_POOL_SHELF}
-    ORDER BY sum(b.evento)::numeric / nullif(sum(t.tasa), 0)`,
+    ORDER BY sum(b.event)::numeric / nullif(sum(t.rate), 0)`,
 );
 
 /** Byar: with 0 observed events the normal interval does not exist. */
@@ -434,14 +434,14 @@ function byar(obs: number, esp: number): [number, number] {
 
 console.log(`\n${"─".repeat(78)}`);
 console.log(
-  POR_VENDEDOR
+  BY_SELLER
     ? `SIR standardised by SELLER (top ${TOP_SELLERS}) × VINTAGE`
     : "SIR standardised by PROPERTY TYPE × VINTAGE",
 );
 console.log(`${"─".repeat(78)}\n`);
-if (excluidos.length > 0) {
+if (excluded.length > 0) {
   console.log(
-    `  \x1b[90mExcluidas por cobertura < ${pct(COBERTURA_MINIMA, 0)}: ${excluidos.join(", ")}\x1b[0m\n`,
+    `  \x1b[90mExcluded for coverage < ${pct(MIN_COVERAGE, 0)}: ${excluded.join(", ")}\x1b[0m\n`,
   );
 }
 console.log(`  issuer        n    obs   esperado    SIR        IC 95%`);

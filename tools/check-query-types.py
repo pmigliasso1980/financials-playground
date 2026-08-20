@@ -49,6 +49,10 @@ BARE = re.compile(r'\b(\w+)\.(\w+)\b')
 # checker flagged db/monitor.ts, which is correct code — a false positive that
 # would have got the whole tool ignored.
 PLAIN = re.compile(r'\bSELECT\s+(.*?)\s+FROM\b', re.I | re.S)
+# `INSERT ... RETURNING id, row_index` — the row type comes from RETURNING, not
+# from a SELECT. db/corpus.ts does this twice and both were flagged as findings
+# on correct code the moment the partial check was switched on.
+RETURNING = re.compile(r'\bRETURNING\s+(.*?)(?:;|$)', re.I | re.S)
 
 
 def check(path: pathlib.Path) -> int:
@@ -62,7 +66,38 @@ def check(path: pathlib.Path) -> int:
               for m in NAMED.finditer(src) if m.group("name") in ifaces]
     for fields, sql, start in calls:
         if "${" in sql:
-            unver += 1
+            # PARTIAL check rather than none.
+            #
+            # Skipping these entirely gave up on most of the repo: 4 of 5 in
+            # analysis/composition.ts, 8 of 10 in db/identities.ts — and those
+            # are exactly the files whose aliases the English migration is
+            # renaming. I was checking them by hand instead, which does not
+            # scale and is not repeatable.
+            #
+            # The SELECT list is usually literal even when a WHERE clause or a
+            # CTE body is interpolated, so the aliases ARE visible. Check the
+            # declared fields against them.
+            #
+            # The one shape this must not flag is a query whose column list is
+            # itself inside a ${...}: there the alias set is empty through no
+            # fault of the code. So if nothing at all was found, stay silent
+            # and report NOT VERIFIED as before.
+            part = {a.lower() for a in ALIAS.findall(sql)}
+            part |= {b.lower() for _, b in BARE.findall(sql)}
+            for sel in PLAIN.findall(sql) + RETURNING.findall(sql):
+                part |= {w.lower() for w in re.findall(r'\b(\w+)\b', sel)}
+            if not part:
+                unver += 1
+                continue
+            miss = {f for f in fields if f.lower() not in part}
+            if miss:
+                line = src[:start].count("\n") + 1
+                print(f"  ✗ {path.name}:{line}: type declares {sorted(miss)}"
+                      f" — not selected by the query (partial check:"
+                      f" this query interpolates)")
+                bad += 1
+            else:
+                ok += 1
             continue
         # `SELECT *` or `SELECT o.*`: the column list is the table's, which is
         # not in this file. Reporting the type's fields as "not selected" would
@@ -80,7 +115,7 @@ def check(path: pathlib.Path) -> int:
         # dotted chain — a checker written to pass.
         aliases = {a.lower() for a in ALIAS.findall(sql)}
         aliases |= {b.lower() for _, b in BARE.findall(sql)}
-        for sel in PLAIN.findall(sql):
+        for sel in PLAIN.findall(sql) + RETURNING.findall(sql):
             aliases |= {w.lower() for w in re.findall(r'\b(\w+)\b', sel)}
         missing = {f for f in fields if f.lower() not in aliases}
         if missing:
