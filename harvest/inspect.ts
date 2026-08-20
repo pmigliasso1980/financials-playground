@@ -1,17 +1,17 @@
 /**
- * Inspector de fixtures.
+ * Fixture inspector.
  *
- *   npm run harvest:inspect                      # resumen de todos
- *   npm run harvest:inspect -- <accession>       # detalle de uno
- *   npm run harvest:inspect -- <accession> -v    # con muestra de celdas
+ *   npm run harvest:inspect                      # summary of all of them
+ *   npm run harvest:inspect -- <accession>       # detail of one
+ *   npm run harvest:inspect -- <accession> -v    # with a sample of cells
  *
- * Existe porque diagnosticar a ciegas cuesta caro. Dos veces di por buena una
- * hipótesis equivocada sobre por qué se perdían préstamos —primero "las páginas
- * repiten encabezados", después "las continuaciones se descartan"— y las dos
- * veces el número no se movió. Lo que faltaba era ver la estructura.
+ * It exists because diagnosing blind is expensive. Twice I accepted a wrong
+ * hypothesis about why loans were being lost —first "the pages repeat headers",
+ * then "the continuations are discarded"— and both times the number did not
+ * move. What was missing was seeing the structure.
  *
- * Muestra, por tabla: cuántas filas, cuántas columnas, si tiene encabezados
- * reconocibles, y a qué bloque termina asignada.
+ * Shows, per table: how many rows, how many columns, whether it has
+ * recognisable headers, and which block it ends up assigned to.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -30,18 +30,18 @@ let files: string[] = [];
 try {
   files = (await readdir(FIXTURES_DIR)).filter((f) => f.endsWith(".html")).sort();
 } catch {
-  /* sin directorio */
+  /* no directory */
 }
 
 if (files.length === 0) {
-  console.log("\n  Sin fixtures. Capturá uno con:  npm run harvest:capture -- 2053102\n");
+  console.log("\n  No fixtures. Capture one with:  npm run harvest:capture -- 2053102\n");
   process.exit(0);
 }
 
 const selected = target ? files.filter((f) => f.includes(target)) : files;
 
 if (selected.length === 0) {
-  console.log(`\n  Ningún fixture coincide con "${target}".`);
+  console.log(`\n  No fixture matches "${target}".`);
   console.log(`  Disponibles: ${files.map((f) => f.replace(".html", "")).join(", ")}\n`);
   process.exit(1);
 }
@@ -53,7 +53,7 @@ for (const file of selected) {
   let meta: Record<string, unknown> = {};
   try {
     meta = JSON.parse(await readFile(join(FIXTURES_DIR, `${slug}.json`), "utf8"));
-  } catch { /* sin metadata */ }
+  } catch { /* no metadata */ }
 
   console.log(`\n${"═".repeat(78)}`);
   console.log(`${meta.companyName ?? slug}`);
@@ -62,7 +62,7 @@ for (const file of selected) {
 
   const tables = extractFromHtml(html);
 
-  // --- inventario de tablas ---------------------------------------------------
+  // --- table inventory --------------------------------------------------------
 
   const inventory = tables.map((t) => {
     const header = findHeaderRow(t.rows);
@@ -89,9 +89,9 @@ for (const file of selected) {
   const withHeader = inventory.filter((t) => t.hasHeader);
   const without = inventory.filter((t) => !t.hasHeader);
 
-  console.log(`Tablas: ${tables.length}  ·  con encabezado: ${withHeader.length}  ·  sin encabezado: ${without.length}\n`);
+  console.log(`Tables: ${tables.length}  ·  with header: ${withHeader.length}  ·  without: ${without.length}\n`);
 
-  // Distribución de anchos: revela cuántos bloques distintos hay.
+  // Width distribution: reveals how many distinct blocks there are.
   const byWidth = new Map<number, { total: number; headed: number }>();
   for (const t of inventory) {
     const e = byWidth.get(t.width) ?? { total: 0, headed: 0 };
@@ -100,19 +100,19 @@ for (const file of selected) {
     byWidth.set(t.width, e);
   }
 
-  console.log("Distribución por ancho de columna:");
-  console.log(`  ${"cols".padStart(5)} ${"tablas".padStart(7)} ${"c/hdr".padStart(6)}  interpretación`);
+  console.log("Distribution by column width:");
+  console.log(`  ${"cols".padStart(5)} ${"tables".padStart(7)} ${"w/hdr".padStart(6)}  interpretation`);
   for (const [width, e] of [...byWidth].sort((a, b) => b[1].total - a[1].total)) {
-    // Las tablas de 1-2 columnas son layout de EDGAR (separadores, números de
-    // página, títulos): que no tengan encabezados es lo esperable, no un
-    // problema. Solo preocupan las anchas sin bloque asociado.
+    // Tables of 1-2 columns are EDGAR layout (separators, page numbers,
+    // titles): that they have no headers is expected, not a problem. Only the
+    // wide ones with no associated block are a concern.
     const isLayout = width <= 2;
     const note = isLayout
-      ? "\x1b[90mlayout de EDGAR, sin datos\x1b[0m"
+      ? "\x1b[90mEDGAR layout, no data\x1b[0m"
       : e.headed === 0
-        ? "\x1b[33m⚠ datos sin bloque: revisá el mapeo de encabezados\x1b[0m"
+        ? "\x1b[33m⚠ data with no block: check the header mapping\x1b[0m"
         : e.total > e.headed
-          ? `${e.total - e.headed} continuaciones de ${e.headed} bloque(s)`
+          ? `${e.total - e.headed} continuations of ${e.headed} block(s)`
           : `${e.headed} bloque(s)`;
     console.log(`  ${String(width).padStart(5)} ${String(e.total).padStart(7)} ${String(e.headed).padStart(6)}  ${note}`);
   }
@@ -121,15 +121,15 @@ for (const file of selected) {
     .filter(([w, e]) => w > 2 && e.headed === 0)
     .reduce((sum, [, e]) => sum + e.total, 0);
   if (dataOrphans > 0) {
-    console.log(`\n  \x1b[33m${dataOrphans} tablas anchas sin encabezado reconocible — ahí hay datos perdiéndose.\x1b[0m`);
+    console.log(`\n  \x1b[33m${dataOrphans} wide tables with no recognisable header — there is data being lost there.\x1b[0m`);
   }
 
   if (verbose) {
-    console.log("\nDetalle por tabla:");
+    console.log("\nDetail by table:");
     for (const t of inventory) {
       const mark = t.hasHeader ? `\x1b[32mhdr(${t.matchCount})\x1b[0m` : "\x1b[90m—\x1b[0m";
       console.log(
-        `  ${t.name.padEnd(12)} ${String(t.rows).padStart(4)} filas  ${String(t.width).padStart(3)} cols  ${mark}  \x1b[90m${t.firstCell}\x1b[0m`,
+        `  ${t.name.padEnd(12)} ${String(t.rows).padStart(4)} rows  ${String(t.width).padStart(3)} cols  ${mark}  \x1b[90m${t.firstCell}\x1b[0m`,
       );
     }
   }
@@ -141,21 +141,21 @@ for (const file of selected) {
     (rows) => findHeaderRow(rows),
   );
 
-  console.log(`\nTras adoptar continuaciones: ${annexTables.length} bloques (${adopted} adoptadas, ${orphans} huérfanas)`);
+  console.log(`\nAfter adopting continuations: ${annexTables.length} blocks (${adopted} adopted, ${orphans} orphaned)`);
 
   for (const t of annexTables) {
     const headers = (t.rows[t.headerRowIndex] ?? []).map((c) => String(c ?? ""));
     const { matches } = mapColumns(headers);
     const dataRows = t.rows.length - t.headerRowIndex - 1;
     console.log(
-      `  ${t.name.padEnd(16)} ${String(dataRows).padStart(4)} filas  ${String(matches.length).padStart(2)} métricas  ` +
+      `  ${t.name.padEnd(16)} ${String(dataRows).padStart(4)} rows  ${String(matches.length).padStart(2)} metrics  ` +
         `\x1b[90m${matches.slice(0, 5).map((m) => m.metric.key).join(", ")}${matches.length > 5 ? " …" : ""}\x1b[0m`,
     );
   }
 
   const joined = joinAnnexTables(annexTables);
   if (!joined) {
-    console.log("\n  \x1b[31mNo se pudo armar la tabla de datos.\x1b[0m\n");
+    console.log("\n  \x1b[31mCould not assemble the data table.\x1b[0m\n");
     continue;
   }
 
@@ -169,36 +169,35 @@ for (const file of selected) {
   const result = rowsToObservations(filtered.rows, joined.headerRowIndex, source);
 
   console.log(
-    `\nResultado: ${result.stats.propertiesKept} préstamos · ${result.stats.observations} observations · ` +
-      `${result.columnsMapped.length} columnas mapeadas`,
+    `\nResult: ${result.stats.propertiesKept} loans · ${result.stats.observations} observations · ` +
+      `${result.columnsMapped.length} columns mapped`,
   );
   console.log(
     `  \x1b[90mapilados ${joined.stackedGroups} · unidos ${joined.tablesJoined} · ` +
-      `descartados ${joined.skipped.length} · filas de propiedad ${filtered.propertyRows}\x1b[0m`,
+      `discarded ${joined.skipped.length} · property rows ${filtered.propertyRows}\x1b[0m`,
   );
 
   /**
-   * El recorte del fixture limita cuántos préstamos entran. Como un Annex A
-   * mezcla filas de préstamo con filas de propiedad, un recorte de N filas deja
-   * bastante menos de N préstamos. Conviene decirlo explícitamente: la primera
-   * lectura del resultado fue "el parser pierde datos" cuando en realidad el
-   * fixture estaba recortado.
+   * The fixture's trim limits how many loans get in. Since an Annex A mixes
+   * loan rows with property rows, a trim of N rows leaves considerably fewer
+   * than N loans. It is worth saying explicitly: the first reading of the result
+   * was "the parser is losing data" when in fact the fixture was trimmed.
    */
   const rowsPerTable = Number(meta.rowsKeptPerTable) || 0;
   const totalRows = result.stats.propertiesKept + filtered.propertyRows;
   if (rowsPerTable > 0 && totalRows >= rowsPerTable - 2) {
     console.log(
-      `\n  \x1b[33mEl fixture está topado: se conservaron ${rowsPerTable} filas por tabla y se usaron ${totalRows}.\x1b[0m`,
+      `\n  \x1b[33mThe fixture is capped: ${rowsPerTable} rows per table were kept and ${totalRows} were used.\x1b[0m`,
     );
     console.log(
-      `  \x1b[90mHay más préstamos en el documento original. Recapturá con más filas:\x1b[0m`,
+      `  \x1b[90mThere are more loans in the original document. Recapture with more rows:\x1b[0m`,
     );
     console.log(`  \x1b[90m  npm run harvest:capture -- ${meta.cik} --rows 300\x1b[0m`);
   }
 
   if (joined.skipped.length > 0) {
     console.log(`  \x1b[33mbloques no unidos: ${joined.skipped.join(", ")}\x1b[0m`);
-    console.log(`  \x1b[90m(no comparten Loan ID con el bloque base, o no aportan columnas nuevas)\x1b[0m`);
+    console.log(`  \x1b[90m(they do not share a Loan ID with the base block, or contribute no new columns)\x1b[0m`);
   }
 
   console.log();
