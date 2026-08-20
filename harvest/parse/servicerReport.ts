@@ -1,79 +1,80 @@
 /**
- * Parser del informe mensual del servicer (EX-99.1 del 10-D).
+ * Parser for the servicer's monthly report (EX-99.1 of the 10-D).
  *
- * QUÉ EXTRAE
+ * WHAT IT EXTRACTS
  *
- * La tabla con NOI a nivel préstamo posterior al cierre, que según el
- * administrador se llama "Mortgage Loan Detail (Part 2)" o "NOI Detail". El
- * resto del documento —waterfall de certificados, prepagos, préstamos en
- * servicio especial— es información de bonos, no de propiedades.
+ * The table with post-closing loan-level NOI, which depending on the
+ * administrator is called "Mortgage Loan Detail (Part 2)" or "NOI Detail". The
+ * rest of the document —certificate waterfall, prepayments, specially serviced
+ * loans— is bond information, not property information.
  *
- * Las familias de plantilla y sus diferencias están documentadas junto a
- * `SCHEMAS`, más abajo. La resumida: no alcanza con buscar un nombre de sección
- * ni un nombre de columna fijo, porque dos administradores usan la etiqueta
- * "Loan ID" para cosas distintas.
+ * The template families and their differences are documented next to `SCHEMAS`,
+ * below. The short version: looking for a section name or a fixed column name is
+ * not enough, because two administrators use the label "Loan ID" for different
+ * things.
  *
- * DECISIONES QUE PARECEN DETALLES Y NO LO SON
+ * DECISIONS THAT LOOK LIKE DETAILS AND ARE NOT
  *
  * 1. Preferimos "Most Recent NOI" sobre "Most Recent Fiscal NOI".
  *
- *    El fiscal viene sin fecha: no se sabe qué ejercicio cubre, y comparar
- *    contra el NOI suscrito sin saber el período es comparar cualquier cosa. El
- *    "Most Recent" trae NOI Start Date y NOI End Date, así que se puede fechar y
- *    anualizar. Guardamos ambos, pero el que entra a los cálculos es el fechado.
+ *    The fiscal one comes with no date: there is no way to know which year it
+ *    covers, and comparing it against the underwritten NOI without knowing the
+ *    period is comparing anything to anything. The "Most Recent" one carries NOI
+ *    Start Date and NOI End Date, so it can be dated and annualised. We store
+ *    both, but the one that enters the calculations is the dated one.
  *
- * 2. Un NOI sin fechas no existe, aunque traiga un número.
+ * 2. An NOI without dates does not exist, even if it carries a number.
  *
- *    Las filas sin reportar vienen como "0.00" con fechas "--". Si uno lee la
- *    columna sin mirar las fechas, esos ceros entran como NOI cero y hunden
- *    cualquier promedio. Acá un valor sin par de fechas válidas se descarta,
- *    punto. Es el mismo error que los "N/A" del Annex A, que ya nos costó una
- *    iteración entera.
+ *    Unreported rows come as "0.00" with "--" dates. If you read the column
+ *    without looking at the dates, those zeros enter as zero NOI and sink any
+ *    average. Here a value without a valid pair of dates is discarded, full
+ *    stop. It is the same error as the Annex A's "N/A" values, which already
+ *    cost us a whole iteration.
  *
- * 3. Anualizar tiene un piso.
+ * 3. Annualising has a floor.
  *
- *    Los períodos van de un trimestre a doce meses. Multiplicar un trimestre por
- *    cuatro asume que el año es plano, lo cual es falso en hotelería y discutible
- *    en todo lo demás. Anualizamos igual porque tirar los trimestres perdería
- *    demasiada muestra, pero cada fila queda marcada con sus días reales para
- *    poder filtrar después. `MIN_PERIOD_DAYS` descarta lo que es demasiado corto
- *    para significar algo.
+ *    Periods run from a quarter to twelve months. Multiplying a quarter by four
+ *    assumes the year is flat, which is false in hospitality and arguable
+ *    everywhere else. We annualise anyway because discarding the quarters would
+ *    lose too much sample, but every row is marked with its real day count so it
+ *    can be filtered later. `MIN_PERIOD_DAYS` discards what is too short to mean
+ *    anything.
  *
- * 4. Los tramos pari passu se deduplican.
+ * 4. Pari passu tranches are deduplicated.
  *
- *    1A-1, 1A-4 y 1A-5 son pedazos del mismo préstamo y cada uno reporta el NOI
- *    de la propiedad entera. Sin deduplicar, esa propiedad pesa el triple. El
- *    Pros ID normalizado al entero inicial resuelve las dos cosas a la vez:
- *    identifica el préstamo del Annex A y colapsa los tramos.
+ *    1A-1, 1A-4 and 1A-5 are pieces of the same loan and each reports the whole
+ *    property's NOI. Without deduplicating, that property weighs triple. The
+ *    Pros ID normalised to its leading integer solves both at once: it
+ *    identifies the Annex A loan and collapses the tranches.
  *
- *    Si dos tramos del mismo préstamo reportan NOI distintos, eso es una
- *    anomalía real y queda registrada en vez de resolverse en silencio.
+ *    If two tranches of the same loan report different NOIs, that is a real
+ *    anomaly and gets recorded rather than resolved silently.
  */
 
 import { extractFromHtml, type ExtractedTable } from "./tables.js";
 import { normalizeProsId } from "../edgar/servicer.js";
 
-/** Período mínimo para que un NOI anualizado signifique algo. */
+/** Minimum period for an annualised NOI to mean anything. */
 export const MIN_PERIOD_DAYS = 80;
 
-/** Período que consideramos "año completo" y no necesita extrapolación. */
+/** The period we consider a "full year", needing no extrapolation. */
 export const FULL_YEAR_MIN_DAYS = 300;
 
 export interface ServicerLoanRow {
-  /** Tal como viene en el informe: "1A-1", "14A-3-C1", "27". */
+  /** Exactly as it comes in the report: "1A-1", "14A-3-C1", "27". */
   prosId: string;
-  /** Loan ID del Annex A: el entero inicial del Pros ID. */
+  /** The Annex A's Loan ID: the leading integer of the Pros ID. */
   loanId: string | null;
-  /** Último ejercicio fiscal cerrado. Sin fecha propia: solo referencia. */
+  /** Last closed fiscal year. No date of its own: reference only. */
   fiscalNoi: number | null;
-  /** NOI del período fechado. Crudo, sin anualizar. */
+  /** NOI of the dated period. Raw, not annualised. */
   recentNoi: number | null;
   noiStart: string | null;
   noiEnd: string | null;
   periodDays: number | null;
-  /** recentNoi llevado a base anual. Null si el período es muy corto. */
+  /** recentNoi taken to an annual basis. Null if the period is too short. */
   annualizedNoi: number | null;
-  /** True si el período ya cubría un año: el valor no se extrapoló. */
+  /** True if the period already covered a year: the value was not extrapolated. */
   isFullYear: boolean;
   sourceTable: string;
 }
@@ -85,32 +86,32 @@ export interface ServicerLoanFact {
   noiEnd: string;
   periodDays: number;
   isFullYear: boolean;
-  /** Cuántos tramos reportaron este préstamo. */
+  /** How many tranches reported this loan. */
   tranches: number;
 }
 
 /**
- * Estado de pago de un préstamo, del bloque "Delinquency Loan Detail".
+ * A loan's payment status, from the "Delinquency Loan Detail" block.
  *
- * POR QUÉ ESTA VARIABLE Y NO EL NOI
+ * WHY THIS VARIABLE AND NOT NOI
  *
- * El crecimiento del NOI es un cociente entre dos números con colas gordas: su
- * mediana anual tiene un error estándar de 2,4 puntos y ninguna añada del corpus
- * es distinguible de otra (ver `db:power`). La morosidad no: es un conteo, y con
- * ~400 préstamos por añada el piso de ruido baja a ~3 puntos porcentuales, sobre
- * tasas que se mueven entre 1% y 10%.
+ * NOI growth is a ratio between two numbers with fat tails: its annual median
+ * has a standard error of 2.4 points and no vintage in the corpus is
+ * distinguishable from another (see `db:power`). Delinquency is not: it is a
+ * count, and with ~400 loans per vintage the noise floor drops to ~3 percentage
+ * points, over rates that move between 1% and 10%.
  *
- * DOS COLUMNAS PARA EL MISMO HECHO
+ * TWO COLUMNS FOR THE SAME FACT
  *
- * `Months Delinquent` y `Paid Through Date` dicen lo mismo por caminos
- * distintos: los meses de atraso tienen que ser aproximadamente
- * (fin del período − paid through) / 30. Se guardan las dos justamente para
- * poder contrastarlas, igual que las identidades del Annex A. Es la verificación
- * que allá descubrimos tarde y acá está disponible desde el principio.
+ * `Months Delinquent` and `Paid Through Date` say the same thing by different
+ * routes: the months of arrears should be approximately (period end − paid
+ * through) / 30. Both are stored precisely so they can be checked against each
+ * other, just like the Annex A identities. It is the verification we discovered
+ * late over there and that is available here from the start.
  *
- * La escalera de severidad —transferencia a special servicing, ejecución, REO—
- * da más resolución que un binario y no depende de cómo cada administrador
- * codifique `Mortgage Loan Status`, que sí es propietario.
+ * The severity ladder —transfer to special servicing, foreclosure, REO— gives
+ * more resolution than a binary and does not depend on how each administrator
+ * encodes `Mortgage Loan Status`, which is proprietary.
  */
 export interface ServicerDelinquencyRow {
   prosId: string;
@@ -124,23 +125,19 @@ export interface ServicerDelinquencyRow {
 }
 
 /**
- * El bloque "Specially Serviced Loan Detail", que no es el de morosidad.
+ * The "Specially Serviced Loan Detail" block, which is not the delinquency one.
  *
- * POR QUÉ EXISTE ESTA INTERFAZ
+ * WHY THIS INTERFACE EXISTS
  *
- * El parser sacaba `transfer_date` únicamente del bloque de morosos. Pero un
- * préstamo puede estar en special servicing PAGANDO AL DÍA, y entonces no
- * aparece entre los morosos: aparece acá.
+ * The parser was taking `transfer_date` only from the delinquency block. But a
+ * loan can be in special servicing while PAYING ON TIME, and then it does not
+ * appear among the delinquent: it appears here.
  *
- * BANK 2021-BNK36 dice "No delinquent loans this period" en el bloque de
- * morosidad, y en este bloque tiene al Pros ID 71 —multifamily en Illinois,
- * transferido el 12/02/2025—. El pipeline lo contaba como cero eventos.
+ * BANK 2021-BNK36 says "No delinquent loans this period" in the delinquency
+ * block, and in this block it has Pros ID 71 —multifamily in Illinois,
+ * transferred on 12/02/2025. The pipeline counted it as zero events.
  *
- * Eso no era un error aleatorio: si un shelf tiene préstamos que entran a
- * special servicing antes de dejar de pagar y otro no, la diferencia entre sus
- * tasas mide qué bloque llenó cada administrador. Ocho ataques al denominador,
- * a la composición y a los administradores no lo habrían encontrado nunca,
- * porque el problema estaba en una tabla que el parser no leía.
+ * That was not a random error: if one shelf has loans that enter
  */
 export interface ServicerSpecialRow {
   prosId: string;
@@ -153,66 +150,67 @@ export interface ServicerSpecialRow {
 
 export interface ServicerParseResult {
   delinquency: ServicerDelinquencyRow[];
-  /** Préstamos en special servicing, estén o no atrasados. */
+  /** Loans in special servicing, whether or not they are in arrears. */
   specialServicing: ServicerSpecialRow[];
   rows: ServicerLoanRow[];
-  /** Un registro por préstamo, ya deduplicado. */
+  /** One record per loan, already deduplicated. */
   loans: ServicerLoanFact[];
   diagnostics: {
     tablesScanned: number;
     tablesMatched: number;
-    /** Familias de plantilla reconocidas en el documento. */
+    /** Template families recognised in the document. */
     families: string[];
     rowsFound: number;
-    /** Filas con número pero sin fechas: no reportadas. */
+    /** Rows with a number but no dates: not reported. */
     droppedNoDates: number;
-    /** Filas con período por debajo del piso. */
+    /** Rows with a period below the floor. */
     droppedShortPeriod: number;
-    /** Filas sin Pros ID reconocible. */
+    /** Rows with no recognisable Pros ID. */
     droppedNoProsId: number;
-    /** Préstamos cuyos tramos reportaron NOI distintos. */
+    /** Loans whose tranches reported different NOIs. */
     trancheConflicts: Array<{ loanId: string; values: number[] }>;
     fullYearShare: number;
 
     /**
-     * Tres causas distintas producen cero filas de morosidad, y hasta ahora las
-     * tres salían con el mismo mensaje: "no se encontró la tabla en este
-     * formato". Eso me hizo dar por confirmado un bug de parseo que puede no
-     * existir —una emisión sin morosos produce exactamente la misma salida—.
+     * Three different causes produce zero delinquency rows, and until now all
+     * three came out with the same message: "table not found in this format".
+     * That made me treat as confirmed a parsing bug that may not exist —an
+     * issuance with no delinquent loans produces exactly the same output.
      *
-     *   delinquencyTables = 0  → el localizador no ubicó el bloque: es formato
-     *   filas de datos = 0     → el bloque está pero solo tiene encabezado:
-     *                            la emisión no tiene morosos
-     *   descartadas > 0        → había filas y los filtros se las comieron
+     *   delinquencyTables = 0  → the locator did not find the block: format
+     *   data rows = 0          → the block is there but has only a header:
+     *                            the issuance has no delinquent loans
+     *   dropped > 0            → there were rows and the filters ate them
      *
-     * Es el mismo error que el código ya documenta para el bloque de NOI.
-     * Volvió a pasar en el bloque de al lado.
+     * It is the same error the code already documents for the NOI block. It
+     * happened again in the block next door.
      */
     delinquencyTables: number;
     delinquencyDataRows: number;
     delinquencyDropped: number;
     /**
-     * Los primeros identificadores descartados, crudos.
+     * The first discarded identifiers, raw.
      *
-     * "12 emisiones descartaron todo" no dice si lo descartado era prosa —el
-     * aviso "No delinquent loans this period", las leyendas de códigos— o
-     * préstamos morosos que el filtro se comió. Verifiqué UNA a mano y era
-     * prosa; de ahí concluí sobre once más sin mirarlas.
+     * "12 issuances discarded everything" does not say whether what was
+     * discarded was prose —the "No delinquent loans this period" notice, the
+     * code legends— or delinquent loans the filter ate. I verified ONE by hand
+     * and it was prose; from that I concluded about eleven more without looking
+     * at them.
      *
-     * El valor crudo es lo único que distingue las dos cosas, y es lo que en
-     * cada vuelta de hoy terminó delatando al instrumento.
+     * The raw value is the only thing that separates the two, and it is what
+     * gave the instrument away on every round today.
      */
     delinquencyDroppedSamples: string[];
 
-    /** Mismo desglose para el bloque de especialmente administrados. */
+    /** Same breakdown for the specially serviced block. */
     specialTables: number;
     specialDataRows: number;
     /**
-     * Préstamos que aparecen en special servicing y NO entre los morosos.
+     * Loans that appear in special servicing and NOT among the delinquent.
      *
-     * Es la medida directa de lo que el parser perdía antes: si este número es
-     * cero en todos los documentos, el bloque nuevo no aportaba nada; si es
-     * grande y desparejo entre shelves, era la explicación de la brecha.
+     * It is the direct measure of what the parser used to lose: if this number
+     * is zero across every document, the new block contributed nothing; if it is
+     * large and uneven between shelves, it was the explanation for the gap.
      */
     specialSoloAqui: number;
   };
@@ -220,7 +218,7 @@ export interface ServicerParseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Ubicación de la tabla y de sus columnas
+// Locating the table and its columns
 // ---------------------------------------------------------------------------
 
 interface ColumnIndex {
@@ -230,7 +228,7 @@ interface ColumnIndex {
   noiStart: number;
   noiEnd: number;
   headerRow: number;
-  /** Qué familia de plantilla se reconoció. */
+  /** Which template family was recognised. */
   family: string;
 }
 
@@ -240,33 +238,34 @@ const norm = (v: unknown): string =>
 /**
  * FAMILIAS DE PLANTILLA
  *
- * Igual que con el Annex A, no hay un formato: hay familias por administrador.
- * Las dos que encontramos publican el mismo dato con nombres y ubicaciones
- * distintas, y una de ellas tiene una trampa que rompe todo en silencio.
+ * Just as with the Annex A, there is no single format: there are families per
+ * administrator. The two we found publish the same datum under different names
+ * and in different places, and one of them has a trap that breaks everything
+ * silently.
  *
- * Computershare — sección "Mortgage Loan Detail (Part 2)":
+ * Computershare — "Mortgage Loan Detail (Part 2)" section:
  *
  *   | Pros ID | Most Recent Fiscal NOI | Most Recent NOI | NOI Start | NOI End |
  *
- * Citigroup — sección propia "NOI Detail":
+ * Citigroup — its own "NOI Detail" section:
  *
  *   | Loan ID   | OMCR | ... | Preceding Fiscal Year NOI | Most Recent NOI |
  *   | 328061001 |   1  | ...
  *
- * LA TRAMPA: en Citigroup la columna llamada "Loan ID" es el identificador
- * interno del servicer —328061001— y el número del prospecto está en "OMCR".
- * Está invertido respecto de Computershare, donde la columna de prospecto se
- * llama justamente "Pros ID". Anclar en el nombre "Loan ID" haría un join que
- * no matchea nada, y peor: lo haría sin error, devolviendo cero coincidencias
- * como si el trust simplemente no reportara.
+ * THE TRAP: in Citigroup the column called "Loan ID" is the servicer's internal
+ * identifier —328061001— and the prospectus number is in "OMCR". It is inverted
+ * relative to Computershare, where the prospectus column is called precisely
+ * "Pros ID". Anchoring on the name "Loan ID" would produce a join that matches
+ * nothing, and worse: it would do so without an error, returning zero matches as
+ * if the trust simply did not report.
  *
- * Por eso el ancla es una lista de patrones por familia y no un nombre fijo.
+ * That is why the anchor is a list of patterns per family and not a fixed name.
  */
 interface HeaderSchema {
   family: string;
-  /** Columna que contiene el número de préstamo del prospecto. */
+  /** The column containing the prospectus loan number. */
   anchor: RegExp;
-  /** NOI del ejercicio anterior cerrado. Opcional: no todas las familias lo traen. */
+  /** Previous closed fiscal year's NOI. Optional: not every family carries it. */
   fiscal?: RegExp;
   recent: RegExp;
   recentExclude?: RegExp;
@@ -291,18 +290,18 @@ const SCHEMAS: HeaderSchema[] = [
     recent: /most\s*recent\s*noi/i,
     recentExclude: /fiscal|preceding|date/i,
     // "Most Recent Financial As of Start Date" / "... Asof End Date" —
-    // el filer escribe "As of" y "Asof" en la misma tabla.
+    // the filer writes "As of" and "Asof" in the same table.
     start: /most\s*recent\s*financial\s*as\s*of\s*start\s*date/i,
     end: /most\s*recent\s*financial\s*as\s*of\s*end\s*date/i,
   },
 ];
 
 /**
- * La tabla de morosidad, identificada por "Months Delinquent".
+ * The delinquency table, identified by "Months Delinquent".
  *
- * "Paid Through Date" sola no alcanza como ancla: aparece también en el bloque
- * de detalle del préstamo (Part 1). La combinación con "Months Delinquent" es
- * única en el documento.
+ * "Paid Through Date" alone is not enough as an anchor: it also appears in the
+ * loan detail block (Part 1). The combination with "Months Delinquent" is unique
+ * in the document.
  */
 interface DelinquencyIndex {
   prosId: number; loanId: number; paidThrough: number; months: number;
@@ -350,14 +349,14 @@ function locateDelinquency(rows: unknown[][]): DelinquencyIndex | null {
 }
 
 /**
- * El bloque de especialmente administrados, que comparte columnas con el de
- * morosidad y no es el mismo.
+ * The specially serviced block, which shares columns with the delinquency one
+ * and is not the same.
  *
- * Los dos tienen `Servicing Transfer Date` y `Resolution Strategy Code`. Lo que
- * los separa es que el de morosidad trae `Months Delinquent` y este no, y que
- * este trae `Special Servicing Comments`. Anclar solo en la fecha de
- * transferencia haría que el parser leyera dos veces la misma tabla y contara
- * cada moroso doble.
+ * Both have `Servicing Transfer Date` and `Resolution Strategy Code`. What
+ * separates them is that the delinquency one carries `Months Delinquent` and
+ * this one does not, and that this one carries `Special Servicing Comments`.
+ * Anchoring only on the transfer date would make the parser read the same table
+ * twice and count every delinquent loan double.
  */
 interface SpecialIndex {
   prosId: number; loanId: number; transfer: number;
@@ -384,7 +383,7 @@ function locateSpecialServicing(rows: unknown[][]): SpecialIndex | null {
 
     const at = (re: RegExp) => merged.findIndex((h) => re.test(h));
 
-    // Si trae meses de atraso es el bloque de morosidad, no este.
+    // If it carries months of arrears it is the delinquency block, not this one.
     if (at(/months\s*delinquent/i) !== -1) continue;
 
     const transfer = at(/servicing\s*transfer\s*date/i);
@@ -404,13 +403,13 @@ function locateSpecialServicing(rows: unknown[][]): SpecialIndex | null {
 }
 
 /**
- * Resuelve el encabezado anclándose en la celda "Pros ID".
+ * Resolves the header by anchoring on the "Pros ID" cell.
  *
- * No se puede asumir que el encabezado esté arriba de todo: la tabla arranca con
- * el título de sección y filas en blanco. Y viene partido en tres filas, con las
- * palabras repartidas de forma que ninguna se entiende sola —"Most Recent"
- * arriba, "Fiscal NOI" abajo—. Por eso se fusionan las dos filas previas a la de
- * "Pros ID" columna por columna.
+ * The header cannot be assumed to be at the very top: the table starts with the
+ * section title and blank rows. And it comes split across three rows, with the
+ * words distributed so that none is understandable alone —"Most Recent" above,
+ * "Fiscal NOI" below. That is why the two rows before the "Pros ID" one are
+ * merged column by column.
  */
 function locateColumns(rows: unknown[][]): ColumnIndex | null {
   for (let r = 0; r < rows.length; r++) {
@@ -428,7 +427,7 @@ function locateColumns(rows: unknown[][]): ColumnIndex | null {
           const src = rows[r - back];
           if (!src) continue;
           const text = norm(src[col]);
-          // Evita repetir el mismo token cuando la fila superior lo arrastra.
+          // Avoids repeating the same token when the row above drags it along.
           if (text && !parts.includes(text)) parts.push(text);
         }
         merged.push(parts.join(" "));
@@ -437,8 +436,8 @@ function locateColumns(rows: unknown[][]): ColumnIndex | null {
       const find = (re: RegExp | undefined, exclude?: RegExp): number =>
         re === undefined ? -1 : merged.findIndex((h) => re.test(h) && !(exclude && exclude.test(h)));
 
-      // "Most Recent NOI" también matchea dentro de "Most Recent Fiscal NOI",
-      // así que el genérico excluye explícitamente al específico.
+      // "Most Recent NOI" also matches inside "Most Recent Fiscal NOI", so the
+      // generic pattern explicitly excludes the specific one.
       const fiscalNoi = find(schema.fiscal);
       const recentNoi = find(schema.recent, schema.recentExclude);
       const noiStart = find(schema.start);
@@ -462,13 +461,13 @@ function locateColumns(rows: unknown[][]): ColumnIndex | null {
 }
 
 // ---------------------------------------------------------------------------
-// Parseo de valores
+// Value parsing
 // ---------------------------------------------------------------------------
 
 /** "21,466,533.53" → 21466533.53 · "--" → null · "(1,234)" → -1234 */
 export function parseMoney(raw: unknown): number | null {
   const s = norm(raw);
-  // "Not Available" lo usa Citigroup donde Computershare pone "--".
+  // "Not Available" is what Citigroup uses where Computershare puts "--".
   if (!s || /^(-{1,2}|—|n\/?a|nap|nav|not\s+(available|applicable))$/i.test(s)) return null;
 
   const negative = /^\(.*\)$/.test(s);
@@ -483,9 +482,9 @@ export function parseMoney(raw: unknown): number | null {
 /**
  * "03/31/26" → "2026-03-31".
  *
- * Los informes usan año de dos dígitos. El pivote en 70 es la convención
- * habitual; para CMBS no hay ambigüedad real porque no existen reportes
- * anteriores a los 90.
+ * The reports use two-digit years. The pivot at 70 is the usual convention; for
+ * CMBS there is no real ambiguity because no reports exist from before the
+ * 1990s.
  */
 export function parseShortDate(raw: unknown): string | null {
   const s = norm(raw);
@@ -500,7 +499,7 @@ export function parseShortDate(raw: unknown): string | null {
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
 
   const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  // Rechaza fechas imposibles tipo 02/31.
+  // Rejects impossible dates like 02/31.
   const check = new Date(`${iso}T00:00:00Z`);
   if (Number.isNaN(check.getTime()) || check.getUTCDate() !== day) return null;
 
@@ -518,26 +517,27 @@ function daysBetween(startIso: string, endIso: string): number {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Combinación de varios meses
+// Combining several months
 // ---------------------------------------------------------------------------
 
 /**
- * Un solo informe no alcanza, y la razón es del negocio, no del parser.
+ * A single report is not enough, and the reason is the business, not the parser.
  *
- * Los prestatarios mandan el estado operativo anual entre 90 y 120 días después
- * de cerrar el ejercicio. Eso hace que el mismo préstamo aparezca distinto según
- * cuándo se mire:
+ * Borrowers send the annual operating statement between 90 and 120 days after
+ * the fiscal year closes. That makes the same loan appear differently depending
+ * on when you look:
  *
- *   informe de julio 2026 → NOI del trimestre 01/01 a 31/03 (hay que extrapolar)
- *   informe de mayo 2026  → NOI del año 2025 completo (no hay que tocar nada)
+ *   July 2026 report → NOI for the quarter 01/01 to 31/03 (needs extrapolating)
+ *   May 2026 report  → NOI for the full year 2025 (needs nothing)
  *
- * Y no todos reportan al mismo tiempo: en un informe cualquiera hay préstamos
- * con fechas y préstamos con "--", y no son siempre los mismos. Mirando varios
- * meses se recupera cobertura y se consiguen más períodos completos.
+ * And they do not all report at the same time: in any given report there are
+ * loans with dates and loans with "--", and they are not always the same ones.
+ * Looking across several months recovers coverage and yields more complete
+ * periods.
  *
- * El criterio de selección, en orden: primero año completo, después período más
- * largo, y a igualdad el que termina más tarde. Nunca se promedian períodos
- * distintos —eso mezclaría un trimestre con un año.
+ * The selection criterion, in order: full year first, then longest period, and
+ * on a tie the one ending latest. Different periods are never averaged —that
+ * would mix a quarter with a year.
  */
 export interface MergeConflict {
   loanId: string;
@@ -545,38 +545,37 @@ export interface MergeConflict {
   chosen: number;
   chosenLabel: string;
   chosenDays: number;
-  /** Valor discrepante de otro informe. */
+  /** Conflicting value from another report. */
   other: number;
   otherLabel: string;
   otherDays: number;
-  /** Cociente entre ambos, siempre ≥ 1. */
+  /** Ratio between the two, always ≥ 1. */
   ratio: number;
 }
 
-/** A partir de acá dos observaciones del mismo préstamo no pueden ser ambas ciertas. */
+/** Beyond this, two observations of the same loan cannot both be true. */
 export const CONFLICT_RATIO = 1.5;
 
 /**
- * Por qué la extrapolación quedó prohibida por defecto.
+ * Why extrapolation became forbidden by default.
  *
- * El control cruzado sobre Benchmark 2024-V7 encontró cuatro préstamos con
- * observaciones incompatibles, y los cuatro tienen un período parcial de un
- * lado:
+ * The cross-check over Benchmark 2024-V7 found four loans with incompatible
+ * observations, and all four have a partial period on one side:
  *
- *   loan  elegido          contra           ratio
- *   2     19,9M   365 días  11,7M   90 días  1.7x
- *   4     12,9M   365 días  53,1M  181 días  4.1x
- *   8      3,1M   365 días   5,4M   90 días  1.8x
- *   17    24,6M   181 días  11,1M   90 días  2.2x
+ *   loan  chosen           against          ratio
  *
- * Los tres primeros tienen un año completo que arbitra. El 17 no: los dos
- * valores son extrapolados y difieren 2.2x, así que no hay forma de saber cuál
- * es. Ese caso es el que decide la política —cuando no hay ancla, elegir es
- * inventar.
+ *   loan  chosen           against          ratio
+ *   2     19.9M   365 days  11.7M   90 days  1.7x
+ *   4     12.9M   365 days  53.1M  181 days  4.1x
+ *   8      3.1M   365 days   5.4M   90 days  1.8x
+ *   17    24.6M   181 days  11.1M   90 days  2.2x
  *
- * Con el informe de abril el 78% de los préstamos trae año completo medido. Es
- * preferible perder el 22% restante que meter ruido de esa magnitud en una
- * medición que después vamos a comparar contra un paper.
+ * The first three have a full year to arbitrate. Number 17 does not: both values
+ * are extrapolated and differ by 2.2x, so there is no way to know which is
+ * right. That case is what decides the policy —with no anchor, choosing is
+ * inventing.
+ *
+ * With the April report, 78% of loans carry a measured full year. It is
  */
 export function mergeServicerReports(
   reports: Array<{ label: string; loans: ServicerLoanFact[] }>,
@@ -584,9 +583,9 @@ export function mergeServicerReports(
 ): {
   loans: Array<ServicerLoanFact & { sourceLabel: string }>;
   perReport: Array<{ label: string; loans: number; fullYear: number; newLoans: number }>;
-  /** Mismo préstamo con NOI incompatibles entre informes. */
+  /** Same loan with incompatible NOIs across reports. */
   conflicts: MergeConflict[];
-  /** Préstamos que quedaron afuera por no tener ninguna medición de año completo. */
+  /** Loans left out for having no full-year measurement at all. */
   excludedExtrapolated: string[];
 } {
   const requireFullYear = opts.requireFullYear ?? true;
@@ -629,18 +628,18 @@ export function mergeServicerReports(
   }
 
   /**
-   * Control cruzado entre informes.
+   * Cross-check between reports.
    *
-   * El mismo préstamo aparece mes tras mes. Si dos observaciones anualizadas
-   * difieren en más de 50%, alguna está mal —y la sospechosa habitual es la
-   * extrapolada: un período parcial que en realidad no lo era, o un semestre con
-   * un ingreso no recurrente adentro.
+   * The same loan appears month after month. If two annualised observations
+   * differ by more than 50%, one of them is wrong —and the usual suspect is the
+   * extrapolated one: a partial period that was not really partial, or a half
+   * year with a non-recurring item inside.
    *
-   * Esto apareció con datos reales. Benchmark 2024-V7, préstamo 4: el informe de
-   * abril daba 53,1M anualizando un semestre, y el de julio daba 12,9M sobre
-   * doce meses medidos. Sobre un trust de 821M el primero implicaría un debt
-   * yield absurdo. La lección no es descartar la extrapolación en general, sino
-   * no creerle cuando hay una medición de año completo que la contradice.
+   * This turned up with real data. Benchmark 2024-V7, loan 4: the April report
+   * gave 53.1M annualising a half year, and the July one gave 12.9M over twelve
+   * measured months. Over an 821M trust the first would imply an absurd debt
+   * yield. The lesson is not to discard extrapolation in general, but not to
+   * believe it when there is a full-year measurement contradicting it.
    */
   const conflicts: MergeConflict[] = [];
   for (const [loanId, history] of seen) {
@@ -682,7 +681,7 @@ export function mergeServicerReports(
   return { loans, perReport, conflicts, excludedExtrapolated };
 }
 
-/** Filas de cierre de página que no son datos. */
+/** Page-footer rows that are not data. */
 function isFooterRow(row: unknown[]): boolean {
   const first = norm(row[0]);
   if (/^totals?$/i.test(first)) return true;
@@ -691,22 +690,22 @@ function isFooterRow(row: unknown[]): boolean {
 }
 
 /**
- * Los encabezados de las tablas que el parser reconoce, tal como están escritos.
+ * The headers of the tables the parser recognises, exactly as written.
  *
- * POR QUÉ EXISTE
+ * WHY IT EXISTS
  *
- * `locateColumns` busca cinco columnas —Pros ID, NOI, fechas— y descarta el
- * resto sin mirarlo. Un informe del servicer trae bastante más: estado de pago,
- * días de atraso, transferencia a special servicing, watchlist. Nunca las
- * listamos porque el parser no las necesitaba.
+ * `locateColumns` looks for five columns —Pros ID, NOI, dates— and discards the
+ * rest without looking. A servicer report carries considerably more: payment
+ * status, days in arrears, transfer to special servicing, watchlist. We never
+ * listed them because the parser did not need them.
  *
- * Esa es la misma trampa que ya nos costó dos veces en el Annex A: buscar lo que
- * esperás encontrar te deja ciego a lo que hay. Antes de escribir un parser para
- * morosidad hay que ver cómo se llaman esas columnas en cada familia de
- * administrador, no adivinarlo.
+ * That is the same trap that already cost us twice on the Annex A: looking for
+ * what you expect to find leaves you blind to what is there. Before writing a
+ * parser for delinquency you have to see what those columns are called in each
+ * administrator family, not guess.
  *
- * Devuelve el encabezado fusionado —las tres filas que el formato parte— para
- * cada tabla reconocida.
+ * It returns the merged header —the three rows the format splits— for each
+ * recognised table.
  */
 export function describeServicerHeaders(
   tables: ExtractedTable[],
@@ -736,8 +735,8 @@ export function describeServicerHeaders(
         headers.push(parts.join(" "));
       }
 
-      // Se devuelven las filas de ESTA tabla: sin eso, quien quiera mirar los
-      // valores tiene que adivinar de qué tabla salieron los encabezados.
+      // The rows of THIS table are returned: without them, anyone wanting to
+      // look at the values has to guess which table the headers came from.
       out.push({ family: schema.family, headerRow: r, headers, rows: table.rows });
       break;
     }
@@ -747,33 +746,33 @@ export function describeServicerHeaders(
 }
 
 // ---------------------------------------------------------------------------
-// Las partes del trust, de la carátula
+// The trust's parties, from the cover page
 // ---------------------------------------------------------------------------
 
 /**
- * Quién administra el trust, según la primera página del 10-D.
+ * Who administers the trust, according to the 10-D's first page.
  *
- * POR QUÉ IMPORTA
+ * WHY IT MATTERS
  *
- * El SIR por emisora dice que BANK transfiere a special servicing 4 veces menos
- * que BBCMS, ajustado por añada y perfil de apalancamiento. Eso sobrevivió cinco
- * ataques. Pero el SIR correlaciona 0,73 con la cobertura del NOI, y ya sabemos
- * que esa correlación NO puede ser causal: el numerador sale de la tabla de
- * morosidad, que pega al 97,7% y no depende del NOI.
+ * The SIR by issuer says BANK transfers to special servicing 4 times less than
+ * BBCMS, adjusted for vintage and leverage profile. That survived five attacks.
+ * But the SIR correlates 0.73 with NOI coverage, and we already know that
+ * correlation CANNOT be causal: the numerator comes from the delinquency table,
+ * which matches at 97.7% and does not depend on NOI.
  *
- * Una correlación real sin mecanismo necesita una causa común, y hay una a la
- * vista: el administrador maestro arma LAS DOS tablas. Si un administrador
- * publica el NOI sin período y además lista menos préstamos como morosos, las
- * dos cosas se mueven juntas sin causarse.
+ * A real correlation with no mechanism needs a common cause, and there is one in
+ * plain sight: the master servicer assembles BOTH tables. If one administrator
+ * publishes NOI without a period and also lists fewer loans as delinquent, the
+ * two move together without either causing the other.
  *
- * Si es eso, "BANK suscribe mejor" es en realidad "Trimont reporta distinto", y
- * el hallazgo cambia de sujeto.
+ * If that is it, "BANK underwrites better" is really "Trimont reports
+ * differently", and the finding changes its subject.
  *
- * POR QUÉ ESTA FUNCIÓN NO ADIVINA
+ * WHY THIS FUNCTION DOES NOT GUESS
  *
- * Devuelve también la fila cruda de donde sacó cada valor. Hoy construí cuatro
- * veces sobre un layout imaginado y las cuatro salió mal; el valor crudo al lado
- * del valor parseado es lo único que dejó verlo.
+ * It also returns the raw row each value came from. Today I built four times on
+ * an imagined layout and all four came out wrong; the raw value next to the
+ * parsed value is the only thing that made it visible.
  */
 export interface TrustParty {
   role: string;
@@ -790,33 +789,33 @@ const ROLES: Array<[string, RegExp]> = [
 ];
 
 /**
- * Un nombre de administrador es el de una persona jurídica.
+ * An administrator's name is that of a legal entity.
  *
- * Sin este filtro, `"Return Date"` entró como administrador maestro de una
- * emisión de BMO: una etiqueta de rol que aparece en una tabla que no es la
- * carátula, con la celda de al lado tomada como nombre. Es el mismo bicho que
- * `"Trustee Fee" → "Fee"`.
+ * Without this filter, `"Return Date"` entered as the master servicer of a BMO
+ * issuance: a role label appearing in a table that is not the cover page, with
+ * the neighbouring cell taken as the name. It is the same bug as `"Trustee Fee"
+ * → "Fee"`.
  *
- * Preferir un candidato con forma societaria es más robusto que seguir
- * agregando exclusiones de a una, porque no depende de anticipar qué texto
- * espurio va a aparecer en el próximo formato.
+ * Preferring a candidate with a corporate form is more robust than adding
+ * exclusions one at a time, because it does not depend on anticipating which
+ * spurious text will show up in the next format.
  */
-const FORMA_SOCIETARIA =
+const CORPORATE_FORM =
   /\b(LLC|L\.L\.C|N\.A\.?|National Association|Bank|Banc|Inc\.?|Incorporated|Company|Corp\.?|Corporation|Services|Servicing|Trust Co|LP|L\.P|Ltd|Advisors|Management|Capital)\b/i;
 
 /**
- * Midland aparecía como cinco cadenas distintas —"a Division of PNC Bank,
- * National Association", ", N.A.", " N.A.", y a secas— que son la misma
- * entidad. Cualquier tasa por administrador calculada sobre eso sale partida en
- * cinco celdas de n chico, que es exactamente cómo se fabrica un resultado que
- * parece ruido.
+ * Midland was appearing as five different strings —"a Division of PNC Bank,
+ * National Association", ", N.A.", " N.A.", and bare— which are the same
+ * entity. Any rate per administrator computed over that comes out split across
+ * five small-n cells, which is exactly how you manufacture a result that looks
+ * like noise.
  *
- * El canónico se aplica al escribir, no al consultar: si vive en el SQL, la
- * próxima consulta que alguien escriba no lo tiene.
+ * The canonical form is applied on write, not on query: if it lives in the SQL,
+ * the next query someone writes does not have it.
  */
-export function canonicalParty(nombre: string | null): string | null {
-  if (!nombre) return null;
-  const s = nombre.trim();
+export function canonicalParty(name: string | null): string | null {
+  if (!name) return null;
+  const s = name.trim();
   if (/midland/i.test(s)) return "Midland Loan Services";
   if (/keybank/i.test(s)) return "KeyBank N.A.";
   if (/trimont/i.test(s)) return "Trimont LLC";
@@ -833,41 +832,41 @@ export function canonicalParty(nombre: string | null): string | null {
 
 export function extractParties(tables: ExtractedTable[]): TrustParty[] {
   const out: TrustParty[] = [];
-  const vistos = new Set<string>();
+  const seen = new Set<string>();
 
   for (const table of tables) {
     for (let r = 0; r < table.rows.length; r++) {
       const row = table.rows[r]!;
       for (let c = 0; c < row.length; c++) {
-        const etiqueta = norm(row[c]);
-        if (!etiqueta) continue;
+        const label = norm(row[c]);
+        if (!label) continue;
 
         /**
-         * "Trustee Fee | 290.00" en la tabla de shortfalls hacía que el rol
-         * `trustee` saliera con nombre "Fee". El `\b` del patrón no alcanza:
-         * hay filas contables cuya etiqueta arranca con el nombre del rol.
+         * "Trustee Fee | 290.00" in the shortfalls table made the `trustee`
+         * role come out with the name "Fee". The pattern's `\b` is not enough:
+         * there are accounting rows whose label starts with the role's name.
          */
-        if (/\b(fee|advance|reimburs|expense)/i.test(etiqueta)) continue;
+        if (/\b(fee|advance|reimburs|expense)/i.test(label)) continue;
 
-        const hit = ROLES.find(([, re]) => re.test(etiqueta));
+        const hit = ROLES.find(([, re]) => re.test(label));
         if (!hit) continue;
-        const [rol] = hit;
-        if (vistos.has(rol)) continue;
+        const [role] = hit;
+        if (seen.has(role)) continue;
 
         /**
-         * El valor puede estar en la misma celda ("Master Servicer / Trimont
-         * LLC"), a la derecha, o en la fila de abajo. Se prueban en ese orden y
-         * se descarta lo que claramente no es un nombre: correos, teléfonos y
-         * la propia etiqueta repetida.
+         * The value can be in the same cell ("Master Servicer / Trimont LLC"),
+         * to the right, or in the row below. They are tried in that order and
+         * anything clearly not a name is discarded: emails, phone numbers and
+         * the label repeated.
          */
-        const candidatos: string[] = [];
-        const resto = etiqueta.replace(ROLES.find(([n]) => n === rol)![1], "").trim();
-        if (resto) candidatos.push(resto);
-        for (let k = c + 1; k < row.length; k++) candidatos.push(norm(row[k]));
-        const abajo = table.rows[r + 1];
-        if (abajo) candidatos.push(norm(abajo[c]));
+        const candidates: string[] = [];
+        const rest = label.replace(ROLES.find(([n]) => n === role)![1], "").trim();
+        if (rest) candidates.push(rest);
+        for (let k = c + 1; k < row.length; k++) candidates.push(norm(row[k]));
+        const below = table.rows[r + 1];
+        if (below) candidates.push(norm(below[c]));
 
-        const limpios = candidatos
+        const cleaned = candidates
           .map((s) => s.replace(/^[\/:\-–\s]+/, "").trim())
           .filter(
             (s) =>
@@ -877,17 +876,17 @@ export function extractParties(tables: ExtractedTable[]): TrustParty[] {
           );
 
         /**
-         * Con forma societaria primero. Si ninguno la tiene, NO se cae al
-         * primer candidato: se deja el rol sin resolver. Un `(sin dato)` es una
-         * ausencia visible; `"Return Date"` es una respuesta falsa que se cuela
-         * en la tabla cruzada y la hace ver más limpia de lo que está.
+         * Corporate form first. If none has it, it does NOT fall back to the
+         * first candidate: the role is left unresolved. A `(no data)` is a
+         * visible absence; `"Return Date"` is a false answer that slips into the
+         * cross-tab and makes it look cleaner than it is.
          */
-        const nombre = limpios.find((s) => FORMA_SOCIETARIA.test(s));
-        if (!nombre) continue;
-        vistos.add(rol);
+        const name = cleaned.find((s) => CORPORATE_FORM.test(s));
+        if (!name) continue;
+        seen.add(role);
         out.push({
-          role: rol,
-          name: (canonicalParty(nombre) ?? nombre).slice(0, 80),
+          role: role,
+          name: (canonicalParty(name) ?? name).slice(0, 80),
           raw: row.map((x) => norm(x)).filter(Boolean).join(" | ").slice(0, 120),
         });
       }
@@ -913,11 +912,11 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
   let droppedNoProsId = 0;
 
   /**
-   * La tabla de morosidad se recorre en la misma pasada.
+   * The delinquency table is walked in the same pass.
    *
-   * Es un bloque distinto del de NOI —no comparte columnas ni fila de
-   * encabezado— así que no se puede resolver con el mismo localizador. Se une
-   * después por Pros ID, igual que se unen los bloques horizontales del Annex A.
+   * It is a different block from the NOI one —it shares neither columns nor
+   * header row— so it cannot be resolved with the same locator. It is joined
+   * afterwards by Pros ID, just as the Annex A's horizontal blocks are joined.
    */
   const delinquency: ServicerDelinquencyRow[] = [];
   let delinquencyTables = 0;
@@ -930,32 +929,32 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
     }
   };
   for (const table of tables) {
-    const del = locateDelinquency(table.rows);
-    if (!del) continue;
+    const delinq = locateDelinquency(table.rows);
+    if (!delinq) continue;
     delinquencyTables++;
 
-    for (let r = del.headerRow + 1; r < table.rows.length; r++) {
+    for (let r = delinq.headerRow + 1; r < table.rows.length; r++) {
       const row = table.rows[r]!;
       if (isFooterRow(row)) continue;
 
-      const prosId = norm(row[del.prosId]);
+      const prosId = norm(row[delinq.prosId]);
       if (!prosId) continue;
       delinquencyDataRows++;
 
       /**
-       * Las notas al pie entran por la puerta del identificador.
+       * Footnotes come in through the identifier's door.
        *
-       * La columna se titula "Mortgage Loan Status¹" y al final de la tabla el
-       * documento explica el superíndice con una fila que arranca en "1". Esa
-       * fila tiene un número en la primera celda, así que `normalizeProsId` la
-       * acepta y aparece como un préstamo.
+       * The column is titled "Mortgage Loan Status¹" and at the end of the table
+       * the document explains the superscript with a row starting at "1". That
+       * row has a number in its first cell, so `normalizeProsId` accepts it and
+       * it appears as a loan.
        *
-       * En Benchmark 2024-V7 era la ÚNICA fila: el deal no tiene morosos y el
-       * parser reportaba uno. Un conteo lo daba por sano; el valor crudo
-       * —"1 Mortgage Loan Status"— lo delató.
+       * In Benchmark 2024-V7 it was the ONLY row: the deal has no delinquent
+       * loans and the parser reported one. A count called it healthy; the raw
+       * value —"1 Mortgage Loan Status"— gave it away.
        *
-       * Un Pros ID es un número con a lo sumo un sufijo corto de tramo (12A,
-       * 5-B). Dos letras seguidas son prosa.
+       * A Pros ID is a number with at most a short tranche suffix (12A,
+       * 5-B). Two letters in a row is prose.
        */
       if (/[a-z]{2,}/i.test(prosId)) {
         delinquencyDropped++;
@@ -971,28 +970,28 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
       }
 
       const cell = (i: number) => (i === -1 ? null : norm(row[i]) || null);
-      const months = parseMoney(row[del.months]);
+      const months = parseMoney(row[delinq.months]);
 
       delinquency.push({
         prosId,
         loanId,
-        paidThrough: parseShortDate(row[del.paidThrough]),
+        paidThrough: parseShortDate(row[delinq.paidThrough]),
         monthsDelinquent: months,
-        status: cell(del.status),
-        transferDate: del.transfer === -1 ? null : parseShortDate(row[del.transfer]),
+        status: cell(delinq.status),
+        transferDate: delinq.transfer === -1 ? null : parseShortDate(row[delinq.transfer]),
         foreclosureDate:
-          del.foreclosure === -1 ? null : parseShortDate(row[del.foreclosure]),
-        reoDate: del.reo === -1 ? null : parseShortDate(row[del.reo]),
+          delinq.foreclosure === -1 ? null : parseShortDate(row[delinq.foreclosure]),
+        reoDate: delinq.reo === -1 ? null : parseShortDate(row[delinq.reo]),
       });
     }
   }
 
   /**
-   * Segunda pasada: los especialmente administrados.
+   * Second pass: the specially serviced loans.
    *
-   * Va después del bloque de morosidad a propósito, porque necesita saber qué
-   * préstamos ya se contaron ahí para poder reportar cuántos aparecen SOLO acá
-   * —que es la medida de lo que el parser perdía—.
+   * It goes after the delinquency block on purpose, because it needs to know
+   * which loans were already counted there in order to report how many appear
+   * ONLY here —which is the measure of what the parser used to lose.
    */
   const specialServicing: ServicerSpecialRow[] = [];
   let specialTables = 0;
@@ -1013,7 +1012,7 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
       if (!prosId) continue;
       specialDataRows++;
 
-      // Mismo guard que en morosidad: dos letras seguidas es prosa, no un ID.
+      // Same guard as in delinquency: two letters in a row is prose, not an ID.
       if (/[a-z]{2,}/i.test(prosId)) continue;
       const loanId = normalizeProsId(prosId);
       if (!loanId) continue;
@@ -1023,8 +1022,8 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
         esp.transfer === -1 ? null : parseShortDate(row[esp.transfer]);
 
       /**
-       * Sin fecha de transferencia la fila no aporta el evento que buscamos.
-       * Puede ser una fila de continuación o un préstamo ya resuelto.
+       * Without a transfer date the row does not carry the event we are after.
+       * It may be a continuation row or an already-resolved loan.
        */
       if (!transferDate) continue;
 
@@ -1069,7 +1068,7 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
       let annualizedNoi: number | null = null;
       let isFullYear = false;
 
-      // Un valor sin par de fechas es "no reportado", no un NOI de cero.
+      // A value without a pair of dates is "not reported", not an NOI of zero.
       if (recentNoiRaw !== null && noiStart && noiEnd) {
         periodDays = daysBetween(noiStart, noiEnd);
         if (periodDays >= MIN_PERIOD_DAYS) {
@@ -1097,7 +1096,7 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
     }
   }
 
-  // --- deduplicación de tramos -------------------------------------------
+  // --- tranche deduplication ----------------------------------------------
 
   const byLoan = new Map<string, ServicerLoanRow[]>();
   for (const row of rows) {
@@ -1113,14 +1112,14 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
   for (const [loanId, group] of byLoan) {
     const distinct = [...new Set(group.map((g) => Math.round(g.annualizedNoi!)))];
     if (distinct.length > 1) {
-      // Los tramos de un mismo préstamo deberían traer el NOI de la misma
-      // propiedad. Que difieran significa que la normalización del Pros ID unió
-      // préstamos que no van juntos, o que el servicer reportó inconsistente.
+      // Tranches of the same loan should carry the NOI of the same property.
+      // Differing means the Pros ID normalisation joined loans that do not
+      // belong together, or that the servicer reported inconsistently.
       trancheConflicts.push({ loanId, values: distinct });
       continue;
     }
 
-    // Ante empate se prefiere el período más largo: menos extrapolación.
+    // On a tie the longer period is preferred: less extrapolation.
     const best = group.reduce((a, b) => ((b.periodDays ?? 0) > (a.periodDays ?? 0) ? b : a));
     loans.push({
       loanId,
@@ -1140,33 +1139,33 @@ export function parseServicerTables(tables: ExtractedTable[]): ServicerParseResu
 
   if (tablesMatched === 0) {
     issues.push(
-      'No se encontró la tabla "Mortgage Loan Detail (Part 2)". ' +
-        "Puede ser otra familia de formato: revisá el documento a mano.",
+      'The "Mortgage Loan Detail (Part 2)" table was not found. ' +
+        "It may be another format family: review the document by hand.",
     );
   }
   if (loans.length === 0 && tablesMatched > 0) {
     issues.push(
-      `Se ubicó la tabla pero ningún préstamo quedó con NOI utilizable ` +
-        `(${droppedNoDates} sin fechas, ${droppedShortPeriod} con período corto).`,
+      `The table was located but no loan was left with a usable NOI ` +
+        `(${droppedNoDates} with no dates, ${droppedShortPeriod} with a short period).`,
     );
   }
   if (trancheConflicts.length > 0) {
     issues.push(
-      `${trancheConflicts.length} préstamo(s) con tramos que reportan NOI distintos: ` +
+      `${trancheConflicts.length} loan(s) with tranches reporting different NOIs: ` +
         trancheConflicts.slice(0, 3).map((c) => c.loanId).join(", "),
     );
   }
   /**
-   * Que la mayoría venga extrapolada no es un defecto del parser sino del mes
-   * elegido: un informe de julio reporta el trimestre en curso, y uno de marzo
-   * o abril suele traer el ejercicio anterior completo. Si este aviso aparece
-   * seguido, la solución es cambiar qué filing se cosecha, no tolerar la
-   * extrapolación.
+   * That most values come extrapolated is not a defect of the parser but of the
+   * month chosen: a July report covers the current quarter, and a March or April
+   * one usually carries the previous full fiscal year. If this warning appears
+   * repeatedly, the fix is to change which filing is harvested, not to tolerate
+   * the extrapolation.
    */
   if (loans.length > 0 && fullYearShare < 0.5) {
     issues.push(
-      `Solo ${(fullYearShare * 100).toFixed(0)}% de los préstamos trae un año completo. ` +
-        "El resto se anualizó desde períodos parciales: probá un filing de otro mes.",
+      `Only ${(fullYearShare * 100).toFixed(0)}% of loans carry a full year. ` +
+        "The rest were annualised from partial periods: try a filing from another month.",
     );
   }
 
