@@ -337,7 +337,7 @@ analysis/                  archived analyses, one question each
 api/ · mcp/                the product: /comps, the UI, the MCP tool
 ```
 
-The corpus: 233 filings, 9,694 loans, 94 metrics, and 2,231 loans with actual
+The corpus: 233 filings, 9,694 loans, 101 metrics, and 2,231 loans with actual
 post-closing NOI.
 
 **Operational constraint:** I have no network access to the Anthropic API from

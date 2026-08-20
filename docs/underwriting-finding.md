@@ -131,7 +131,7 @@ the cycle is.
 It is a minor result but a real one, and it is the only one that survived
 everything.
 
-**The corpus.** 233 issuances, 9,694 loans, 94 metrics, verified against the
+**The corpus.** 233 issuances, 9,694 loans, 101 metrics, verified against the
 issuer's own arithmetic identities:
 
 | identity | closes |
