@@ -1,13 +1,14 @@
 /**
- * Convierte filas del Annex A en observations de nuestro modelo.
+ * Converts Annex A rows into observations in our model.
  *
- * Cada celda con dato se vuelve una observation con su provenance completa:
- * qué filing, qué archivo, qué fila, qué columna, y con qué header original.
- * Eso es lo que permite después contestar "¿de dónde salió este número?".
+ * Every cell with data becomes an observation with its full provenance: which
+ * filing, which file, which row, which column, and under which original header.
+ * That is what later makes it possible to answer "where did this number come
+ * from?".
  *
- * Confidence: el Annex A es un documento regulatorio auditado, así que la
- * confianza base es alta. Baja cuando el header fue ambiguo (score bajo en el
- * mapeo) o cuando el valor tuvo que ser inferido.
+ * Confidence: the Annex A is an audited regulatory document, so the base
+ * confidence is high. It drops when the header was ambiguous (a low mapping
+ * score) or when the value had to be inferred.
  */
 
 import {
@@ -20,74 +21,73 @@ import {
 import { normalizeState } from "./states.js";
 
 export interface SourceRef {
-  /** CIK del emisor. */
+  /** The issuer's CIK. */
   cik: string;
   accession: string;
   companyName: string;
   formType: string;
   filedAt: string;
-  /** Nombre del archivo Annex A dentro del filing. */
+  /** Name of the Annex A file within the filing. */
   fileName: string;
   fileUrl: string;
 }
 
 export interface HarvestedObservation {
-  /** Identificador estable derivado del filing + fila + métrica. */
+  /** Stable identifier derived from filing + row + metric. */
   id: string;
   metric_key: MetricKey;
   metric_label: string;
   unit: string;
   entity_type: "deal" | "property";
-  /** Índice de la fila dentro del Annex A, 0-based sobre las filas de datos. */
+  /** Index of the row within the Annex A, 0-based over the data rows. */
   row_index: number;
   value: string;
-  /** El texto crudo de la celda, antes de parsear. */
+  /** The raw text of the cell, before parsing. */
   raw_value: string;
   confidence: number;
-  /** Header original de la columna — clave para auditar el mapeo. */
+  /** The column's original header — the key to auditing the mapping. */
   source_header: string;
   source_column_index: number;
   source: SourceRef;
 }
 
 /**
- * Una celda de una columna que el mapeo no supo interpretar.
+ * A cell from a column the mapping could not interpret.
  *
- * POR QUÉ GUARDAR LO QUE NO ENTENDEMOS
+ * WHY STORE WHAT WE DO NOT UNDERSTAND
  *
- * Cuando una identidad no cierra, la aritmética ya dice cuánto tendría que valer
- * el número que falta: si el debt yield publicado es 13,7% y el NOI 97,1M, el
- * saldo tiene que ser 708.777.715. Lo que faltaba era saber de qué columna
- * sacarlo, y eso lo venía haciendo un humano leyendo ochenta y siete
- * encabezados y adivinando cuál podía ser.
+ * When an identity does not close, the arithmetic already says what the missing
+ * number would have to be: if the published debt yield is 13.7% and the NOI
+ * 97.1M, the balance has to be 708,777,715. What was missing was knowing which
+ * column to take it from, and that was being done by a human reading eighty-seven
+ * headers and guessing which one it could be.
  *
- * Con la celda guardada la pregunta es una comparación: qué columna de ESTA
- * MISMA FILA vale 708.777.715. La respuesta no es una hipótesis sobre lo que el
- * encabezado quiere decir, es una coincidencia numérica.
+ * With the cell stored, the question becomes a comparison: which column of THIS
+ * SAME ROW is worth 708,777,715. The answer is not a hypothesis about what the
+ * header means, it is a numeric match.
  *
- * Solo se guardan las celdas que parsean como número. El resto —fechas,
- * descripciones, notas al pie— no sirve para reconciliar y multiplicaría la
- * tabla por tres.
+ * Only cells that parse as a number are stored. The rest —dates, descriptions,
+ * footnotes— are no use for reconciling and would triple the size of the table.
  */
 export interface UnmappedCell {
   header: string;
   columnIndex: number;
   raw: string;
-  /** Solo si la celda parsea como número; si no, la celda no se guarda. */
+  /** Only if the cell parses as a number; otherwise the cell is not stored. */
   value: number;
 }
 
-/** Solo el tipo: se borra al compilar, así que el ciclo con toProperties no existe en runtime. */
+/** Type only: erased at compile time, so the cycle with toProperties does not exist at runtime. */
 import type { HarvestedPropertyRow } from "./toProperties.js";
 
 export interface HarvestedProperty {
-  /** Clave estable: accession + índice de fila. */
+  /** Stable key: accession + row index. */
   key: string;
   row_index: number;
   observations: HarvestedObservation[];
-  /** Celdas numéricas de columnas sin mapear, para el reconciliador. */
+  /** Numeric cells from unmapped columns, for the reconciler. */
   unmappedCells: UnmappedCell[];
-  /** Atajo a los campos de texto, para poder listar sin recorrer observations. */
+  /** Shortcut to the text fields, so they can be listed without walking observations. */
   label: {
     property_name: string | null;
     address: string | null;
@@ -105,26 +105,28 @@ export interface HarvestResult {
   columnsUnmapped: string[];
   properties: HarvestedProperty[];
   /**
-   * Las filas de propiedad normalizadas, que antes se descartaban.
+   * The normalised property rows, which used to be discarded.
    *
-   * Lo llena quien cosecha —`toProperties` necesita las filas crudas y acá ya no
-   * están— así que es opcional: un llamador que no lo complete sigue andando.
+   * Filled in by whoever harvests —`toProperties` needs the raw rows and they are
+   * no longer here— so it is optional: a caller that does not populate it still
+   * works.
    */
   propertyRows?: HarvestedPropertyRow[];
   stats: {
     dataRows: number;
     propertiesKept: number;
     observations: number;
-    /** Filas descartadas por no tener ningún dato útil. */
+    /** Rows discarded for having no useful data at all. */
     rowsSkipped: number;
     /**
-     * Filas de propiedad descartadas ANTES de llegar acá, por `keepLoanRows`.
+     * Property rows discarded BEFORE reaching here, by `keepLoanRows`.
      *
-     * Lo llena quien cosecha, porque el filtro corre antes de esta función y desde
-     * acá el dato ya no existe. Va en stats igual porque es la única forma de saber
-     * cuánta geografía estamos tirando sin volver a bajar los documentos.
+     * Filled in by whoever harvests, because the filter runs before this function
+     * and from here the datum no longer exists. It goes in stats anyway because it
+     * is the only way to know how much geography we are throwing away without
+     * downloading the documents again.
      *
-     * Opcional: las 233 emisiones ya cosechadas no lo tienen.
+     * Optional: the 233 issuances already harvested do not have it.
      */
     propertyRowsDropped?: number;
     coverageByMetric: Record<string, number>;
@@ -132,37 +134,38 @@ export interface HarvestResult {
 }
 
 /**
- * Reinterpreta `Number of Units` según `Unit of Measure`.
+ * Reinterprets `Number of Units` according to `Unit of Measure`.
  *
- * DESCUBIERTO CON DATOS REALES
+ * DISCOVERED WITH REAL DATA
  *
- * Un Annex A no tiene columnas separadas para unidades y superficie: tiene una
- * sola, `Number of Units`, más `Unit of Measure` que dice qué se está contando.
+ * An Annex A does not have separate columns for units and area: it has a single
+ * one, `Number of Units`, plus `Unit of Measure` saying what is being counted.
  *
  *   Ventana Residences   193      Units
  *   TheWit Chicago       310      Rooms
- *   Portfolio industrial 425,000  SF     ← esto NO son 425.000 unidades
+ *   Industrial portfolio 425,000  SF     ← this is NOT 425,000 units
  *
- * Sin este paso, un galpón entra al Index como una propiedad de 425.000
- * unidades. `checkSanity` lo detectaba —"4 propiedades con >5000 unidades"—
- * pero el diagnóstico apuntaba al mapeo de columnas, que estaba bien: el
- * problema era semántico.
+ * Without this step, a warehouse enters the Index as a property with 425,000
+ * units. `checkSanity` was detecting it —"4 properties with >5000 units"— but
+ * the diagnosis pointed at the column mapping, which was fine: the problem was
+ * semantic.
  *
- * Rooms, Keys, Pads y Beds sí son unidades contables y se dejan como están; el
- * `unit_of_measure` queda guardado aparte para que un analista sepa qué son.
+ * Rooms, Keys, Pads and Beds are countable units and are left as they are; the
+ * `unit_of_measure` is stored separately so an analyst knows what they are.
  */
 const AREA_MEASURES = /^(sf|sq\.?\s*ft\.?|square\s*feet|nra|gla|acres?)$/i;
 
 /**
- * El número de una celda cruda, o null si no es un número.
+ * The number in a raw cell, or null if it is not a number.
  *
- * Deliberadamente NO usa `parseValue`: esa función interpreta según la unidad de
- * la métrica —convierte porcentajes a fracción, quita el sufijo "x" de los
- * ratios— y acá no hay métrica, justamente. Queremos la magnitud tal como está
- * impresa, para poder compararla contra un valor implícito.
+ * Deliberately does NOT use `parseValue`: that function interprets according to
+ * the metric's unit —converting percentages to fractions, stripping the "x"
+ * suffix from ratios— and here there is no metric, precisely. We want the
+ * magnitude exactly as printed, so it can be compared against an implied value.
  *
- * Rechaza los números con espacio interno por la misma razón que `parseValue`:
- * "48 5%" en Benchmark 2020-B16 puede ser 48,5 o 485 y repararlo sería adivinar.
+ * It rejects numbers with an internal space for the same reason `parseValue`
+ * does: "48 5%" in Benchmark 2020-B16 could be 48.5 or 485, and repairing it
+ * would be guessing.
  */
 function numericCell(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
@@ -194,21 +197,21 @@ function routeByUnitOfMeasure(observations: HarvestedObservation[]): void {
 
   if (hasOwnSquareFeet) {
     /**
-     * El Annex trae además columnas de superficie propias.
+     * The Annex also carries its own dedicated area columns.
      *
-     * Acá NO alcanza con "no tocar nada": el valor sigue guardado como `units`,
-     * y una propiedad con 425.000 unidades contamina cualquier comparación.
-     * Como ya tenemos la superficie de una columna dedicada, lo correcto es
-     * descartar este valor en vez de duplicarlo.
+     * Here "touch nothing" is NOT enough: the value stays stored as `units`, and
+     * a property with 425,000 units contaminates any comparison. Since we
+     * already have the area from a dedicated column, the right thing is to
+     * discard this value rather than duplicate it.
      *
-     * Fue el último aviso que quedaba en pie con datos reales: 11 de 32
-     * préstamos del pool de Wells Fargo.
+     * It was the last warning still standing against real data: 11 of the 32
+     * loans in the Wells Fargo pool.
      */
     observations.splice(unitsIdx, 1);
     return;
   }
 
-  // Sin columna de superficie dedicada: este valor ES la superficie.
+  // No dedicated area column: this value IS the area.
   const units = observations[unitsIdx]!;
   units.metric_key = "square_feet";
   units.metric_label = "Square Feet";
@@ -217,15 +220,15 @@ function routeByUnitOfMeasure(observations: HarvestedObservation[]): void {
 }
 
 /**
- * Confidence base de una observation.
+ * Base confidence of an observation.
  *
- * El Annex A es información regulatoria, así que arrancamos alto. Lo que baja
- * la confianza no es la fuente sino nuestra interpretación: si el header
- * matcheó flojo, puede que hayamos mapeado la columna equivocada.
+ * The Annex A is regulatory information, so we start high. What lowers the
+ * confidence is not the source but our interpretation: if the header matched
+ * weakly, we may have mapped the wrong column.
  */
 function confidenceFor(match: ColumnMatch): number {
   const base = 0.95;
-  // score 1.0 → sin penalidad; score 0.6 → -0.12
+  // score 1.0 → no penalty; score 0.6 → -0.12
   const penalty = (1 - match.score) * 0.3;
   return Number(Math.max(base - penalty, 0.5).toFixed(3));
 }
@@ -286,15 +289,14 @@ export function rowsToObservations(
       });
     }
 
-    // Una fila con casi nada suele ser un separador o basura.
+    // A row with almost nothing is usually a separator or junk.
     if (observations.length < minPerRow) {
       rowsSkipped++;
       return;
     }
 
-    // Las filas de agregación (TOTAL, AVERAGE, WTD AVG) traen suficientes
-    // números como para pasar el filtro por cantidad, así que hay que
-    // reconocerlas por su etiqueta.
+    // Aggregation rows (TOTAL, AVERAGE, WTD AVG) carry enough numbers to pass
+    // the count filter, so they have to be recognised by their label.
     const textValues = observations
       .filter((o) => o.unit === "text")
       .map((o) => o.value);
@@ -323,13 +325,13 @@ export function rowsToObservations(
         address: textOf("address"),
         city: textOf("city"),
         /**
-         * El estado se normaliza a código de dos letras acá y no en la consulta.
+         * The state is normalised to a two-letter code here and not in the query.
          *
-         * Algunos emisores publican "New York" y otros "NY". Guardar el texto
-         * crudo dejó 795 préstamos invisibles para /comps, que filtra por código
-         * —el 8% del corpus, sin dejar rastro, porque un filtro que no matchea no
-         * se queja—. Normalizar al escribir es la única forma de que una consulta
-         * escrita después no tenga que saber de esto.
+         * Some issuers publish "New York" and others "NY". Storing the raw text
+         * left 795 loans invisible to /comps, which filters by code —8% of the
+         * corpus, without a trace, because a filter that does not match does not
+         * complain. Normalising on write is the only way for a query written
+         * later not to have to know about this.
          */
         state: normalizeState(textOf("state")),
         property_type: textOf("property_type"),
@@ -359,12 +361,12 @@ export function rowsToObservations(
 }
 
 /**
- * Chequeos de sanidad sobre lo cosechado.
+ * Sanity checks on what was harvested.
  *
- * Sin esto no sabés si el mapeo salió bien: una columna mal mapeada produce
- * datos que parecen válidos pero están mal. Estas reglas atrapan los errores
- * más comunes —confundir NOI con loan amount, ocupancia con porcentajes ya
- * divididos, unidades con metros cuadrados.
+ * Without these you do not know whether the mapping came out right: a
+ * mis-mapped column produces data that looks valid and is wrong. These rules
+ * catch the most common errors —confusing NOI with loan amount, occupancy with
+ * already-divided percentages, units with square feet.
  */
 export interface SanityIssue {
   severity: "error" | "warning";
@@ -394,49 +396,49 @@ export function checkSanity(result: HarvestResult): SanityIssue[] {
     return s[Math.floor(s.length / 2)]!;
   };
 
-  // Ocupancia tiene que quedar en 0-1 tras el parseo.
+  // Occupancy has to end up in 0-1 after parsing.
   const occ = nums("occupancy");
   const badOcc = occ.filter((v) => v < 0 || v > 1);
   if (badOcc.length > 0) {
     issues.push({
       severity: "error",
       metric: "occupancy",
-      message: `${badOcc.length} valores fuera de 0-1 — el parseo de porcentaje falló`,
+      message: `${badOcc.length} values outside 0-1 — percentage parsing failed`,
       sampleValues: badOcc.slice(0, 5).map(String),
     });
   }
 
-  // LTV típico de CMBS: 0.3-0.85. Fuera de eso, sospechá del mapeo.
+  // Typical CMBS LTV: 0.3-0.85. Outside that, suspect the mapping.
   const ltv = nums("ltv");
   const badLtv = ltv.filter((v) => v <= 0 || v > 1.2);
   if (badLtv.length > ltv.length * 0.1 && badLtv.length > 0) {
     issues.push({
       severity: "warning",
       metric: "ltv",
-      message: `${badLtv.length}/${ltv.length} LTV fuera de rango razonable`,
+      message: `${badLtv.length}/${ltv.length} LTV outside a reasonable range`,
       sampleValues: badLtv.slice(0, 5).map(String),
     });
   }
 
-  // DSCR de CMBS: casi siempre 0.8-4.0.
+  // CMBS DSCR: almost always 0.8-4.0.
   const dscr = nums("dscr");
   const badDscr = dscr.filter((v) => v <= 0 || v > 10);
   if (badDscr.length > 0) {
     issues.push({
       severity: "warning",
       metric: "dscr",
-      message: `${badDscr.length} DSCR fuera de 0-10 — puede estar mapeado a otra columna`,
+      message: `${badDscr.length} DSCR outside 0-10 — it may be mapped to another column`,
       sampleValues: badDscr.slice(0, 5).map(String),
     });
   }
 
   /**
-   * Un valor que aparece repetido en decenas de préstamos delata desalineación.
+   * A value repeated across dozens of loans gives misalignment away.
    *
-   * Métricas continuas como NOI, tasa o balance son prácticamente únicas por
-   * préstamo. Si el mismo número se repite en muchas filas, lo más probable es
-   * que la columna venga de otro bloque: en BANK 2026-BNK52, `interest_rate`
-   * traía "360" y "480" repetidos —plazos de amortización en meses.
+   * Continuous metrics like NOI, rate or balance are practically unique per
+   * loan. If the same number repeats across many rows, the column most likely
+   * comes from another block: in BANK 2026-BNK52, `interest_rate` carried "360"
+   * and "480" repeatedly —amortisation terms in months.
    */
   const CONTINUOUS: MetricKey[] = [
     "interest_rate", "noi_underwritten", "loan_amount", "appraised_value",
@@ -456,23 +458,23 @@ export function checkSanity(result: HarvestResult): SanityIssue[] {
         severity: "error",
         metric: key,
         message:
-          `el valor "${topValue}" se repite en ${topCount} de ${values.length} préstamos ` +
-          `(${Math.round(share * 100)}%) — una métrica continua no se repite así, ` +
-          `probablemente la columna esté desalineada`,
+          `the value "${topValue}" repeats in ${topCount} of ${values.length} loans ` +
+          `(${Math.round(share * 100)}%) — a continuous metric does not repeat like that, ` +
+          `the column is probably misaligned`,
         sampleValues: [topValue],
       });
     }
   }
 
   /**
-   * Tasa de interés fuera de rango plausible.
+   * Interest rate outside a plausible range.
    *
-   * Este chequeo faltaba y costó caro: un análisis de series temporales dio
-   * medianas trimestrales de 84% y 0% para la tasa de un pool de multifamily.
-   * Cada valor suelto parecía un porcentaje válido, así que ningún otro control
-   * lo detectó — pero una hipoteca comercial al 84% no existe.
+   * This check was missing and it cost dearly: a time-series analysis gave
+   * quarterly medians of 84% and 0% for the rate of a multifamily pool. Each
+   * loose value looked like a valid percentage, so no other control caught it —
+   * but an 84% commercial mortgage does not exist.
    *
-   * Rango: entre 1% y 20%. Fuera de ahí no es una tasa de préstamo comercial.
+   * Range: between 1% and 20%. Outside that it is not a commercial loan rate.
    */
   const rates = nums("interest_rate");
   const badRates = rates.filter((v) => v < 0.01 || v > 0.20);
@@ -482,25 +484,25 @@ export function checkSanity(result: HarvestResult): SanityIssue[] {
       severity: share > 0.2 ? "error" : "warning",
       metric: "interest_rate",
       message:
-        `${badRates.length}/${rates.length} tasas fuera de 1%-20% — ` +
-        `una hipoteca comercial no cotiza ahí, revisá qué columna se mapeó`,
+        `${badRates.length}/${rates.length} rates outside 1%-20% — ` +
+        `a commercial mortgage does not price there, check which column was mapped`,
       sampleValues: badRates.slice(0, 5).map((v) => `${(v * 100).toFixed(2)}%`),
     });
   }
 
-  // Cap rate: entre 2% y 15% en cualquier mercado y tipo de activo.
+  // Cap rate: between 2% and 15% in any market and asset type.
   const caps = nums("cap_rate");
   const badCaps = caps.filter((v) => v < 0.02 || v > 0.15);
   if (badCaps.length > 0) {
     issues.push({
       severity: "warning",
       metric: "cap_rate",
-      message: `${badCaps.length} cap rates fuera de 2%-15%`,
+      message: `${badCaps.length} cap rates outside 2%-15%`,
       sampleValues: badCaps.slice(0, 5).map((v) => `${(v * 100).toFixed(2)}%`),
     });
   }
 
-  // NOI debería ser menor que el loan amount en la mayoría de los casos.
+  // NOI should be smaller than the loan amount in most cases.
   const noiMed = median(nums("noi_underwritten"));
   const loanMed = median(nums("loan_amount"));
   if (noiMed !== null && loanMed !== null && noiMed > loanMed) {
@@ -508,31 +510,31 @@ export function checkSanity(result: HarvestResult): SanityIssue[] {
       severity: "error",
       metric: "noi_underwritten",
       message:
-        `la mediana de NOI (${noiMed.toLocaleString()}) supera la de loan amount ` +
-        `(${loanMed.toLocaleString()}) — casi seguro están las columnas cruzadas`,
+        `the median NOI (${noiMed.toLocaleString()}) exceeds the median loan amount ` +
+        `(${loanMed.toLocaleString()}) — the columns are almost certainly crossed`,
       sampleValues: [],
     });
   }
 
-  // Unidades: un activo con 50.000 "unidades" es metros cuadrados mal mapeados.
+  // Units: an asset with 50,000 "units" is square feet mis-mapped.
   const units = nums("units");
   const hugeUnits = units.filter((v) => v > 5000);
   if (hugeUnits.length > units.length * 0.2 && hugeUnits.length > 0) {
     issues.push({
       severity: "warning",
       metric: "units",
-      message: `${hugeUnits.length} propiedades con >5000 unidades — puede ser square feet mal mapeado`,
+      message: `${hugeUnits.length} properties with >5000 units — may be square feet mis-mapped`,
       sampleValues: hugeUnits.slice(0, 5).map(String),
     });
   }
 
   /**
-   * Cobertura de los conceptos centrales.
+   * Coverage of the core concepts.
    *
-   * Se evalúan por CONCEPTO, no por métrica: un Annex A puede publicar solo
-   * ocupancia económica, o solo NOI underwritten sin histórico. Alcanza con que
-   * alguna variante del concepto esté presente. Avisar por cada variante
-   * ausente generaría ruido en cada corrida y terminaría ignorándose.
+   * They are evaluated by CONCEPT, not by metric: an Annex A may publish only
+   * economic occupancy, or only underwritten NOI with no trailing figure. It is
+   * enough for some variant of the concept to be present. Warning about each
+   * absent variant would generate noise on every run and end up ignored.
    */
   const coreConcepts: Array<{ label: string; keys: MetricKey[] }> = [
     { label: "NOI", keys: ["noi_underwritten", "noi_most_recent"] },
@@ -552,8 +554,8 @@ export function checkSanity(result: HarvestResult): SanityIssue[] {
         severity: "warning",
         metric: concept.label,
         message:
-          `solo ${Math.round(pct * 100)}% de las filas tienen este concepto ` +
-          `(${variants}) — revisá el mapeo de columnas`,
+          `only ${Math.round(pct * 100)}% of rows have this concept ` +
+          `(${variants}) — check the column mapping`,
         sampleValues: [],
       });
     }
