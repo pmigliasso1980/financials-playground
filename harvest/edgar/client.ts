@@ -1,24 +1,24 @@
 /**
- * Cliente HTTP para SEC EDGAR.
+ * HTTP client for SEC EDGAR.
  *
- * SEC tiene reglas de acceso programático que no son opcionales: si no las
- * respetás te bloquean la IP. Las dos que importan:
+ * The SEC has programmatic access rules that are not optional: ignore them and
+ * they block your IP. The two that matter:
  *
- *   1. User-Agent con nombre y email de contacto reales. Un UA genérico
- *      (curl, node-fetch, axios) devuelve 403.
- *   2. Máximo 10 requests por segundo.
+ *   1. A User-Agent with a real name and contact email. A generic UA
+ *      (curl, node-fetch, axios) returns 403.
+ *   2. A maximum of 10 requests per second.
  *
  * Fuente: https://www.sec.gov/os/webmaster-faq#developers
  *
- * Este cliente exige el UA por variable de entorno y limita a 8 req/s con
- * margen. No hay forma de saltearlo — es a propósito.
+ * This client requires the UA via environment variable and caps at 8 req/s for
+ * margin. There is no way around it — on purpose.
  */
 
-// Puebla process.env desde .env antes de que nadie lea la configuración.
-// Import por efecto lateral: los imports de ESM se evalúan antes que el cuerpo.
+// Populates process.env from .env before anyone reads configuration.
+// Imported for its side effect: ESM imports are evaluated before the body.
 import "../env.js";
 
-const SEC_MAX_RPS = 8; // el límite real es 10; dejamos aire
+const SEC_MAX_RPS = 8; // the real limit is 10; we leave room
 const MIN_INTERVAL_MS = 1000 / SEC_MAX_RPS;
 
 let lastRequestAt = 0;
@@ -35,31 +35,32 @@ export class EdgarError extends Error {
 }
 
 /**
- * SEC exige identificarse. Poné algo como:
- *   export SEC_USER_AGENT="Pablo Migliasso pablo@ejemplo.com"
+ * The SEC requires you to identify yourself. Set something like:
+ *   export SEC_USER_AGENT="Pablo Migliasso pablo@example.com"
  */
 export function getUserAgent(): string {
   const ua = process.env.SEC_USER_AGENT?.trim();
 
   if (!ua) {
     throw new Error(
-      "Falta SEC_USER_AGENT.\n\n" +
-        "No es una credencial: EDGAR es público y gratis, no hay cuenta ni API key.\n" +
-        "La SEC exige que todo cliente automatizado se identifique con nombre y email\n" +
-        "en el header User-Agent, para poder avisarte si tu script se descontrola en\n" +
-        "vez de bloquear el rango de IPs entero. Sin eso devuelven 403.\n\n" +
-        "Ponelo en .env, que persiste entre terminales:\n\n" +
-        '  SEC_USER_AGENT="Tu Nombre tu@email.com"\n\n' +
-        "o exportalo solo para esta sesión:\n\n" +
-        '  export SEC_USER_AGENT="Tu Nombre tu@email.com"\n\n' +
-        "Ver https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data",
+      "SEC_USER_AGENT is missing.\n\n" +
+        "It is not a credential: EDGAR is public and free, there is no account and\n" +
+        "no API key. The SEC requires every automated client to identify itself with\n" +
+        "a name and email in the User-Agent header, so they can warn you if your\n" +
+        "script misbehaves rather than blocking the whole IP range. Without it they\n" +
+        "return 403.\n\n" +
+        "Put it in .env, which persists across terminals:\n\n" +
+        '  SEC_USER_AGENT="Your Name you@email.com"\n\n' +
+        "or export it for this session only:\n\n" +
+        '  export SEC_USER_AGENT="Your Name you@email.com"\n\n' +
+        "See https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data",
     );
   }
 
-  // Chequeo laxo: que tenga pinta de "algo <espacio> algo@algo".
+  // Loose check: it should look like "something <space> something@something".
   if (!/\S+@\S+\.\S+/.test(ua)) {
     throw new Error(
-      `SEC_USER_AGENT="${ua}" no incluye un email.\n` +
+      `SEC_USER_AGENT="${ua}" does not include an email.\n` +
         'SEC quiere un contacto real, ej: "Pablo Migliasso pablo@ejemplo.com"',
     );
   }
@@ -67,7 +68,7 @@ export function getUserAgent(): string {
   return ua;
 }
 
-/** Espacia las requests para no pasar el límite de SEC. */
+/** Spaces out requests so as not to exceed the SEC limit. */
 async function throttle(): Promise<void> {
   const now = Date.now();
   const elapsed = now - lastRequestAt;
@@ -103,7 +104,7 @@ async function request(url: string, opts: FetchOptions = {}): Promise<Response> 
       });
     } catch (err) {
       if (attempt === maxRetries) {
-        throw new EdgarError(0, url, `error de red: ${err instanceof Error ? err.message : String(err)}`);
+        throw new EdgarError(0, url, `network error: ${err instanceof Error ? err.message : String(err)}`);
       }
       await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
       continue;
@@ -111,13 +112,13 @@ async function request(url: string, opts: FetchOptions = {}): Promise<Response> 
 
     if (res.ok) return res;
 
-    // 403 casi siempre es el User-Agent, no un permiso.
+    // A 403 is almost always the User-Agent, not a permission.
     if (res.status === 403) {
       throw new EdgarError(
         403,
         url,
-        "SEC devolvió 403. Casi siempre es el User-Agent: tiene que incluir " +
-          `nombre y email reales. El tuyo es "${userAgent}".`,
+        "The SEC returned 403. It is almost always the User-Agent: it has to include " +
+          `a real name and email. Yours is "${userAgent}".`,
       );
     }
 
@@ -130,7 +131,7 @@ async function request(url: string, opts: FetchOptions = {}): Promise<Response> 
       throw new EdgarError(res.status, url, `HTTP ${res.status} ${res.statusText}`);
     }
 
-    // SEC manda Retry-After en algunos 429.
+    // The SEC sends Retry-After on some 429s.
     const retryAfter = Number(res.headers.get("retry-after"));
     const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
       ? retryAfter * 1000
@@ -138,7 +139,7 @@ async function request(url: string, opts: FetchOptions = {}): Promise<Response> 
     await new Promise((r) => setTimeout(r, waitMs));
   }
 
-  throw new EdgarError(0, url, "se agotaron los reintentos");
+  throw new EdgarError(0, url, "retries exhausted");
 }
 
 export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promise<T> {
@@ -156,7 +157,7 @@ export async function fetchBuffer(url: string, opts: FetchOptions = {}): Promise
   return Buffer.from(await res.arrayBuffer());
 }
 
-/** Chequeo rápido de conectividad y User-Agent antes de una corrida larga. */
+/** Quick connectivity and User-Agent check before a long run. */
 export async function preflight(): Promise<{ ok: boolean; message: string }> {
   try {
     getUserAgent();
@@ -165,7 +166,7 @@ export async function preflight(): Promise<{ ok: boolean; message: string }> {
   }
 
   try {
-    // Endpoint chico y estable.
+    // Small, stable endpoint.
     await fetchJson("https://www.sec.gov/files/company_tickers.json", { maxRetries: 1, timeoutMs: 15_000 });
     return { ok: true, message: `EDGAR alcanzable, User-Agent aceptado (${getUserAgent()})` };
   } catch (err) {

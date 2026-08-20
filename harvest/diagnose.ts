@@ -1,23 +1,23 @@
 /**
- * Diagnóstico de los trusts que no se pudieron cosechar.
+ * Diagnosis of the trusts that could not be harvested.
  *
  *   npm run harvest:diagnose -- --cik 2109197,2138709,2145996
  *   npm run harvest:diagnose -- --failed
  *
- * Con `--failed` toma los CIKs que aparecieron en la búsqueda pero no están en
- * el corpus, o sea los que fallaron en el último lote.
+ * With `--failed` it takes the CIKs that appeared in the search but are not in
+ * the corpus, that is, the ones that failed in the last batch.
  *
- * PARA QUÉ
+ * WHAT FOR
  *
- * En una corrida de 100 trusts fallaron 29 con "sin Annex A identificable". Eso
- * puede significar dos cosas muy distintas:
+ * In a run of 100 trusts, 29 failed with "no identifiable Annex A". That can
+ * mean two very different things:
  *
- *   a) el deal genuinamente no publica un Annex A tabular
- *   b) lo publica con un nombre que nuestros patrones no reconocen
+ *   a) the deal genuinely does not publish a tabular Annex A
+ *   b) it publishes one under a name our patterns do not recognise
  *
- * La diferencia importa: (a) es un límite del universo, (b) es trabajo pendiente
- * y un tercio del corpus. Este comando muestra los documentos grandes de cada
- * trust fallido para poder distinguirlas de un vistazo.
+ * The difference matters: (a) is a limit of the universe, (b) is pending work
+ * and a third of the corpus. This command shows the large documents of each
+ * failed trust so the two can be told apart at a glance.
  */
 
 import { EdgarError } from "./edgar/client.js";
@@ -41,7 +41,7 @@ if (cikArg) {
   const { rows } = await query<{ cik: string }>("SELECT DISTINCT cik FROM corpus.filings");
   const inCorpus = new Set(rows.map((r) => r.cik));
 
-  console.log("\nBuscando trusts para comparar con el corpus...");
+  console.log("\nSearching for trusts to compare against the corpus...");
   const found = new Map<string, string>();
   for (const q of [
     '"Commercial Mortgage Trust"',
@@ -59,10 +59,10 @@ if (cikArg) {
     }
   }
   ciks = [...found.keys()].filter((c) => !inCorpus.has(c));
-  console.log(`  ${found.size} encontrados · ${ciks.length} fuera del corpus\n`);
+  console.log(`  ${found.size} found · ${ciks.length} outside the corpus\n`);
 } else {
   console.log(`
-Diagnóstico de trusts sin Annex A identificable.
+Diagnosis of trusts with no identifiable Annex A.
 
   npm run harvest:diagnose -- --cik 2109197,2138709
   npm run harvest:diagnose -- --failed
@@ -71,7 +71,7 @@ Diagnóstico de trusts sin Annex A identificable.
 }
 
 if (ciks.length === 0) {
-  console.log("  Nada que diagnosticar.\n");
+  console.log("  Nothing to diagnose.\n");
   await closePool();
   process.exit(0);
 }
@@ -81,11 +81,11 @@ if (ciks.length === 0) {
 interface Finding {
   cik: string;
   company: string;
-  /** El mejor candidato según el scoring actual. */
+  /** The best candidate according to the current scoring. */
   best: { document: string; description: string; size: number; score: number } | null;
-  /** Documentos grandes que podrían ser el Annex y no llegan al umbral. */
+  /** Large documents that could be the Annex and do not reach the threshold. */
   candidates: Array<{ document: string; description: string; size: number; score: number }>;
-  /** Si no hay ningún documento grande, el deal probablemente no publica Annex. */
+  /** If there is no large document at all, the deal probably publishes no Annex. */
   hasLargeDocuments: boolean;
 }
 
@@ -139,25 +139,25 @@ const withCandidates = findings.filter((f) => !f.best && f.hasLargeDocuments);
 const genuinelyEmpty = findings.filter((f) => !f.best && !f.hasLargeDocuments);
 
 console.log(`\n${"═".repeat(76)}`);
-console.log(`Diagnóstico · ${findings.length} trusts`);
+console.log(`Diagnosis · ${findings.length} trusts`);
 console.log(`${"═".repeat(76)}\n`);
 
 if (nowResolved.length > 0) {
   console.log(
-    `\x1b[32m${nowResolved.length} ya se resuelven\x1b[0m con el scoring actual — recosechá con harvest:batch\n`,
+    `\x1b[32m${nowResolved.length} now resolve\x1b[0m with the current scoring — re-harvest with harvest:batch\n`,
   );
   for (const f of nowResolved.slice(0, 10)) {
     console.log(
       `  cik ${f.cik.padEnd(9)} ${f.best!.document.padEnd(30)} ${fmtBytes(f.best!.size).padStart(9)}  score ${f.best!.score.toFixed(2)}`,
     );
   }
-  if (nowResolved.length > 10) console.log(`  \x1b[90m… y ${nowResolved.length - 10} más\x1b[0m`);
+  if (nowResolved.length > 10) console.log(`  \x1b[90m… and ${nowResolved.length - 10} more\x1b[0m`);
   console.log();
 }
 
 if (withCandidates.length > 0) {
   console.log(
-    `\x1b[33m${withCandidates.length} tienen documentos grandes sin reconocer\x1b[0m — probablemente sea formato, no ausencia\n`,
+    `\x1b[33m${withCandidates.length} have large unrecognised documents\x1b[0m — probably format, not absence\n`,
   );
   for (const f of withCandidates.slice(0, 15)) {
     console.log(`  cik ${f.cik}`);
@@ -168,9 +168,9 @@ if (withCandidates.length > 0) {
       );
     }
   }
-  if (withCandidates.length > 15) console.log(`\n  \x1b[90m… y ${withCandidates.length - 15} más\x1b[0m`);
+  if (withCandidates.length > 15) console.log(`\n  \x1b[90m… and ${withCandidates.length - 15} more\x1b[0m`);
 
-  // Los sufijos repetidos revelan la convención de nombres de cada emisor.
+  // Repeated suffixes reveal each issuer's naming convention.
   const suffixes = new Map<string, number>();
   for (const f of withCandidates) {
     for (const c of f.candidates) {
@@ -180,28 +180,28 @@ if (withCandidates.length > 0) {
   }
   const top = [...suffixes].sort((a, b) => b[1] - a[1]).slice(0, 10);
   if (top.length > 0) {
-    console.log(`\n  Sufijos más frecuentes entre los no reconocidos:`);
+    console.log(`\n  Most frequent suffixes among the unrecognised:`);
     for (const [suffix, count] of top) {
       console.log(`    ${String(count).padStart(3)}×  …-${suffix}`);
     }
     console.log(
       `\n  \x1b[90mSi alguno corresponde al Annex A, agregalo a scoreAnnexFiling()\x1b[0m`,
     );
-    console.log(`  \x1b[90men harvest/edgar/discover.ts y volvé a correr el lote.\x1b[0m`);
+    console.log(`  \x1b[90min harvest/edgar/discover.ts and run the batch again.\x1b[0m`);
   }
   console.log();
 }
 
 if (genuinelyEmpty.length > 0) {
   console.log(
-    `\x1b[90m${genuinelyEmpty.length} sin documentos grandes\x1b[0m — probablemente no publican Annex A tabular\n`,
+    `\x1b[90m${genuinelyEmpty.length} with no large documents\x1b[0m — they probably do not publish a tabular Annex A\n`,
   );
   console.log(`  ${genuinelyEmpty.map((f) => f.cik).join(", ")}\n`);
 }
 
 console.log(`${"─".repeat(76)}`);
 console.log(
-  `\n  \x1b[90mLos del segundo grupo son trabajo pendiente; los del tercero, límite del universo.\x1b[0m\n`,
+  `\n  \x1b[90mThe second group is pending work; the third is a limit of the universe.\x1b[0m\n`,
 );
 
 await closePool();

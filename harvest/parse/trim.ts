@@ -1,15 +1,15 @@
 /**
- * Recorte de un Annex A conservando el markup original.
+ * Trimming an Annex A while keeping the original markup.
  *
- * Un Annex A pesa entre 4 y 16 MB —cientos de préstamos— y eso no se versiona.
- * Pero necesitamos el markup real como fixture de test, porque es más sucio que
- * cualquier cosa que uno escriba a mano: `<font>` anidados dentro de `<td>`,
- * estilos inline, `&nbsp;`, filas de separación, encabezados en varios niveles
- * de colspan.
+ * An Annex A weighs between 4 and 16 MB —hundreds of loans— and that does not
+ * get versioned. But we need the real markup as a test fixture, because it is
+ * dirtier than anything you would write by hand: `<font>` nested inside `<td>`,
+ * inline styles, `&nbsp;`, separator rows, headers across several levels of
+ * colspan.
  *
- * La solución: eliminar elementos `<tr>` sobrantes del árbol y serializar el
- * resto **tal cual venía**. Nada se reescribe, así que el recorte conserva toda
- * la suciedad estructural del original en una fracción del tamaño.
+ * The solution: remove surplus `<tr>` elements from the tree and serialise the
+ * rest **exactly as it came**. Nothing is rewritten, so the trimmed file keeps
+ * all the structural dirt of the original at a fraction of the size.
  */
 
 import { parse as parseHtml, type HTMLElement } from "node-html-parser";
@@ -44,7 +44,7 @@ export function trimAnnexHtml(
     report.rowsTotal += trs.length;
 
     if (trs.length <= 3) {
-      // Tablas chicas (layout, encabezado de página): se dejan enteras.
+      // Small tables (layout, page header): left whole.
       report.rowsKept += trs.length;
       report.tablesKept++;
       continue;
@@ -69,10 +69,10 @@ export function trimAnnexHtml(
 }
 
 /**
- * Primera fila que parece de datos.
+ * The first row that looks like data.
  *
- * Un Annex A tiene entre 1 y 3 filas de encabezado (grupos con colspan más los
- * nombres de columna). Se reconocen porque tienen poco contenido numérico.
+ * An Annex A has between 1 and 3 header rows (colspan groups plus the column
+ * names). They are recognised because they have little numeric content.
  */
 function findFirstDataRow(trs: HTMLElement[]): number {
   for (let i = 0; i < Math.min(trs.length, 8); i++) {
@@ -90,6 +90,6 @@ function findFirstDataRow(trs: HTMLElement[]): number {
 
     if (numeric / texts.length > 0.4) return i;
   }
-  // Sin fila de datos clara: asumimos 2 de encabezado.
+  // No clear data row: assume 2 header rows.
   return Math.min(2, trs.length);
 }

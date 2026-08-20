@@ -1,60 +1,60 @@
 /**
- * Carga `.env` en `process.env`.
+ * Loads `.env` into `process.env`.
  *
- * Se importa por efecto lateral, no se llama:
+ * Imported for its side effect, not called:
  *
  *   import "../env.js";
  *
- * Los imports de ESM se evalúan antes que el cuerpo del módulo que los importa,
- * así que basta con importarlo arriba de cualquier archivo que lea configuración.
+ * ESM imports are evaluated before the body of the module importing them, so it
+ * is enough to import this at the top of any file that reads configuration.
  *
- * POR QUÉ NO --env-file
+ * WHY NOT --env-file
  *
- * Node 20.6+ lo soporta de forma nativa y sería menos código. Dos razones para
- * no usarlo acá:
+ * Node 20.6+ supports it natively and it would be less code. Two reasons not to
+ * use it here:
  *
- * 1. En Node 20 y 21, `--env-file` con un archivo inexistente **aborta el
- *    proceso**. `--env-file-if-exists` recién llegó en 22.9. Eso convierte una
- *    configuración opcional en un requisito duro: alguien que clona el repo y
- *    corre los tests —que no necesitan ninguna variable— se encuentra con que
- *    nada arranca.
+ * 1. On Node 20 and 21, `--env-file` with a non-existent file **aborts the
+ *    process**. `--env-file-if-exists` only arrived in 22.9. That turns an
+ *    optional configuration into a hard requirement: someone who clones the
+ *    repo and runs the tests —which need no variables at all— finds that
+ *    nothing starts.
  *
- * 2. Habría que pasarlo por `tsx` en cada script de npm, y el reenvío de flags a
- *    node depende de la versión de tsx. Una capa más donde algo puede fallar en
- *    silencio.
+ * 2. It would have to be passed through `tsx` in every npm script, and flag
+ *    forwarding to node depends on the tsx version. One more layer where
+ *    something can fail silently.
  *
- * Veinticinco líneas propias no tienen ninguno de los dos problemas.
+ * Twenty-five lines of our own have neither problem.
  *
  * PRECEDENCIA
  *
- * El shell gana sobre el archivo. Si ya exportaste SEC_USER_AGENT en la
- * terminal, `.env` no lo pisa. Es la convención de dotenv y la correcta: lo que
- * escribiste recién debería ganarle a lo que quedó guardado.
+ * The shell wins over the file. If you already exported SEC_USER_AGENT in the
+ * terminal, `.env` does not overwrite it. It is dotenv's convention and the
+ * right one: what you just typed should beat what was saved earlier.
  */
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Raíz del proyecto: este archivo vive en harvest/. */
+/** Project root: this file lives in harvest/. */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export interface LoadedEnv {
-  /** Ruta del archivo, si se encontró. */
+  /** Path of the file, if one was found. */
   path: string | null;
-  /** Claves que se cargaron (las que ya existían en el entorno no entran). */
+  /** Keys that were loaded (those already in the environment are excluded). */
   applied: string[];
-  /** Claves presentes en el archivo pero ignoradas porque el shell ya las tenía. */
+  /** Keys present in the file but ignored because the shell already had them. */
   skipped: string[];
 }
 
 /**
- * Parsea el contenido de un .env.
+ * Parses the contents of a .env.
  *
- * Deliberadamente limitado: `CLAVE=valor`, una por línea, con comillas
- * opcionales. Sin interpolación de variables ni valores multilínea. Un parser
- * más ambicioso invita a que alguien escriba algo que funcione distinto según
- * quién lo lea.
+ * Deliberately limited: `KEY=value`, one per line, with optional quotes. No
+ * variable interpolation and no multi-line values. A more ambitious parser
+ * invites someone to write something that behaves differently depending on who
+ * reads it.
  */
 export function parseEnv(content: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -63,8 +63,8 @@ export function parseEnv(content: string): Record<string, string> {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
 
-    // `export FOO=bar` también, porque es lo que uno tiene en el historial de
-    // la terminal y va a pegar tal cual.
+    // `export FOO=bar` too, because that is what you have in your terminal
+    // history and will paste as-is.
     const withoutExport = line.replace(/^export\s+/, "");
 
     const eq = withoutExport.indexOf("=");
@@ -75,13 +75,13 @@ export function parseEnv(content: string): Record<string, string> {
 
     let value = withoutExport.slice(eq + 1).trim();
 
-    // Comillas envolventes: se sacan. Adentro puede haber espacios, que es
-    // justamente el caso de SEC_USER_AGENT ("Nombre Apellido mail@dominio").
+    // Surrounding quotes are stripped. Inside there can be spaces, which is
+    // exactly the SEC_USER_AGENT case ("Firstname Lastname mail@domain").
     const quoted = /^(["'])([\s\S]*)\1$/.exec(value);
     if (quoted) {
       value = quoted[2]!;
     } else {
-      // Sin comillas, un `#` inicia comentario al final de la línea.
+      // Without quotes, a `#` starts a comment at the end of the line.
       const hash = value.indexOf(" #");
       if (hash >= 0) value = value.slice(0, hash).trim();
     }
@@ -97,7 +97,7 @@ export function loadEnvFile(path = resolve(ROOT, ".env")): LoadedEnv {
   try {
     content = readFileSync(path, "utf8");
   } catch {
-    // Sin archivo no pasa nada: las variables pueden venir del shell.
+    // No file, no problem: the variables can come from the shell.
     return { path: null, applied: [], skipped: [] };
   }
 

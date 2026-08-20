@@ -71,14 +71,39 @@ for a, b, v in parsed:
     if body and (body[0].islower() or after.startswith("*")):
         warnings.append((a, b, after[:64]))
 
+# CONTENT CHECK: did the replacement drop something load-bearing?
+#
+# Translating harvest/edgar/client.ts, a range swallowed the last line of a
+# multi-line error message — the one with the SEC documentation URL. tsc caught
+# it only because the loss left a dangling `+`. Had the dropped line been in the
+# MIDDLE of the concatenation, the code would have compiled, both detectors
+# would have reported the file clean, and the error message would simply have
+# stopped telling anyone where to look.
+#
+# Prose can be reworded, so comparing text is hopeless. But some tokens have to
+# survive translation unchanged: URLs, `npm run ...` commands, and file paths.
+# If one is in the original range and not in the replacement, say so.
+import re as _re
+TOKENS = _re.compile(r'https?://\S+?(?=[\s"\'`\\)]|$)|npm run [\w:-]+|[\w./-]+\.(?:ts|md|sql|json|html)')
+for a, b, v in parsed:
+    before = set(TOKENS.findall("\n".join(lines[a - 1:b])))
+    after = set(TOKENS.findall(v))
+    lost = {t for t in before if t not in after}
+    if lost:
+        warnings.append((a, b, "DROPPED: " + ", ".join(sorted(lost))[:60]))
+
 for a, b, v in parsed:
     lines[a - 1:b] = v.split("\n")
 
 path.write_text("\n".join(lines))
 print(f"spliced {len(parsed)} ranges into {path.name}")
-for a, b, after in warnings:
-    print(f"! range {a}-{b} may stop mid-sentence; next line reads: {after}",
-          file=sys.stderr)
+for a, b, note in warnings:
+    if note.startswith("DROPPED: "):
+        print(f"! range {a}-{b} lost content the replacement should have kept:"
+              f" {note[9:]}", file=sys.stderr)
+    else:
+        print(f"! range {a}-{b} may stop mid-sentence; next line reads: {note}",
+              file=sys.stderr)
 if warnings:
-    print(f"! {len(warnings)} range(s) to re-read — the detectors cannot see a"
-          f" trailing fragment", file=sys.stderr)
+    print(f"! {len(warnings)} range(s) to re-read — neither detector can see a"
+          f" trailing fragment or a dropped URL", file=sys.stderr)
