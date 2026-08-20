@@ -320,7 +320,7 @@ async function main() {
   const mins = ((Date.now() - started) / 60_000).toFixed(1);
 
   console.log(`\n${"─".repeat(70)}`);
-  console.log(`  ${ok} cosechados · ${failed} fallidos · ${mins} min`);
+  console.log(`  ${ok} cosechados · ${failed} failed · ${mins} min`);
   console.log(`  ${loans} préstamos · ${observations} observations agregadas`);
 
   if (problems.length > 0) {

@@ -664,7 +664,7 @@ for (const r of sirV) {
       `${evaluable ? `[${lo.toFixed(2)} , ${hi.toFixed(2)}]` : "         —      "}  ` +
       `${self >= 50 ? "\x1b[33m" : "\x1b[90m"}${String(self).padStart(3)}%\x1b[0m` +
       (aparta ? `  \x1b[1m← se aparta\x1b[0m` : "") +
-      (!evaluable ? `  \x1b[31m← esperado 0: no evaluable\x1b[0m` : ""),
+      (!evaluable ? `  \x1b[31m← expected 0: not evaluable\x1b[0m` : ""),
   );
 }
 

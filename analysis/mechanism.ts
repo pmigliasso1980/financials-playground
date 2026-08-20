@@ -482,10 +482,10 @@ console.log(`\n${"─".repeat(78)}\n`);
  * after fixing it in another file. Now the raw count is labelled as what it is
  * —uncontrolled— and the verdict is the stratified one.
  */
-const esperadas = METRICS.length * 0.05;
+const expectedCount = METRICS.length * 0.05;
 console.log(
   `  \x1b[90mUncontrolled: ${significant} of ${METRICS.length} metrics depart from chance ` +
-    `(esperadas ${esperadas.toFixed(1)}).\x1b[0m`,
+    `(expected ${expectedCount.toFixed(1)}).\x1b[0m`,
 );
 console.log(
   `  \x1b[90mWith the size control: ${sigStrat} of ${METRICS.length - 1}.\x1b[0m`,

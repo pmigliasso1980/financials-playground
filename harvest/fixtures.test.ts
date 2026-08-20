@@ -397,7 +397,7 @@ for (const file of files) {
 // ---------------------------------------------------------------------------
 
 console.log(
-  `${failed === 0 ? "\x1b[32m" : "\x1b[31m"}${passed} ok · ${failed} fallidos\x1b[0m` +
+  `${failed === 0 ? "\x1b[32m" : "\x1b[31m"}${passed} ok · ${failed} failed\x1b[0m` +
     ` \x1b[90m(${files.length} fixture${files.length === 1 ? "" : "s"})\x1b[0m\n`,
 );
 

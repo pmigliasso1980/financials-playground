@@ -348,7 +348,7 @@ if (broken.length === 0 && partial.length === 0) {
     console.log(`  \x1b[90m  metrics: ${r.formula}\x1b[0m`);
     for (const w of r.worst) {
       console.log(
-        `  \x1b[90m  loan ${w.loan}: esperado ${w.expected.toFixed(4)}, ` +
+        `  \x1b[90m  loan ${w.loan}: expected ${w.expected.toFixed(4)}, ` +
           `published ${w.actual.toFixed(4)} (${pct(w.error, 0)} error)\x1b[0m`,
       );
     }

@@ -444,7 +444,7 @@ if (excluded.length > 0) {
     `  \x1b[90mExcluded for coverage < ${pct(MIN_COVERAGE, 0)}: ${excluded.join(", ")}\x1b[0m\n`,
   );
 }
-console.log(`  issuer        n    obs   esperado    SIR        IC 95%`);
+console.log(`  issuer        n    obs   expected    SIR        95% CI`);
 console.log(`  ${"─".repeat(66)}`);
 
 for (const r of sir) {

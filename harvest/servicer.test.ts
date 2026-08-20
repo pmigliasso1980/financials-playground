@@ -32,7 +32,7 @@ function check(label: string, actual: unknown, expected: unknown): void {
     passed++;
   } else {
     failed++;
-    console.error(`✗ ${label}\n    esperado: ${e}\n    obtenido: ${a}`);
+    console.error(`✗ ${label}\n    expected: ${e}\n    actual:   ${a}`);
   }
 }
 
@@ -378,5 +378,5 @@ check("parseMoney rechaza Not Available", parseMoney("Not Available"), null);
 
 // ---------------------------------------------------------------------------
 
-console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} ok, ${failed} fallidos\n`);
+console.log(`\n${failed === 0 ? "✓" : "✗"} ${passed} ok, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

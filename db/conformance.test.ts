@@ -378,7 +378,7 @@ await check("deleting the filing takes everything with it", async () => {
 await closePool();
 
 console.log(
-  `\n${failed === 0 ? "\x1b[32m" : "\x1b[31m"}${passed} ok · ${failed} fallidos\x1b[0m\n`,
+  `\n${failed === 0 ? "\x1b[32m" : "\x1b[31m"}${passed} ok · ${failed} failed\x1b[0m\n`,
 );
 
 process.exit(failed === 0 ? 0 : 1);

@@ -55,6 +55,21 @@ cual cuales quien cuanto cuantos""".split()
 # costs almost nothing on files that really are Spanish, because those lines
 # carry other words too.
 
+# The last block of stems was added after `${failed} fallidos` shipped in EIGHT
+# files, including db/conformance.test.ts which I had already reported clean. A
+# single Spanish word inside an otherwise-English template string reaches
+# neither threshold: it is one content word, and none of these were in the list.
+# They are always summary lines, status labels or units — the last words to get
+# translated because they read as punctuation.
+#
+# My first attempt put this comment INSIDE the triple-quoted list, so every
+# English word in it became a Spanish stem and the detector reported 636 suspect
+# lines in columnMap.ts. Caught by checking files already verified clean before
+# trusting the new list, which is the only reason it did not become the baseline.
+#
+# `version`, `fila`, `celda`, `linea`, `salida` and `entrada` were in that first
+# attempt and are deliberately NOT here: `version` is English, and the others
+# already appear in the list above.
 CONTENT_STEMS = """
 saldo saldos prestamo prestamos emision emisiones cosecha cosechas cosechado
 anada anadas mediana medianas promedio vendedor vendedores comprador
@@ -76,6 +91,13 @@ guardar leer escribir borrar buscar contar sumar restar
 sinesta conteo conteos calculo calculos medicion mediciones
 desempeno ocupacion suscripcion suscrito distribucion
 ciudad ciudades incidencia transferencia transferencias cobertura
+fallido fallidos fallar fallo fallos cosechado cosechados cosechar
+descartado descartados descartada descartadas guardado guardados
+encontrado encontrados encontrada encontradas revisado revisados
+esperado esperados esperada esperadas obtenido obtenidos
+listo listos correcto correctos incorrecto incorrectos
+vacia vacias lleno llenos roto rotas rotos sano sanos
+prueba pruebas corrida corridas
 """.split()
 
 HIGH_SIGNAL = """de del los las para con por una que en dentro sin cierran

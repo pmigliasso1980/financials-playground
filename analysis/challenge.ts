@@ -782,7 +782,7 @@ console.log(`\n\n${"═".repeat(78)}`);
 console.log("Status of the findings");
 console.log(`${"═".repeat(78)}\n`);
 
-console.log(`\x1b[31m✗ DESCARTADO\x1b[0m  "Office se suscribe agresivamente"`);
+console.log(`\x1b[31m✗ DISCARDED\x1b[0m  "Office is underwritten aggressively"`);
 console.log(
   `\x1b[90m             Survived lease-up, size weighting, issuer, and deal\x1b[0m`,
 );

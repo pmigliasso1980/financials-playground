@@ -1,9 +1,9 @@
 /**
- * Extracción de tablas, indiferente al formato de origen.
+ * Table extraction, indifferent to the source format.
  *
- * Tanto el xlsx como el HTML terminan en la misma forma —`unknown[][]`— para
- * que el resto del pipeline (mapeo de columnas, normalización) no tenga que
- * saber de dónde vino el dato.
+ * Both xlsx and HTML end up in the same shape —`unknown[][]`— so the rest of
+ * the pipeline (column mapping, normalisation) does not have to know where the
+ * data came from.
  */
 
 import * as XLSX from "xlsx";
@@ -11,12 +11,12 @@ import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 import { mapsToSomeMetric } from "../normalize/columnMap.js";
 
 export interface ExtractedTable {
-  /** Nombre de hoja (xlsx) o índice de tabla (html). */
+  /** Sheet name (xlsx) or table index (html). */
   name: string;
   rows: unknown[][];
 }
 
-/** Elige el parser según la extensión del archivo. */
+/** Chooses the parser by file extension. */
 export function extractTables(buffer: Buffer, fileName: string): ExtractedTable[] {
   const ext = fileName.toLowerCase().split(".").pop() ?? "";
 
@@ -24,7 +24,7 @@ export function extractTables(buffer: Buffer, fileName: string): ExtractedTable[
   if (["htm", "html"].includes(ext)) return extractFromHtml(buffer.toString("utf8"));
 
   throw new Error(
-    `No sé leer "${fileName}" (extensión "${ext}"). Formatos soportados: xlsx, xls, xlsm, htm, html.`,
+    `I do not know how to read "${fileName}" (extension "${ext}"). Supported formats: xlsx, xls, xlsm, htm, html.`,
   );
 }
 
@@ -46,40 +46,40 @@ export function extractFromXlsx(buffer: Buffer): ExtractedTable[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Extrae tablas de un HTML.
+ * Extracts tables from an HTML document.
  *
- * Los Annex A en HTML tienen particularidades que hay que manejar:
+ * HTML Annex A files have peculiarities that have to be handled:
  *
- *   - Pesan varios MB con una sola tabla gigante de cientos de filas.
- *   - Usan `colspan` para agrupar encabezados. Sin expandirlo, las columnas se
- *     desalinean y todo el mapeo posterior queda corrido.
- *   - Los encabezados vienen partidos en varias filas ("Underwritten" arriba,
- *     "NOI" abajo), así que hay que fusionarlas.
- *   - Meten `&nbsp;`, saltos de línea y espacios de sobra en cada celda.
+ *   - They weigh several MB with a single giant table of hundreds of rows.
+ *   - They use `colspan` to group headers. Without expanding it, the columns
+ *     misalign and all the downstream mapping is shifted.
+ *   - Headers come split across several rows ("Underwritten" above, "NOI"
+ *     below), so they have to be merged.
+ *   - They stuff `&nbsp;`, line breaks and extra spaces into every cell.
  *
- * Devuelve una entrada por tabla; el que llama elige la que mejor mapee.
+ * Returns one entry per table; the caller picks whichever maps best.
  */
 export interface ExtractOptions {
   /**
-   * Mínimo de filas para conservar una tabla. Default 1.
+   * Minimum rows to keep a table. Default 1.
    *
-   * Ojo con subirlo: en un Annex A real las páginas de continuación pueden
-   * tener una o dos filas, y descartarlas pierde préstamos enteros. Un umbral
-   * de 3 dejaba 18 tablas de 126 en el documento de Wells Fargo.
+   * Careful about raising it: in a real Annex A the continuation pages can have
+   * one or two rows, and discarding them loses whole loans. A threshold of 3
+   * left 18 tables out of 126 in the Wells Fargo document.
    */
   minRows?: number;
   /**
-   * Descartar tablas de una sola celda (layout, encabezados de página).
-   * Default true: no aportan datos y ensucian el conteo.
+   * Discard single-cell tables (layout, page headers).
+   * Default true: they carry no data and pollute the count.
    */
   dropSingleCell?: boolean;
   /**
-   * Fusionar encabezados partidos en varias filas. Default true.
+   * Merge headers split across several rows. Default true.
    *
-   * Los informes del servicer no lo quieren: su encabezado no está al principio
-   * de la tabla —arriba hay título de sección y filas en blanco— así que la
-   * heurística de fusión, pensada para el Annex A, mezcla cosas que no van
-   * juntas. Ese parser resuelve su propio encabezado anclándose en "Pros ID".
+   * The servicer reports do not want this: their header is not at the start of
+   * the table —above it are the section title and blank rows— so the merging
+   * heuristic, designed for the Annex A, mixes things that do not belong
+   * together. That parser resolves its own header by anchoring on "Pros ID".
    */
   mergeHeaders?: boolean;
 }
@@ -107,8 +107,8 @@ export function extractFromHtml(html: string, opts: ExtractOptions = {}): Extrac
       if (maxWidth <= 1) return;
     }
 
-    // Solo intentamos fusionar encabezados si la tabla es lo bastante grande
-    // como para tenerlos. Una continuación de dos filas es todo datos.
+    // We only attempt header merging if the table is large enough to have
+    // headers. A two-row continuation is all data.
     out.push({
       name: `table[${i}]`,
       rows: shouldMerge && rows.length >= 3 ? mergeHeaderRows(rows) : rows,
@@ -131,8 +131,8 @@ function tableToRows(table: HTMLElement): unknown[][] {
       const colspan = Math.min(Number(cell.getAttribute("colspan")) || 1, 50);
 
       row.push(text === "" ? null : text);
-      // Expandir colspan: sin esto las columnas quedan corridas y el mapeo
-      // asigna valores a la métrica equivocada.
+      // Expand colspan: without this the columns end up shifted and the mapping
+      // assigns values to the wrong metric.
       for (let c = 1; c < colspan; c++) row.push(null);
     }
 
@@ -150,19 +150,19 @@ function cleanCellText(raw: string): string {
 }
 
 /**
- * Fusiona encabezados partidos en varias filas.
+ * Merges headers split across several rows.
  *
- * Un Annex A típico trae:
+ * A typical Annex A carries:
  *
- *   fila 0:  |         | Underwritten |              |
- *   fila 1:  | Property|     NOI      | Occupancy    |
+ *   row 0:  |         | Underwritten |              |
+ *   row 1:  | Property|     NOI      | Occupancy    |
  *
- * que hay que unir en `["Property", "Underwritten NOI", "Occupancy"]`.
+ * which have to be joined into `["Property", "Underwritten NOI", "Occupancy"]`.
  *
- * Heurística: si entre las primeras filas hay una con muchas celdas vacías
- * seguida de otra bien poblada, y ninguna parece traer datos numéricos, se
- * fusionan. Ante la duda, no toca nada: un merge equivocado hace más daño que
- * un encabezado partido.
+ * Heuristic: if among the first rows there is one with many empty cells
+ * followed by another well populated, and neither appears to carry numeric
+ * data, they are merged. When in doubt it touches nothing: a wrong merge does
+ * more damage than a split header.
  */
 function mergeHeaderRows(rows: unknown[][], maxScan = 6): unknown[][] {
   if (rows.length < 2) return rows;
@@ -176,9 +176,9 @@ function mergeHeaderRows(rows: unknown[][], maxScan = 6): unknown[][] {
     const currentFilled = current.filter((c) => c !== null && String(c).trim()).length;
     const nextFilled = next.filter((c) => c !== null && String(c).trim()).length;
 
-    // La fila siguiente tiene que estar claramente mejor poblada.
+    // The following row has to be clearly better populated.
     if (nextFilled <= currentFilled * 1.4) continue;
-    // Ninguna de las dos puede parecer una fila de datos.
+    // Neither of the two can look like a data row.
     if (looksNumeric(current) || looksNumeric(next)) continue;
     if (currentFilled === 0) continue;
 
@@ -195,18 +195,18 @@ function mergeHeaderRows(rows: unknown[][], maxScan = 6): unknown[][] {
     const leaf = leafCell === null || leafCell === undefined ? "" : String(leafCell).trim();
 
     /**
-     * Si el encabezado hoja se entiende solo, se usa tal cual.
+     * If the leaf header stands on its own, it is used as-is.
      *
-     * Esto evita un error que arruina el mapeo: los encabezados de grupo
-     * ocupan varias columnas por colspan, y al pegarlos a cada hoja
-     * contaminan su texto. Un grupo "Physical & Occupancy" sobre una columna
-     * "Net Rentable Area (SF)" produce "Physical & Occupancy Net Rentable
-     * Area (SF)", que matchea *occupancy* con más puntaje que *square feet*
-     * y se roba la columna. La ocupancia real queda sin mapear y los valores
-     * terminan en la métrica equivocada.
+     * This avoids an error that ruins the mapping: group headers span several
+     * columns via colspan, and gluing them onto each leaf contaminates its
+     * text. A "Physical & Occupancy" group over a "Net Rentable Area (SF)"
+     * column produces "Physical & Occupancy Net Rentable Area (SF)", which
+     * matches *occupancy* with a higher score than *square feet* and steals the
+     * column. The real occupancy is left unmapped and the values end up in the
+     * wrong metric.
      *
-     * Cuando la hoja NO alcanza —"NOI" a secas, que puede ser underwritten o
-     * trailing— sí hace falta el grupo para desambiguar.
+     * When the leaf is NOT enough —plain "NOI", which could be underwritten or
+     * trailing— the group IS needed to disambiguate.
      */
     if (leaf && mapsToSomeMetric(leaf)) {
       merged.push(leaf);
@@ -217,7 +217,7 @@ function mergeHeaderRows(rows: unknown[][], maxScan = 6): unknown[][] {
     for (let r = 0; r <= mergeUntil; r++) {
       const cell = rows[r]?.[col];
       const text = cell === null || cell === undefined ? "" : String(cell).trim();
-      // No repetir el mismo texto si el colspan lo propagó.
+      // Do not repeat the same text if colspan propagated it.
       if (text && !parts.includes(text)) parts.push(text);
     }
     merged.push(parts.length > 0 ? parts.join(" ") : null);
@@ -226,7 +226,7 @@ function mergeHeaderRows(rows: unknown[][], maxScan = 6): unknown[][] {
   return [merged, ...rows.slice(mergeUntil + 1)];
 }
 
-/** ¿La fila parece traer datos en vez de encabezados? */
+/** Does the row look like it carries data rather than headers? */
 function looksNumeric(row: unknown[]): boolean {
   const filled = row.filter((c) => c !== null && String(c).trim());
   if (filled.length === 0) return false;

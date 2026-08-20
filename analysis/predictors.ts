@@ -408,7 +408,7 @@ console.log(`  \x1b[90mits case having already been resolved.\x1b[0m\n`);
  * controlled. The table shows the cells and their n, which is what allows
  * judging whether the pattern holds or is three cases.
  *
- * MECANISMO ESPERADO
+ * EXPECTED MECHANISM
  *
  * DSCR measures flow —can it pay the instalment?— and transfer to special
  * servicing is a payment event. LTV measures stock and bites at maturity. Since

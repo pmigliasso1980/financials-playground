@@ -730,8 +730,8 @@ if (AUDIT) {
    * After applying it a contiguous gap appears in the low tail, and the previous
    * version of this line said "the threshold can go inside it". That is circular:
    * the gap exists BECAUSE the filter removed those rows. It recommended as a
-   * finding what was a consequence of the fix, and in the direction we had already
-   * descartado.
+   * finding what was a consequence of the fix, and in the direction we had
+   * already ruled out.
    *
    * Now it only describes the shape. The low tail that remains is partial
    * coverage —task #40— and not phantom rows.
