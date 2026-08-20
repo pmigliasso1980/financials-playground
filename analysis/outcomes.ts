@@ -1,21 +1,22 @@
 /**
- * Suscripción contra resultado.
+ * Underwriting against outcome.
  *
  *   npm run db:outcomes
  *
- * LA PREGUNTA QUE ESTE SCRIPT PUEDE RESPONDER Y EL ANTERIOR NO
+ * THE QUESTION THIS SCRIPT CAN ANSWER AND THE PREVIOUS ONE COULD NOT
  *
- * Todo el análisis del Annex A medía optimismo: cuánto se despegó el suscriptor
- * del histórico. Nunca pudo decir si tenía razón. Con el NOI real del primer
- * ejercicio completo sí, y eso habilita la pregunta que importa:
+ * All of the Annex A analysis measured optimism: how far the underwriter
+ * departed from the trailing figures. It could never say whether they were
+ * right. With the actual NOI of the first full year it can, and that opens the
+ * question that matters:
  *
- *   ¿el optimismo en la originación predice el resultado?
+ *   does optimism at origination predict the outcome?
  *
- * Hay motivo para dudar. Benchmark 2024-V7, préstamo 8: suscrito 3,4% POR DEBAJO
- * del histórico —conservador según cualquier métrica de originación— y el NOI
- * real cayó 62%. Fue el peor del pool. Si ese caso es representativo, buena
- * parte de lo que medimos con el Annex A no tiene contenido predictivo, y
- * conviene saberlo antes de construir un producto encima.
+ * There is reason to doubt it. Benchmark 2024-V7, loan 8: underwritten 3.4%
+ * BELOW the trailing figure —conservative by any origination metric— and the
+ * actual NOI fell 62%. It was the worst in the pool. If that case is
+ * representative, much of what we measure with the Annex A has no predictive
+ * content, and it is worth knowing before building a product on top of it.
  */
 
 import { closePool, ping, query } from "../db/client.js";
@@ -32,11 +33,11 @@ const pct = (v: number | string | null, d = 1) =>
 const num = (v: number | string | null, d = 2) => (v === null ? "—" : Number(v).toFixed(d));
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Suscripción contra resultado");
+console.log("Underwriting against outcome");
 console.log(`${"═".repeat(78)}`);
 
 // ---------------------------------------------------------------------------
-// Muestra
+// Sample
 // ---------------------------------------------------------------------------
 
 const { rows: sample } = await query<{
@@ -52,25 +53,26 @@ const { rows: sample } = await query<{
 
 const s = sample[0];
 if (!s || Number(s.with_uw) === 0) {
-  console.error(`\n✗ Sin datos de desempeño. Corré primero:  npm run db:performance\n`);
+  console.error(`\n✗ No performance data. Run first:  npm run db:performance\n`);
   await closePool();
   process.exit(1);
 }
 
-console.log(`\n  ${s.trusts} trusts · ${s.loans} préstamos con NOI real · ${s.with_all} con las tres cifras`);
-console.log(`  \x1b[90mperíodos de NOI: ${s.period}\x1b[0m`);
+console.log(`\n  ${s.trusts} trusts · ${s.loans} loans with actual NOI · ${s.with_all} with all three figures`);
+console.log(`  \x1b[90mNOI periods: ${s.period}\x1b[0m`);
 
 /**
- * Filtro de solapamiento — sin esto medimos dos veces la misma historia.
+ * Overlap filter — without it we measure the same history twice.
  *
- * El servicer reporta el último ejercicio que tenga disponible, y para algunos
- * préstamos ese ejercicio empieza ANTES de la originación. Un préstamo cerrado
- * en junio de 2024 con NOI reportado de octubre 2023 a septiembre 2024 no tiene
- * "resultado": ese período es casi el mismo histórico que el suscriptor miró
- * para suscribir. La brecha contra él no mide error de proyección, mide ruido.
+ * The servicer reports the latest period it has available, and for some loans
+ * that period starts BEFORE origination. A loan closed in June 2024 with NOI
+ * reported from October 2023 to September 2024 has no "outcome": that period is
+ * almost the same trailing figure the underwriter looked at in order to
+ * underwrite. The gap against it does not measure projection error, it measures
+ * noise.
  *
- * En la primera corrida el rango arrancaba en 2023-10-01 sobre un corpus
- * originado en 2024. Todo lo que siga usa solo períodos posteriores al cierre.
+ * On the first run the range started at 2023-10-01 over a corpus originated in
+ * 2024. Everything below uses only periods after closing.
  */
 const { rows: overlapRows } = await query<{ total: string; overlapping: string }>(
   `SELECT count(*) AS total,
@@ -80,16 +82,16 @@ const { rows: overlapRows } = await query<{ total: string; overlapping: string }
 const ov = overlapRows[0]!;
 if (Number(ov.overlapping) > 0) {
   console.log(
-    `\n  \x1b[33m${ov.overlapping} de ${ov.total} préstamos tienen un período de NOI que empieza\x1b[0m`,
+    `\n  \x1b[33m${ov.overlapping} of ${ov.total} loans have an NOI period that starts\x1b[0m`,
   );
-  console.log(`  \x1b[33mANTES del cierre: solapan con el histórico y quedan excluidos.\x1b[0m`);
+  console.log(`  \x1b[33mBEFORE closing: they overlap the trailing figures and are excluded.\x1b[0m`);
 }
 
-/** Cláusula común: solo desempeño genuinamente posterior a la originación. */
+/** Common clause: only performance genuinely after origination. */
 const POST = `gap_vs_actual IS NOT NULL AND days_after_origination >= 0`;
 
 // ---------------------------------------------------------------------------
-// A) La medición de Griffin, ahora sí comparable
+// A) The Griffin measurement, now actually comparable
 // ---------------------------------------------------------------------------
 
 const GRIFFIN_SHARE = 0.29;
@@ -107,53 +109,52 @@ const { rows: griffin } = await query<{
 );
 
 const g = griffin[0]!;
-console.log(`\n\x1b[1mA. NOI suscrito contra NOI real\x1b[0m`);
-console.log(`\x1b[90m   Ahora sí es la misma cantidad que mide Griffin: promesa contra resultado.\x1b[0m\n`);
+console.log(`\n\x1b[1mA. Underwritten NOI against actual NOI\x1b[0m`);
+console.log(`\x1b[90m   Now it is the same quantity Griffin measures: promise against outcome.\x1b[0m\n`);
 console.log(`   n                      ${String(g.n).padStart(6)}`);
-console.log(`   mediana                ${pct(g.median).padStart(6)}`);
-console.log(`   rango intercuartil     ${pct(g.p25)} a ${pct(g.p75)}`);
-console.log(`   con brecha ≥5%         ${pct(g.share, 0).padStart(6)}`);
+console.log(`   median                 ${pct(g.median).padStart(6)}`);
+console.log(`   interquartile range    ${pct(g.p25)} to ${pct(g.p75)}`);
+console.log(`   with gap ≥5%           ${pct(g.share, 0).padStart(6)}`);
 console.log(`   \x1b[90mGriffin 2013-2019      ${(GRIFFIN_SHARE * 100).toFixed(0)}%   (n = 39.522)\x1b[0m`);
 
 const delta = Number(g.share) - GRIFFIN_SHARE;
 console.log();
 if (Number(g.n) < 300) {
-  console.log(`   \x1b[33mCon n = ${g.n} contra 39.522, cualquier diferencia es provisoria.\x1b[0m`);
+  console.log(`   \x1b[33mWith n = ${g.n} against 39,522, any difference is provisional.\x1b[0m`);
 } else if (Math.abs(delta) < 0.06) {
-  console.log(`   \x1b[32mEn línea con lo publicado\x1b[0m: el fenómeno sigue con intensidad parecida`);
-  console.log(`   cinco años después, medido de forma independiente.`);
+  console.log(`   \x1b[32mIn line with the published figure\x1b[0m: the phenomenon continues at a similar`);
+  console.log(`   intensity five years later, measured independently.`);
 } else if (delta > 0) {
-  console.log(`   \x1b[33mSube ${(delta * 100).toFixed(0)} puntos sobre el período de Griffin.\x1b[0m`);
+  console.log(`   \x1b[33mUp ${(delta * 100).toFixed(0)} points on Griffin's period.\x1b[0m`);
 } else {
-  console.log(`   \x1b[32mBaja ${Math.abs(delta * 100).toFixed(0)} puntos: la práctica se moderó.\x1b[0m`);
 }
 
 // ---------------------------------------------------------------------------
-// A2) Por añada de originación
+// A2) By origination vintage
 // ---------------------------------------------------------------------------
 
 /**
- * El agregado mezcla dos mercados distintos y esconde la señal.
+ * The aggregate mixes two different markets and hides the signal.
  *
- * Con la añada 2024 sola, la mediana daba 5,6% y el 52% de los préstamos
- * superaba el umbral. Al sumar 2020-2023 la mediana cayó a 1,0% y el share a
- * 41%. Ese movimiento no significa que la práctica sea más suave de lo que
- * pensábamos: significa que hay añadas con signos opuestos promediándose.
+ * With the 2024 vintage alone the median came out at 5.6% and 52% of loans
+ * cleared the threshold. Adding 2020-2023 dropped the median to 1.0% and the
+ * share to 41%. That movement does not mean the practice is milder than we
+ * thought: it means there are vintages with opposite signs averaging together.
  *
- * La razón es evidente una vez planteada. Un préstamo originado en 2020 se
- * suscribió durante la incertidumbre de COVID, con supuestos deprimidos, y su
- * primer año completo cayó en la recuperación. Uno originado en 2024 se
- * suscribió proyectando crecimiento sobre un mercado que después quedó plano.
- * Promediarlos da un número que no describe a ninguno de los dos.
+ * The reason is obvious once stated. A loan originated in 2020 was underwritten
+ * during COVID uncertainty, on depressed assumptions, and its first full year
+ * fell in the recovery. One originated in 2024 was underwritten projecting
+ * growth onto a market that then went flat. Averaging them gives a number that
+ * describes neither.
  *
- * Es el mismo error de composición que ya nos mordió con multifamily en
- * `db:challenge`, donde la participación de un tipo movía los agregados sin que
- * cambiara ningún estándar de suscripción.
+ * It is the same composition error that already bit us with multifamily in
+ * `db:challenge`, where one type's share moved the aggregates without any
+ * underwriting standard changing.
  */
-console.log(`\n\n\x1b[1mA2. Por añada de originación\x1b[0m`);
-console.log(`\x1b[90m   El agregado promedia mercados distintos: 2020 se suscribió en plena\x1b[0m`);
-console.log(`\x1b[90m   incertidumbre y cobró en la recuperación; 2024 proyectó crecimiento\x1b[0m`);
-console.log(`\x1b[90m   sobre un mercado que quedó plano.\x1b[0m\n`);
+console.log(`\n\n\x1b[1mA2. By origination vintage\x1b[0m`);
+console.log(`\x1b[90m   The aggregate averages different markets: 2020 was underwritten in full\x1b[0m`);
+console.log(`\x1b[90m   uncertainty and collected in the recovery; 2024 projected growth onto\x1b[0m`);
+console.log(`\x1b[90m   a market that went flat.\x1b[0m\n`);
 
 const { rows: vintages } = await query<{
   vintage: string; n: string; median: number | null; share: number | null;
@@ -174,7 +175,7 @@ const { rows: vintages } = await query<{
 );
 
 if (vintages.length >= 3) {
-  console.log(`   añada      n   mediana   ≥5%   proyectó   entregó   error DY`);
+  console.log(`   vintage    n   median    ≥5%   projected  delivered  DY error`);
   for (const v of vintages) {
     const hot = Number(v.share) >= GRIFFIN_SHARE;
     const cell = hot
@@ -187,15 +188,15 @@ if (vintages.length >= 3) {
   }
 
   /**
-   * Mínimo contra máximo, no primero contra último.
+   * Minimum against maximum, not first against last.
    *
-   * La primera versión comparaba los extremos de la serie y anunció "estable
-   * entre añadas" sobre un patrón en forma de U: 2020 daba 51% y 2024 daba 52%,
-   * con 2021 en 33% en el medio. Restar las puntas de una curva no lineal da
-   * cero y esconde justamente la variación que se quería medir.
+   * The first version compared the ends of the series and announced "stable
+   * across vintages" over a U-shaped pattern: 2020 gave 51% and 2024 gave 52%,
+   * with 2021 at 33% in between. Subtracting the ends of a non-linear curve
+   * gives zero and hides exactly the variation it was meant to measure.
    *
-   * El piso de muestra saca a 2020, que aporta 39 préstamos contra los ~500 de
-   * las añadas centrales.
+   * The sample floor drops 2020, which contributes 39 loans against the ~500 of
+   * the central vintages.
    */
   const VINTAGE_MIN_N = 100;
   const solid = vintages.filter((v) => Number(v.n) >= VINTAGE_MIN_N);
@@ -206,38 +207,38 @@ if (vintages.length >= 3) {
   if (solid.length !== vintages.length) {
     const thin = vintages.filter((v) => Number(v.n) < VINTAGE_MIN_N).map((v) => v.vintage);
     console.log(
-      `\n   \x1b[90mFuera de la comparación por muestra chica: ${thin.join(", ")}.\x1b[0m`,
+      `\n   \x1b[90mOut of the comparison for small sample: ${thin.join(", ")}.\x1b[0m`,
     );
   }
 
   console.log(
-    `\n   \x1b[90mGriffin midió 29% sobre 2013-2019. Su ventana termina donde arranca la\x1b[0m`,
+    `\n   \x1b[90mGriffin measured 29% over 2013-2019. His window ends where ours\x1b[0m`,
   );
-  console.log(`   \x1b[90mnuestra, así que estas filas son la continuación de su serie.\x1b[0m`);
+  console.log(`   \x1b[90mbegins, so these rows are the continuation of his series.\x1b[0m`);
 
   console.log();
   if (Math.abs(spread) > 0.12) {
     console.log(
-      `   \x1b[33mLa añada importa más que el nivel:\x1b[0m ${pct(lo.share, 0)} en ${lo.vintage} ` +
-        `contra ${pct(hi.share, 0)} en ${hi.vintage}.`,
+      `   \x1b[33mThe vintage matters more than the level:\x1b[0m ${pct(lo.share, 0)} in ${lo.vintage} ` +
+        `against ${pct(hi.share, 0)} in ${hi.vintage}.`,
     );
     console.log(`   Cualquier cifra agregada promedia esos extremos y no describe a ninguno.`);
 
     /**
-     * La pregunta que decide qué significa la serie.
+     * The question that decides what the series means.
      *
-     * Si el crecimiento PROYECTADO se mantuvo parecido entre añadas y el
-     * ENTREGADO se derrumbó, el suscriptor no cambió: cambió el mercado. Si el
-     * proyectado subió, sí hubo un cambio de práctica.
+     * If PROJECTED growth stayed similar across vintages and DELIVERED growth
+     * collapsed, the underwriter did not change: the market did. If the
+     * projected figure rose, there was a change of practice.
      *
-     * No son lo mismo y el titular es distinto: "la suscripción se volvió más
-     * agresiva" contra "las propiedades dejaron de crecer y la suscripción no se
-     * ajustó".
+     * They are not the same and the headline differs: "underwriting became more
+     * aggressive" against "the properties stopped growing and underwriting did
+     * not adjust".
      */
     const dProjected = Number(hi.projected) - Number(lo.projected);
     const dGrowth = Number(hi.growth) - Number(lo.growth);
     console.log();
-    console.log(`   Entre ${lo.vintage} y ${hi.vintage}:`);
+    console.log(`   Between ${lo.vintage} and ${hi.vintage}:`);
     console.log(
       `     crecimiento proyectado   ${pct(lo.projected)} → ${pct(hi.projected)}   ` +
         `(${dProjected >= 0 ? "+" : ""}${(dProjected * 100).toFixed(1)} pp)`,
@@ -249,34 +250,34 @@ if (vintages.length >= 3) {
     console.log();
     if (Math.abs(dGrowth) > Math.abs(dProjected) * 2) {
       console.log(
-        `   \x1b[1mLo que se movió es el mercado, no la suscripción.\x1b[0m El suscriptor proyectó`,
+        `   \x1b[1mWhat moved is the market, not the underwriting.\x1b[0m The underwriter projected`,
       );
       console.log(
-        `   casi lo mismo en las dos añadas; las propiedades entregaron ${Math.abs(dGrowth * 100).toFixed(0)} puntos menos.`,
+        `   almost the same in both vintages; the properties delivered ${Math.abs(dGrowth * 100).toFixed(0)} points less.`,
       );
       console.log(
-        `   \x1b[90mLa brecha crece porque la realidad cayó, no porque la promesa subiera.\x1b[0m`,
+        `   \x1b[90mThe gap grows because reality fell, not because the promise rose.\x1b[0m`,
       );
     } else if (dProjected > 0.03) {
       console.log(
-        `   \x1b[33mLa suscripción sí se volvió más agresiva\x1b[0m: se proyectó ${(dProjected * 100).toFixed(1)} pp más`,
+        `   \x1b[33mUnderwriting did become more aggressive\x1b[0m: ${(dProjected * 100).toFixed(1)} pp more growth`,
       );
-      console.log(`   de crecimiento en ${hi.vintage} que en ${lo.vintage}.`);
+      console.log(`   was projected in ${hi.vintage} than in ${lo.vintage}.`);
     } else {
-      console.log(`   \x1b[90mProyección y resultado se movieron a la par. Sin lectura clara.\x1b[0m`);
+      console.log(`   \x1b[90mProjection and outcome moved together. No clear reading.\x1b[0m`);
     }
   } else {
-    console.log(`   \x1b[90mEstable entre añadas: el agregado sí representa al conjunto.\x1b[0m`);
+    console.log(`   \x1b[90mStable across vintages: the aggregate does represent the whole.\x1b[0m`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// B) ¿Sirve de algo lo que medimos con el Annex A?
+// B) Is what we measure with the Annex A worth anything?
 // ---------------------------------------------------------------------------
 
-console.log(`\n\n\x1b[1mB. ¿El optimismo en la originación predice el resultado?\x1b[0m`);
-console.log(`\x1b[90m   Si medir contra el histórico tuviera contenido predictivo, los préstamos\x1b[0m`);
-console.log(`\x1b[90m   suscritos con más optimismo deberían fallar más.\x1b[0m\n`);
+console.log(`\n\n\x1b[1mB. Does optimism at origination predict the outcome?\x1b[0m`);
+console.log(`\x1b[90m   If measuring against the trailing figure had predictive content, loans\x1b[0m`);
+console.log(`\x1b[90m   underwritten with more optimism should fail more often.\x1b[0m\n`);
 
 const { rows: buckets } = await query<{
   bucket: string; n: string; gap_actual: number | null; growth: number | null; fail: number | null;
@@ -300,7 +301,7 @@ const { rows: buckets } = await query<{
 );
 
 if (buckets.length >= 3) {
-  console.log(`   tramo al originar          n   brecha vs real   creció   cayó >10%`);
+  console.log(`   bucket at origination      n   gap vs actual   grew   fell >10%`);
   for (const b of buckets) {
     console.log(
       `   ${b.bucket.padEnd(24)} ${String(b.n).padStart(4)}   ${pct(b.gap_actual).padStart(12)}   ` +
@@ -314,23 +315,23 @@ if (buckets.length >= 3) {
 
   console.log();
   if (spread > 0.15) {
-    console.log(`   \x1b[32mEl optimismo parecería predecir\x1b[0m: los muy optimistas caen ${(spread * 100).toFixed(0)} puntos más.`);
+    console.log(`   \x1b[32mOptimism would appear to predict\x1b[0m: the most optimistic fall ${(spread * 100).toFixed(0)} points more.`);
   } else if (Math.abs(spread) <= 0.15) {
-    console.log(`   \x1b[33mNo hay gradiente claro (${(spread * 100).toFixed(0)} puntos entre extremos).\x1b[0m`);
+    console.log(`   \x1b[33mNo clear gradient (${(spread * 100).toFixed(0)} points between the extremes).\x1b[0m`);
   } else {
-    console.log(`   \x1b[31mLa relación va al revés\x1b[0m: los conservadores caen mucho más.`);
+    console.log(`   \x1b[31mThe relationship runs backwards\x1b[0m: the conservative ones fall much more.`);
   }
   console.log(
-    `   \x1b[90mNo saques conclusiones de esta tabla todavía: las dos columnas comparten\x1b[0m`,
+    `   \x1b[90mDo not draw conclusions from this table yet: the two columns share\x1b[0m`,
   );
   console.log(`   \x1b[90mdenominador. El bloque B2 controla eso.\x1b[0m`);
 }
 
 /**
- * El caso individual que motivó esta sección, en forma de conteo.
+ * The individual case that prompted this section, as a count.
  *
- * Cuántos préstamos suscritos por debajo del histórico —los "prudentes"—
- * terminaron entre los peores resultados del corpus.
+ * How many loans underwritten below the trailing figure —the "prudent" ones—
+ * ended up among the worst outcomes in the corpus.
  */
 const { rows: paradox } = await query<{ conservative: string; collapsed: string }>(
   `SELECT count(*) FILTER (WHERE gap_vs_trailing < 0) AS conservative,
@@ -342,56 +343,56 @@ const p = paradox[0];
 if (p && Number(p.conservative) > 0) {
   const share = Number(p.collapsed) / Number(p.conservative);
   console.log(
-    `\n   \x1b[90mDe ${p.conservative} préstamos suscritos POR DEBAJO del histórico, ` +
+    `\n   \x1b[90mOf ${p.conservative} loans underwritten BELOW the trailing figure, ` +
       `${p.collapsed} (${pct(share, 0)})\x1b[0m`,
   );
-  console.log(`   \x1b[90mperdieron más del 25% de su NOI. La prudencia no los protegió.\x1b[0m`);
+  console.log(`   \x1b[90mlost more than 25% of their NOI. Prudence did not protect them.\x1b[0m`);
 }
 
 // ---------------------------------------------------------------------------
-// B2) ¿El gradiente de B es real o aritmética?
+// B2) Is B's gradient real or arithmetic?
 // ---------------------------------------------------------------------------
 
 /**
- * El bloque B compara dos cocientes que COMPARTEN DENOMINADOR.
+ * Block B compares two ratios that SHARE A DENOMINATOR.
  *
- *   gap_vs_trailing   = suscrito / histórico - 1
- *   growth_delivered  = real     / histórico - 1
+ *   gap_vs_trailing   = underwritten / trailing - 1
+ *   growth_delivered  = actual       / trailing - 1
  *
- * El histórico está abajo en los dos. Si para un préstamo cualquiera ese
- * histórico viene circunstancialmente alto —un año bueno, un ingreso no
- * recurrente, un inquilino que después se fue— entonces el primer cociente baja
- * (parece conservador) y el segundo también (parece que la propiedad cayó). Y al
- * revés si viene bajo. Eso produce un gradiente perfecto entre los dos, en
- * dirección negativa, SIN que exista ninguna relación real.
+ * The trailing figure is underneath both. If for any given loan that trailing
+ * figure happens to be high —a good year, a non-recurring item, a tenant who
+ * later left— then the first ratio falls (it looks conservative) and so does the
+ * second (the property looks like it fell). And the reverse if it is low. That
+ * produces a perfect gradient between the two, in the negative direction,
+ * WITHOUT any real relationship existing.
  *
- * Se llama sesgo de razón por denominador común, y es la explicación más
- * económica de un resultado tan prolijo como el de B —cuatro tramos monótonos
- * de -10,7% a +18,6%— que además contradice la intuición.
+ * It is called ratio bias from a common denominator, and it is the most
+ * economical explanation for a result as tidy as B's —four monotonic buckets
+ * from -10.7% to +18.6%— which also contradicts intuition.
  *
- * El control usa un denominador que no viene del NOI: el saldo del préstamo.
+ * The control uses a denominator that does not come from NOI: the loan balance.
  *
- *   debt yield real = NOI real / saldo senior
+ *   actual debt yield = actual NOI / senior balance
  *
- * El saldo lo fija el prestamista, no se deriva de ningún NOI, y no participa de
- * gap_vs_trailing. Si los préstamos suscritos con optimismo realmente terminan
- * peor, su debt yield real tiene que ser más bajo. Si el debt yield real sale
- * parejo entre tramos, el gradiente de B era del divisor y no del mundo.
+ * The balance is set by the lender, is not derived from any NOI, and takes no
+ * part in gap_vs_trailing. If loans underwritten optimistically really do end up
+ * worse, their actual debt yield has to be lower. If actual debt yield comes out
+ * even across buckets, B's gradient came from the divisor, not from the world.
  *
- * CUÁL SALDO: el senior, no la porción del trust.
+ * WHICH BALANCE: the senior one, not the trust's portion.
  *
- * La primera versión usaba `loan_amount`, que es lo que compró esta emisión,
- * contra un NOI que es de la propiedad entera. En los préstamos repartidos entre
- * varios trusts eso infla el debt yield por el factor de reparto —hasta 288x en
- * un caso—. Las identidades aritméticas después determinaron que el emisor
- * calcula contra trust + pari passu no-trust, con 99% de coincidencia, así que
- * ese es el denominador correcto para cualquier ratio contra un NOI de la
- * propiedad.
+ * The first version used `loan_amount`, which is what this issuance bought,
+ * against an NOI that belongs to the whole property. On loans split across
+ * several trusts that inflates debt yield by the split factor —up to 288x in one
+ * case. The arithmetic identities later established that the issuer computes
+ * against trust + non-trust pari passu, with 99% agreement, so that is the
+ * correct denominator for any ratio against a property-level NOI.
  */
-console.log(`\n\n\x1b[1mB2. Control: ¿el gradiente de B es aritmética?\x1b[0m`);
-console.log(`\x1b[90m   B compara dos cocientes que comparten el histórico como denominador.\x1b[0m`);
-console.log(`\x1b[90m   Eso solo ya produce un gradiente negativo sin relación real detrás.\x1b[0m`);
-console.log(`\x1b[90m   Control con debt yield real (NOI real / saldo): el saldo no sale del NOI.\x1b[0m\n`);
+console.log(`\n\n\x1b[1mB2. Control: is B's gradient arithmetic?\x1b[0m`);
+console.log(`\x1b[90m   B compares two ratios that share the trailing figure as a denominator.\x1b[0m`);
+console.log(`\x1b[90m   That alone produces a negative gradient with no real relationship behind it.\x1b[0m`);
+console.log(`\x1b[90m   Control with actual debt yield (actual NOI / balance): the balance does\x1b[0m`);
+console.log(`\x1b[90m   not come from NOI.\x1b[0m\n`);
 
 const { rows: dyBuckets } = await query<{
   bucket: string; n: string; dy_uw: number | null; dy_actual: number | null; drop: number | null;
@@ -418,7 +419,7 @@ const { rows: dyBuckets } = await query<{
 );
 
 if (dyBuckets.length >= 3) {
-  console.log(`   tramo al originar          n   DY suscrito   DY real   diferencia`);
+  console.log(`   bucket at origination      n   underwritten DY   actual DY   difference`);
   for (const b of dyBuckets) {
     console.log(
       `   ${b.bucket.padEnd(24)} ${String(b.n).padStart(4)}   ${pct(b.dy_uw).padStart(9)}   ` +
@@ -434,39 +435,39 @@ if (dyBuckets.length >= 3) {
   console.log();
   if (spread < 0.015 && dropSpread < 0.015) {
     console.log(
-      `   \x1b[31mEl debt yield real es parejo entre tramos (${pct(spread)} de rango).\x1b[0m`,
+      `   \x1b[31mActual debt yield is even across buckets (${pct(spread)} of range).\x1b[0m`,
     );
-    console.log(`   El gradiente de B era sesgo de denominador común, no una relación.`);
-    console.log(`   \x1b[1mB queda descartado.\x1b[0m Medir optimismo contra el histórico no dice`);
-    console.log(`   nada sobre el resultado, ni a favor ni en contra.`);
+    console.log(`   B's gradient was common-denominator bias, not a relationship.`);
+    console.log(`   \x1b[1mB is discarded.\x1b[0m Measuring optimism against the trailing figure says`);
+    console.log(`   nothing about the outcome, in either direction.`);
   } else if (Number(dyBuckets[dyBuckets.length - 1]!.dy_actual) < Number(dyBuckets[0]!.dy_actual) - 0.01) {
-    console.log(`   \x1b[32mLos optimistas terminan con debt yield real más bajo.\x1b[0m`);
-    console.log(`   Sobrevive al control: la relación existe y va en la dirección esperada.`);
+    console.log(`   \x1b[32mThe optimistic ones end with lower actual debt yield.\x1b[0m`);
+    console.log(`   It survives the control: the relationship exists and runs as expected.`);
   } else {
-    console.log(`   \x1b[33mHay dispersión (${pct(spread)}) pero sin orden claro.\x1b[0m`);
-    console.log(`   Ni se confirma ni se descarta con esta muestra.`);
+    console.log(`   \x1b[33mThere is dispersion (${pct(spread)}) but no clear order.\x1b[0m`);
+    console.log(`   Neither confirmed nor ruled out with this sample.`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// C) Por tipo de propiedad
+// C) By property type
 // ---------------------------------------------------------------------------
 
-console.log(`\n\n\x1b[1mC. Por tipo de propiedad\x1b[0m`);
-console.log(`\x1b[90m   La escala que encontramos con el Annex A ordenaba por visibilidad de\x1b[0m`);
-console.log(`\x1b[90m   renta contractual. ¿Se sostiene contra el resultado real?\x1b[0m\n`);
+console.log(`\n\n\x1b[1mC. By property type\x1b[0m`);
+console.log(`\x1b[90m   The scale we found with the Annex A ordered types by visibility of\x1b[0m`);
+console.log(`\x1b[90m   contractual rent. Does it hold up against the actual outcome?\x1b[0m\n`);
 
 const { rows: byType } = await query<{
   ptype: string; n: string; vs_trailing: number | null; vs_actual: number | null;
   growth: number | null; dy_miss: number | null;
 }>(
-  `SELECT coalesce(nullif(property_type, ''), 'sin tipo') AS ptype,
+  `SELECT coalesce(nullif(property_type, ''), 'no type') AS ptype,
           count(*) AS n,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY gap_vs_trailing) AS vs_trailing,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY gap_vs_actual)   AS vs_actual,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY growth_delivered) AS growth,
-          -- Métrica limpia: cuánto se apartó el debt yield real del suscrito.
-          -- No comparte denominador con nada de lo anterior.
+          -- Clean metric: how far actual debt yield departed from underwritten.
+          -- Shares no denominator with anything above.
           percentile_cont(0.5) WITHIN GROUP (
             ORDER BY (noi_actual - noi_underwritten) / NULLIF(loan_amount_senior, 0)) AS dy_miss
      FROM corpus.underwriting_outcomes
@@ -476,7 +477,7 @@ const { rows: byType } = await query<{
 );
 
 if (byType.length >= 3) {
-  console.log(`   tipo                    n   vs histórico   vs real   creció   error DY`);
+  console.log(`   type                    n   vs trailing   vs actual   grew   DY error`);
   for (const r of byType) {
     const bad = Number(r.dy_miss) < -0.01;
     const cell = bad ? `\x1b[33m${pct(r.dy_miss).padStart(8)}\x1b[0m` : pct(r.dy_miss).padStart(8);
@@ -488,59 +489,59 @@ if (byType.length >= 3) {
   }
 
   /**
-   * "Error DY" es la columna con la que se puede comparar entre tipos.
+   * "DY error" is the column that can be compared across types.
    *
-   * Es (NOI real − NOI suscrito) / saldo: cuántos puntos de debt yield le
-   * faltaron a la propiedad para llegar a lo prometido. El saldo como
-   * denominador no viene del NOI, así que no arrastra el sesgo que mató al
-   * bloque B, y está en unidades comparables entre tipos —a diferencia de un
+   * It is (actual NOI − underwritten NOI) / balance: how many points of debt
+   * yield the property fell short of what was promised. The balance as a
+   * denominator does not come from NOI, so it does not carry the bias that
+   * killed block B, and it is in units comparable across types —unlike a
    * porcentaje sobre bases distintas.
    */
   console.log(
-    `\n   \x1b[90mLa columna comparable es "error DY": (real − suscrito) / saldo, en puntos\x1b[0m`,
+    `\n   \x1b[90mThe comparable column is "DY error": (actual − underwritten) / balance, in\x1b[0m`,
   );
-  console.log(`   \x1b[90mde debt yield. Es la única que no comparte denominador con las otras.\x1b[0m`);
+  console.log(`   \x1b[90mpoints of debt yield. It is the only one that shares no denominator.\x1b[0m`);
 
   /**
-   * "sin tipo" no es un tipo de propiedad, es un agujero de mapeo.
+   * "no type" is not a property type, it is a mapping hole.
    *
-   * La primera corrida lo eligió como el peor del cuadro y produjo una frase sin
-   * sentido: "sin tipo se suscribió con 6.3% sobre su histórico". Son nueve
-   * préstamos a los que no les pudimos leer la categoría; meterlos en una
-   * comparación entre tipos es comparar una categoría con la ausencia de una.
+   * The first run picked it as the worst in the table and produced a meaningless
+   * sentence: "no type was underwritten at 6.3% over its trailing figure". They
+   * are nine loans whose category we could not read; putting them in a
+   * comparison between types is comparing a category with the absence of one.
    *
-   * Además hace falta un piso de muestra: con n de un dígito la mediana la
-   * mueve un préstamo.
+   * A sample floor is also needed: with a single-digit n, one loan moves the
+   * median.
    */
   const NARRATIVE_MIN_N = 20;
   const real = byType.filter(
-    (r) => r.ptype !== "sin tipo" && Number(r.n) >= NARRATIVE_MIN_N,
+    (r) => r.ptype !== "no type" && Number(r.n) >= NARRATIVE_MIN_N,
   );
 
-  const untyped = byType.find((r) => r.ptype === "sin tipo");
+  const untyped = byType.find((r) => r.ptype === "no type");
   if (untyped) {
     console.log(
-      `\n   \x1b[90m"sin tipo" son ${untyped.n} préstamos sin categoría mapeada, no un tipo.\x1b[0m`,
+      `\n   \x1b[90m"no type" is ${untyped.n} loans with no mapped category, not a type.\x1b[0m`,
     );
-    console.log(`   \x1b[90mQuedan fuera de la comparación; son deuda técnica del mapeo.\x1b[0m`);
+    console.log(`   \x1b[90mThey stay out of the comparison; they are mapping debt.\x1b[0m`);
   }
 
   if (real.length < 3) {
-    console.log(`\n   \x1b[33mMuestra insuficiente por tipo para comparar.\x1b[0m`);
+    console.log(`\n   \x1b[33mInsufficient sample per type to compare.\x1b[0m`);
   } else {
   /**
-   * "Más certero" es el más cercano a cero, no el más alto.
+   * "Most accurate" is the closest to zero, not the highest.
    *
-   * Con la añada 2024 sola todos los errores eran negativos —las propiedades
-   * quedaban por debajo de lo suscrito— y tomar el máximo daba, por casualidad,
-   * el más cercano a cero. Al sumar 2020-2023 aparecieron errores POSITIVOS:
-   * propiedades que superaron lo suscrito. Ahí el máximo dejó de significar
-   * "certero" y pasó a significar "el que más se pasó para arriba", y el script
-   * imprimió que Manufactured Housing con +1,5% era el más preciso cuando Self
-   * Storage estaba en -0,0%.
+   * With the 2024 vintage alone every error was negative —properties came in
+   * below what was underwritten— and taking the maximum happened, by chance, to
+   * give the one closest to zero. Adding 2020-2023 brought POSITIVE errors:
+   * properties that beat what was underwritten. At that point the maximum
+   * stopped meaning "accurate" and started meaning "the one that overshot most",
+   * and the script printed that Manufactured Housing at +1.5% was the most
+   * precise when Self Storage was at -0.0%.
    *
-   * Una heurística que funciona solo mientras todos los signos coinciden es una
-   * coincidencia, no una heurística.
+   * A heuristic that works only while all the signs agree is a coincidence, not
+   * a heuristic.
    */
   const worst = real.reduce((a, b) => (Number(b.dy_miss) < Number(a.dy_miss) ? b : a));
   const over = real.reduce((a, b) => (Number(b.dy_miss) > Number(a.dy_miss) ? b : a));
@@ -549,57 +550,57 @@ if (byType.length >= 3) {
   );
 
   /**
-   * El contraste que invierte el hallazgo del Annex A.
+   * The contrast that inverts the Annex A finding.
    *
-   * Con el Annex A solo, "riesgo" era optimismo: cuánto se despegaba el
-   * suscriptor del histórico. Contra el resultado puede pasar que el tipo más
-   * optimista sea el más certero y el más prudente el que más falla —porque en
-   * activos volátiles anclar al histórico no es prudencia, es no tener nada
-   * mejor a mano.
+   * With the Annex A alone, "risk" was optimism: how far the underwriter
+   * departed from the trailing figure. Against the outcome it can turn out that
+   * the most optimistic type is the most accurate and the most prudent one fails
+   * most —because in volatile assets anchoring to the trailing figure is not
+   * prudence, it is having nothing better to hand.
    */
   if (Number(worst.vs_trailing) < Number(best.vs_trailing)) {
     console.log(
-      `\n   \x1b[33mSe invierte el orden del Annex A.\x1b[0m ${worst.ptype} se suscribió con ` +
+      `\n   \x1b[33mThe Annex A ordering inverts.\x1b[0m ${worst.ptype} was underwritten at `,
         `${pct(worst.vs_trailing)} sobre`,
     );
     console.log(
-      `   su histórico —el extremo prudente— y es el que más error tiene (${pct(worst.dy_miss)} de DY).`,
+      `   its trailing figure —the prudent extreme— and has the largest error (${pct(worst.dy_miss)} of DY).`,
     );
     console.log(
-      `   ${best.ptype} es el más certero: ${pct(best.dy_miss)} de desvío sobre el saldo.`,
+      `   ${best.ptype} is the most accurate: ${pct(best.dy_miss)} of deviation over the balance.`,
     );
     if (Number(over.dy_miss) > 0.005 && over.ptype !== best.ptype) {
       console.log(
-        `   \x1b[90mY ${over.ptype} quedó ${pct(over.dy_miss)} POR ENCIMA de lo suscrito: se suscribió\x1b[0m`,
+        `   \x1b[90mAnd ${over.ptype} came in ${pct(over.dy_miss)} ABOVE what was underwritten: it was\x1b[0m`,
       );
-      console.log(`   \x1b[90mde menos, no de más.\x1b[0m`);
+      console.log(`   \x1b[90munderwritten short, not long.\x1b[0m`);
     }
     console.log(
-      `\n   \x1b[90mEn originación el riesgo parece optimismo. Contra el resultado, el riesgo\x1b[0m`,
+      `\n   \x1b[90mAt origination, risk looks like optimism. Against the outcome, risk is\x1b[0m`,
     );
     console.log(
-      `   \x1b[90mes volatilidad. No son lo mismo, y el Annex A solo ve el primero.\x1b[0m`,
+      `   \x1b[90mvolatility. They are not the same, and the Annex A only sees the first.\x1b[0m`,
     );
   } else {
     console.log(
-      `\n   \x1b[90mEl orden se mantiene: ${worst.ptype} es el que más error tiene (${pct(worst.dy_miss)}).\x1b[0m`,
+      `\n   \x1b[90mThe order holds: ${worst.ptype} has the largest error (${pct(worst.dy_miss)}).\x1b[0m`,
     );
   }
   }
 }
 
 // ---------------------------------------------------------------------------
-// D) ¿La muestra está sesgada?
+// D) Is the sample biased?
 // ---------------------------------------------------------------------------
 
-console.log(`\n\n\x1b[1mD. Control de sesgo de muestra\x1b[0m`);
-console.log(`\x1b[90m   Solo entran los préstamos cuyo servicer reportó un año completo. Si los\x1b[0m`);
-console.log(`\x1b[90m   que reportan fueran sistemáticamente distintos, todo lo anterior se cae.\x1b[0m\n`);
+console.log(`\n\n\x1b[1mD. Sample bias control\x1b[0m`);
+console.log(`\x1b[90m   Only loans whose servicer reported a full year get in. If the ones that\x1b[0m`);
+console.log(`\x1b[90m   report were systematically different, everything above collapses.\x1b[0m\n`);
 
 const { rows: bias } = await query<{
   reported: string; n: string; uw_gap: number | null; dscr: number | null; ltv: number | null;
 }>(
-  `SELECT CASE WHEN p.loan_id IS NULL THEN 'sin reportar' ELSE 'con NOI real' END AS reported,
+  `SELECT CASE WHEN p.loan_id IS NULL THEN 'not reported' ELSE 'with actual NOI' END AS reported,
           count(*) AS n,
           percentile_cont(0.5) WITHIN GROUP (
             ORDER BY uw.value::numeric / NULLIF(mr.value::numeric, 0) - 1) AS uw_gap,
@@ -617,7 +618,7 @@ const { rows: bias } = await query<{
 );
 
 if (bias.length === 2) {
-  console.log(`   grupo             n   brecha vs hist   DSCR    LTV`);
+  console.log(`   group             n   gap vs trailing   DSCR    LTV`);
   for (const b of bias) {
     console.log(
       `   ${b.reported.padEnd(14)} ${String(b.n).padStart(4)}   ${pct(b.uw_gap).padStart(12)}   ` +
@@ -625,26 +626,26 @@ if (bias.length === 2) {
     );
   }
 
-  const a = bias.find((x) => x.reported === "con NOI real")!;
-  const b = bias.find((x) => x.reported === "sin reportar")!;
+  const a = bias.find((x) => x.reported === "with actual NOI")!;
+  const b = bias.find((x) => x.reported === "not reported")!;
   const gapDiff = Math.abs(Number(a.uw_gap) - Number(b.uw_gap));
   const dscrDiff = Math.abs(Number(a.dscr) - Number(b.dscr));
 
   console.log();
   if (gapDiff < 0.04 && dscrDiff < 0.15) {
-    console.log(`   \x1b[32mLos dos grupos se parecen al originar.\x1b[0m Que un servicer reporte o no`);
-    console.log(`   no depende de cómo se suscribió el préstamo: la muestra sirve.`);
+    console.log(`   \x1b[32mThe two groups look alike at origination.\x1b[0m Whether a servicer reports`);
+    console.log(`   does not depend on how the loan was underwritten: the sample is usable.`);
   } else {
-    console.log(`   \x1b[33mLos grupos difieren al originar\x1b[0m (brecha ${pct(gapDiff)}, DSCR ${num(dscrDiff)}).`);
-    console.log(`   Los que reportan no son una muestra neutral: hay que decirlo en cualquier`);
-    console.log(`   conclusión que salga de acá.`);
+    console.log(`   \x1b[33mThe groups differ at origination\x1b[0m (gap ${pct(gapDiff)}, DSCR ${num(dscrDiff)}).`);
+    console.log(`   Those that report are not a neutral sample: that has to be said in any`);
+    console.log(`   conclusion drawn from here.`);
   }
 }
 
 console.log(`\n${"─".repeat(78)}`);
 console.log(
-  `\n  \x1b[90mPrimera vez que el corpus puede decir si una suscripción estuvo\x1b[0m`,
+  `\n  \x1b[90mFirst time the corpus can say whether an underwriting was\x1b[0m`,
 );
-console.log(`  \x1b[90mequivocada, y no solo si fue optimista.\x1b[0m\n`);
+console.log(`  \x1b[90mwrong, and not only whether it was optimistic.\x1b[0m\n`);
 
 await closePool();
