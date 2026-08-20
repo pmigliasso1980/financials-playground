@@ -1,16 +1,16 @@
 /**
- * Tests del parser del informe del servicer.
+ * Tests for the servicer report parser.
  *
  *   npx tsx harvest/servicer.test.ts
  *
- * El HTML de acá reproduce la estructura real observada en el EX-99.1 de
- * Benchmark 2024-V7 (10-D de julio 2026), incluidas las cuatro trampas:
- * encabezado partido en tres filas y no al principio de la tabla, períodos de
- * NOI de distinta longitud, filas no reportadas como "0.00" con fechas "--", y
- * tramos pari passu repitiendo el NOI de la misma propiedad.
+ * The HTML here reproduces the real structure observed in the EX-99.1 of
+ * Benchmark 2024-V7 (10-D from July 2026), including all four traps: a header
+ * split across three rows and not at the start of the table, NOI periods of
+ * different lengths, unreported rows as "0.00" with "--" dates, and pari passu
+ * tranches repeating the same property's NOI.
  *
- * Los números salen del documento real. Si el parser los devuelve, sabemos que
- * lee lo que se ve, no lo que asumimos.
+ * The numbers come from the real document. If the parser returns them, we know
+ * it reads what is there, not what we assumed.
  */
 
 import {
@@ -46,13 +46,13 @@ function ok(label: string, condition: boolean, detail = ""): void {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture: estructura real del informe
+// Fixture: the report's real structure
 // ---------------------------------------------------------------------------
 
 /**
- * Cada página del informe es una `<table>` propia que contiene título de
- * sección, filas en blanco, encabezado en tres niveles, datos y pie de página.
- * El encabezado NO está en la fila 0 — por eso el parser se ancla en "Pros ID".
+ * Each page of the report is its own `<table>` containing a section title,
+ * blank rows, a three-level header, data and a page footer. The header is NOT
+ * in row 0 — which is why the parser anchors on "Pros ID".
  */
 function page(dataRows: string[][], pageNo: number): string {
   const cells = (values: string[], tag = "td") =>
@@ -74,14 +74,14 @@ const REPORT_HTML = `
 <html><body>
 ${page(
   [
-    // Tres tramos del mismo préstamo, mismo NOI de propiedad, período trimestral.
+    // Three tranches of the same loan, same property NOI, quarterly period.
     ["1A-1", "21,466,533.53", "6,590,191.56", "01/01/26", "03/31/26", "--", "0.00", "0.00"],
     ["1A-4", "21,466,533.53", "6,590,191.56", "01/01/26", "03/31/26", "--", "0.00", "0.00"],
     ["1A-5", "21,466,533.53", "6,590,191.56", "01/01/26", "03/31/26", "--", "0.00", "0.00"],
     ["2A-1-1", "19,947,724.67", "2,876,344.33", "01/01/26", "03/31/26", "--", "0.00", "0.00"],
-    // No reportado: número cero con fechas vacías. NO es NOI de cero.
+    // Not reported: a zero number with empty dates. It is NOT an NOI of zero.
     ["3A-1", "8,195,455.96", "0.00", "--", "--", "--", "0.00", "0.00"],
-    // Período de doce meses: no hay que extrapolar nada.
+    // Twelve-month period: nothing to extrapolate.
     ["4A-2", "12,379,213.40", "12,854,060.24", "04/01/25", "03/31/26", "--", "0.00", "0.00"],
     ["4A-3", "12,379,213.40", "12,854,060.24", "04/01/25", "03/31/26", "--", "0.00", "0.00"],
     ["5", "5,065,434.64", "0.00", "--", "--", "--", "0.00", "0.00"],
@@ -102,110 +102,110 @@ ${page(
 
 // ---------------------------------------------------------------------------
 
-console.log("\nParser del informe del servicer\n");
+console.log("\nServicer report parser\n");
 
 const result = parseServicerReport(REPORT_HTML);
 
-// --- ubicación de la tabla ---------------------------------------------------
+// --- locating the table ------------------------------------------------------
 
-check("encuentra las dos páginas de la tabla", result.diagnostics.tablesMatched, 2);
-// 13 filas en el fixture, menos la de Totals que es pie de página.
-check("lee las filas de datos y descarta el Totals", result.diagnostics.rowsFound, 12);
+check("finds both pages of the table", result.diagnostics.tablesMatched, 2);
+// 13 rows in the fixture, minus the Totals one which is a page footer.
+check("reads the data rows and discards the Totals", result.diagnostics.rowsFound, 12);
 
-// --- la trampa del cero sin fechas ------------------------------------------
+// --- the zero-without-dates trap --------------------------------------------
 
-check("descarta los no reportados por falta de fechas", result.diagnostics.droppedNoDates, 3);
+check("discards the unreported ones for missing dates", result.diagnostics.droppedNoDates, 3);
 
 const notReported = result.rows.find((r) => r.prosId === "3A-1");
-ok("un 0.00 sin fechas no produce NOI", notReported?.annualizedNoi === null);
-ok("pero conserva el valor crudo para trazabilidad", notReported?.recentNoi === 0);
+ok("a 0.00 with no dates produces no NOI", notReported?.annualizedNoi === null);
+ok("but keeps the raw value for traceability", notReported?.recentNoi === 0);
 
 const zeroInLoans = result.loans.some((l) => l.annualizedNoi === 0);
-ok("ningún préstamo entra con NOI cero", !zeroInLoans);
+ok("no loan enters with an NOI of zero", !zeroInLoans);
 
-// --- la trampa de la anualización -------------------------------------------
+// --- the annualisation trap --------------------------------------------------
 
 const quarterly = result.rows.find((r) => r.prosId === "1A-1")!;
-check("mide el período trimestral en días", quarterly.periodDays, 90);
-ok("marca que no es año completo", quarterly.isFullYear === false);
+check("measures the quarterly period in days", quarterly.periodDays, 90);
+ok("marks it as not a full year", quarterly.isFullYear === false);
 ok(
   "anualiza el trimestre",
   Math.abs(quarterly.annualizedNoi! - (6_590_191.56 * 365) / 90) < 0.01,
-  `obtenido ${quarterly.annualizedNoi}`,
+  `got ${quarterly.annualizedNoi}`,
 );
 
 const annual = result.rows.find((r) => r.prosId === "4A-2")!;
-check("mide el período anual en días", annual.periodDays, 365);
-ok("marca que es año completo", annual.isFullYear === true);
-check("no extrapola un año completo", annual.annualizedNoi, 12_854_060.24);
+check("measures the annual period in days", annual.periodDays, 365);
+ok("marks it as a full year", annual.isFullYear === true);
+check("does not extrapolate a full year", annual.annualizedNoi, 12_854_060.24);
 
 ok(
-  "sin anualizar, el trimestral parecería la mitad del anual",
+  "unannualised, the quarterly would look like half the annual",
   quarterly.recentNoi! < annual.recentNoi! && quarterly.annualizedNoi! > annual.annualizedNoi!,
-  "esta es exactamente la comparación que estaría mal sin mirar fechas",
+  "this is exactly the comparison that would be wrong without looking at dates",
 );
 
-// --- la trampa del pari passu ------------------------------------------------
+// --- the pari passu trap -----------------------------------------------------
 
-check("1A-1 normaliza al préstamo 1", normalizeProsId("1A-1"), "1");
-check("14A-3-C1 normaliza al préstamo 14", normalizeProsId("14A-3-C1"), "14");
-check("20A-1-3 normaliza al préstamo 20", normalizeProsId("20A-1-3"), "20");
-check("un entero solo queda igual", normalizeProsId("27"), "27");
-check("Pros ID sin número no mapea", normalizeProsId("Totals"), null);
+check("1A-1 normalises to loan 1", normalizeProsId("1A-1"), "1");
+check("14A-3-C1 normalises to loan 14", normalizeProsId("14A-3-C1"), "14");
+check("20A-1-3 normalises to loan 20", normalizeProsId("20A-1-3"), "20");
+check("a bare integer stays the same", normalizeProsId("27"), "27");
+check("a Pros ID with no number does not map", normalizeProsId("Totals"), null);
 
-ok("detecta sufijo de tramo", hasTrancheSuffix("1A-1") && !hasTrancheSuffix("27"));
+ok("detects a tranche suffix", hasTrancheSuffix("1A-1") && !hasTrancheSuffix("27"));
 
 const loan1 = result.loans.find((l) => l.loanId === "1");
-check("los tres tramos del préstamo 1 colapsan en uno", loan1?.tranches, 3);
-check("préstamos únicos tras deduplicar", result.loans.length, 5);
-check("sin conflictos entre tramos", result.diagnostics.trancheConflicts.length, 0);
+check("the three tranches of loan 1 collapse into one", loan1?.tranches, 3);
+check("unique loans after deduplicating", result.loans.length, 5);
+check("no conflicts between tranches", result.diagnostics.trancheConflicts.length, 0);
 
 const sumRaw = result.rows
   .filter((r) => r.annualizedNoi !== null)
   .reduce((a, r) => a + r.recentNoi!, 0);
 const sumDeduped = result.loans.reduce((a, l) => a + l.annualizedNoi, 0);
 ok(
-  "deduplicar cambia el total de forma material",
+  "deduplicating changes the total materially",
   Math.abs(sumRaw - sumDeduped) / sumRaw > 0.3,
   `crudo ${Math.round(sumRaw)} vs deduplicado ${Math.round(sumDeduped)}`,
 );
 
-// --- el pie de página no es un préstamo --------------------------------------
+// --- the page footer is not a loan -------------------------------------------
 
 ok(
-  "la fila Totals no entra como préstamo",
+  "the Totals row does not enter as a loan",
   !result.rows.some((r) => /totals/i.test(r.prosId)),
 );
 ok(
-  "el copyright no entra como préstamo",
+  "the copyright does not enter as a loan",
   !result.rows.some((r) => /computershare/i.test(r.prosId)),
 );
 
 // --- avisos ------------------------------------------------------------------
 
 ok(
-  "avisa cuando casi todo viene extrapolado",
-  result.issues.some((i) => /año completo/.test(i)),
+  "warns when almost everything comes extrapolated",
+  result.issues.some((i) => /full year/.test(i)),
   `issues: ${JSON.stringify(result.issues)}`,
 );
 
-// --- parseo de valores -------------------------------------------------------
+// --- value parsing -----------------------------------------------------------
 
-check("money con separadores", parseMoney("21,466,533.53"), 21_466_533.53);
-check("money con guiones es nulo", parseMoney("--"), null);
-check("money vacío es nulo", parseMoney(""), null);
-check("money entre paréntesis es negativo", parseMoney("(1,234.50)"), -1234.5);
-check("cero explícito es cero, no nulo", parseMoney("0.00"), 0);
-check("texto no es money", parseMoney("Defeased"), null);
+check("money with separators", parseMoney("21,466,533.53"), 21_466_533.53);
+check("money with dashes is null", parseMoney("--"), null);
+check("empty money is null", parseMoney(""), null);
+check("money in parentheses is negative", parseMoney("(1,234.50)"), -1234.5);
+check("an explicit zero is zero, not null", parseMoney("0.00"), 0);
+check("text is not money", parseMoney("Defeased"), null);
 
-check("fecha corta a ISO", parseShortDate("03/31/26"), "2026-03-31");
-check("fecha de enero", parseShortDate("01/01/26"), "2026-01-01");
-check("año de cuatro dígitos", parseShortDate("04/01/2025"), "2025-04-01");
-check("guiones no son fecha", parseShortDate("--"), null);
-check("fecha imposible se rechaza", parseShortDate("02/31/26"), null);
-check("mes fuera de rango se rechaza", parseShortDate("13/01/26"), null);
+check("short date to ISO", parseShortDate("03/31/26"), "2026-03-31");
+check("a January date", parseShortDate("01/01/26"), "2026-01-01");
+check("a four-digit year", parseShortDate("04/01/2025"), "2025-04-01");
+check("dashes are not a date", parseShortDate("--"), null);
+check("an impossible date is rejected", parseShortDate("02/31/26"), null);
+check("a month out of range is rejected", parseShortDate("13/01/26"), null);
 
-// --- período corto -----------------------------------------------------------
+// --- short period ------------------------------------------------------------
 
 const shortPeriod = parseServicerReport(
   REPORT_HTML.replace(
@@ -217,34 +217,34 @@ const shortPeriod = parseServicerReport(
   ),
 );
 ok(
-  `un período de 31 días queda afuera (piso ${MIN_PERIOD_DAYS})`,
+  `a 31-day period is left out (floor ${MIN_PERIOD_DAYS})`,
   shortPeriod.diagnostics.droppedShortPeriod === 1,
-  `obtenido ${shortPeriod.diagnostics.droppedShortPeriod}`,
+  `got ${shortPeriod.diagnostics.droppedShortPeriod}`,
 );
 
-// --- scoring de exhibits -----------------------------------------------------
+// --- exhibit scoring ---------------------------------------------------------
 
 ok(
-  "el EX-99.1 grande gana",
+  "the large EX-99.1 wins",
   scoreServicerExhibit({ name: "bmk24v07_ex991-202607.htm", sizeBytes: 300_000 }) > 0.8,
 );
 ok(
-  "la carátula del 10-D no compite",
+  "the 10-D cover page does not compete",
   scoreServicerExhibit({ name: "bmk24v07_10d-202607.htm", sizeBytes: 60_000 }) === 0,
 );
 ok(
-  "un certificado chico puntúa bajo",
+  "a small certificate scores low",
   scoreServicerExhibit({ name: "ex-99_2cert.htm", sizeBytes: 3_000 }) < 0.5,
 );
 ok(
-  "acepta la variante con guion bajo",
+  "accepts the underscore variant",
   scoreServicerExhibit({ name: "abc_ex-99_1-202601.htm", sizeBytes: 250_000 }) > 0.8,
 );
-ok("un PDF no se puede parsear", scoreServicerExhibit({ name: "x_ex991.pdf", sizeBytes: 500_000 }) === 0);
+ok("a PDF cannot be parsed", scoreServicerExhibit({ name: "x_ex991.pdf", sizeBytes: 500_000 }) === 0);
 
 
 // ---------------------------------------------------------------------------
-// Combinación de varios meses y exclusión de extrapolados
+// Combining several months and excluding extrapolated values
 // ---------------------------------------------------------------------------
 
 const fy = (loanId: string, noi: number, label: string) => ({
@@ -276,18 +276,18 @@ const merged = mergeServicerReports([
   },
 ]);
 
-check("prefiere el año completo sobre el extrapolado", merged.loans.find((l) => l.loanId === "2")?.annualizedNoi, 19_947_725);
-check("toma el mes que aporta el dato bueno", merged.loans.find((l) => l.loanId === "2")?.sourceLabel, "2026-04");
-check("excluye el préstamo sin ninguna medición completa", merged.excludedExtrapolated, ["17"]);
-check("solo quedan los de año completo", merged.loans.map((l) => l.loanId), ["2", "3"]);
+check("prefers the full year over the extrapolated one", merged.loans.find((l) => l.loanId === "2")?.annualizedNoi, 19_947_725);
+check("takes the month that carries the good datum", merged.loans.find((l) => l.loanId === "2")?.sourceLabel, "2026-04");
+check("excludes the loan with no complete measurement", merged.excludedExtrapolated, ["17"]);
+check("only the full-year ones remain", merged.loans.map((l) => l.loanId), ["2", "3"]);
 
 ok(
-  "detecta el conflicto entre meses del préstamo 2",
+  "detects the conflict between months for loan 2",
   merged.conflicts.some((c) => c.loanId === "2" && c.ratio > 1.5),
   `conflictos: ${JSON.stringify(merged.conflicts.map((c) => [c.loanId, c.ratio.toFixed(1)]))}`,
 );
 ok(
-  "y también el del 17, que no tiene ancla",
+  "and also the one for 17, which has no anchor",
   merged.conflicts.some((c) => c.loanId === "17"),
 );
 
@@ -298,24 +298,24 @@ const permissive = mergeServicerReports(
   ],
   { requireFullYear: false },
 );
-check("con la opción abierta, el extrapolado entra", permissive.loans.length, 1);
-check("y elige el período más largo", permissive.loans[0]?.periodDays, 181);
+check("with the option open, the extrapolated one enters", permissive.loans.length, 1);
+check("and it picks the longest period", permissive.loans[0]?.periodDays, 181);
 
 
 // ---------------------------------------------------------------------------
-// Segunda familia de plantilla: Citigroup
+// Second template family: Citigroup
 // ---------------------------------------------------------------------------
 
 /**
- * Estructura real del EX-99.1 de BMO 2024-C8 (10-D de abril 2026), sección
- * "NOI DETAIL". Valores textuales del documento.
+ * The real structure of BMO 2024-C8's EX-99.1 (10-D from April 2026), "NOI
+ * DETAIL" section. Values taken verbatim from the document.
  *
- * Lo que este fixture protege: la columna llamada "Loan ID" acá es el
- * identificador interno del servicer, y el número del prospecto está en "OMCR".
- * En Computershare la relación es la inversa. Si alguien "simplifica" el
- * localizador anclándolo en "Loan ID", este test falla; sin él, el pipeline
- * devolvería cero coincidencias en silencio, indistinguible de un trust que no
- * reporta.
+ * What this fixture protects: the column called "Loan ID" here is the servicer's
+ * internal identifier, and the prospectus number is in "OMCR". In Computershare
+ * the relationship is the reverse. If someone "simplifies" the locator by
+ * anchoring it on "Loan ID", this test fails; without it, the pipeline would
+ * return zero matches silently, indistinguishable from a trust that does not
+ * report at all.
  */
 const CITI_HTML = `
 <html><body>
@@ -336,41 +336,41 @@ const CITI_HTML = `
 
 const citi = parseServicerReport(CITI_HTML);
 
-check("reconoce la plantilla de Citigroup", citi.diagnostics.families, ["citigroup"]);
-check("ubica la sección NOI Detail", citi.diagnostics.tablesMatched, 1);
+check("recognises the Citigroup template", citi.diagnostics.families, ["citigroup"]);
+check("locates the NOI Detail section", citi.diagnostics.tablesMatched, 1);
 
 ok(
-  "ancla en OMCR y no en la columna llamada Loan ID",
+  "anchors on OMCR and not on the column called Loan ID",
   citi.rows.every((r) => Number(r.prosId) < 1000),
-  `prosIds obtenidos: ${JSON.stringify(citi.rows.map((r) => r.prosId))}`,
+  `prosIds obtained: ${JSON.stringify(citi.rows.map((r) => r.prosId))}`,
 );
 ok(
-  "el id interno del servicer nunca entra como préstamo",
+  "the servicer's internal id never enters as a loan",
   !citi.loans.some((l) => l.loanId.startsWith("3280")),
 );
 
-check('"Not Available" es ausencia, no un valor', citi.diagnostics.droppedNoDates, 1);
+check('"Not Available" is an absence, not a value', citi.diagnostics.droppedNoDates, 1);
 ok(
-  "el préstamo sin fechas queda afuera aunque traiga NOI",
+  "the loan with no dates stays out even though it carries NOI",
   !citi.loans.some((l) => l.loanId === "1"),
 );
 
 const citi11 = citi.loans.find((l) => l.loanId === "11");
-ok("el préstamo 11 entra por su fila principal", citi11 !== undefined);
-check("con período de nueve meses", citi11?.periodDays, 273);
+ok("loan 11 enters through its main row", citi11 !== undefined);
+check("with a nine-month period", citi11?.periodDays, 273);
 ok("marcado como extrapolado", citi11?.isFullYear === false);
 
 const citi20 = citi.loans.find((l) => l.loanId === "20");
-check("el de doce meses no se extrapola", citi20?.annualizedNoi, 825_372.59);
-ok("y queda marcado como año completo", citi20?.isFullYear === true);
+check("the twelve-month one is not extrapolated", citi20?.annualizedNoi, 825_372.59);
+ok("and is marked as a full year", citi20?.isFullYear === true);
 
-check("el pie de Citigroup no entra como préstamo", 
+check("the Citigroup footer does not enter as a loan", 
   citi.rows.filter((r) => /citidirect|copyright/i.test(r.prosId)).length, 0);
 
 ok(
-  "las dos familias conviven sin pisarse",
+  "the two families coexist without stepping on each other",
   result.diagnostics.families.length === 1 && result.diagnostics.families[0] === "computershare",
-  `computershare detectó: ${JSON.stringify(result.diagnostics.families)}`,
+  `computershare detected: ${JSON.stringify(result.diagnostics.families)}`,
 );
 
 check('parseShortDate rechaza "Not Available"', parseShortDate("Not Available"), null);
