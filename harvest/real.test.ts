@@ -279,7 +279,7 @@ check("the real NOI is not stolen by the DSCR or the debt yield", () => {
   );
 });
 
-check("NOI DSCR y NCF DSCR no se confunden", () => {
+check("NOI DSCR and NCF DSCR do not get confused", () => {
   const { matches } = mapColumns(headers2);
   const noi = matches.find((m) => m.metric.key === "dscr");
   const ncf = matches.find((m) => m.metric.key === "dscr_ncf");
@@ -288,7 +288,7 @@ check("NOI DSCR y NCF DSCR no se confunden", () => {
   assert(/ncf/i.test(ncf!.header), `dscr_ncf took "${ncf!.header}"`);
 });
 
-check("NOI Debt Yield y NCF Debt Yield no se confunden", () => {
+check("NOI Debt Yield and NCF Debt Yield do not get confused", () => {
   const { matches } = mapColumns(headers2);
   const noi = matches.find((m) => m.metric.key === "debt_yield");
   const ncf = matches.find((m) => m.metric.key === "debt_yield_ncf");

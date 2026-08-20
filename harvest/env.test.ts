@@ -105,7 +105,7 @@ check("key with a hyphen is ignored", parseEnv("MY-KEY=x"), {});
 check("empty value is an empty string", parseEnv("FOO="), { FOO: "" });
 check(
   "one broken line does not drag down the good ones",
-  parseEnv("rota\nFOO=bar\n=tambien rota\nBAZ=qux"),
+  parseEnv("broken\nFOO=bar\n=also broken\nBAZ=qux"),
   { FOO: "bar", BAZ: "qux" },
 );
 

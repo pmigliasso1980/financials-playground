@@ -145,7 +145,7 @@ check("verbose headers: maps the core metrics", () => {
   const { matches } = mapColumns(HEADERS_VERBOSE);
   const keys = new Set(matches.map((m) => m.metric.key));
   for (const expected of ["noi_underwritten", "noi_most_recent", "occupancy", "units", "loan_amount", "ltv", "dscr"]) {
-    assert(keys.has(expected as never), `falta ${expected}`);
+    assert(keys.has(expected as never), `missing ${expected}`);
   }
 });
 
@@ -153,7 +153,7 @@ check("headers abreviados: mapea igual", () => {
   const { matches } = mapColumns(HEADERS_TERSE);
   const keys = new Set(matches.map((m) => m.metric.key));
   for (const expected of ["noi_underwritten", "noi_most_recent", "occupancy", "units", "ltv", "dscr"]) {
-    assert(keys.has(expected as never), `falta ${expected}`);
+    assert(keys.has(expected as never), `missing ${expected}`);
   }
 });
 
@@ -161,11 +161,11 @@ check("headers with symbols: maps just the same", () => {
   const { matches } = mapColumns(HEADERS_SYMBOLS);
   const keys = new Set(matches.map((m) => m.metric.key));
   for (const expected of ["noi_underwritten", "occupancy", "units", "ltv", "dscr", "interest_rate"]) {
-    assert(keys.has(expected as never), `falta ${expected}`);
+    assert(keys.has(expected as never), `missing ${expected}`);
   }
 });
 
-check("UW NOI y Most Recent NOI no se confunden", () => {
+check("UW NOI and Most Recent NOI do not get confused", () => {
   const { matches } = mapColumns(HEADERS_VERBOSE);
   const uw = matches.find((m) => m.metric.key === "noi_underwritten");
   const recent = matches.find((m) => m.metric.key === "noi_most_recent");
@@ -705,8 +705,8 @@ check("identifier and flag coexist in the same Annex A", () => {
     "Mortgage Loan Number", "Loan/Prop.", "Property Name", "UW NOI",
   ]);
   const keys = matches.map((m) => m.metric.key);
-  assert(keys.includes("loan_id" as never), "falta loan_id");
-  assert(keys.includes("loan_property_flag" as never), "falta loan_property_flag");
+  assert(keys.includes("loan_id" as never), "loan_id is missing");
+  assert(keys.includes("loan_property_flag" as never), "loan_property_flag is missing");
 });
 
 check("Total Debt Cut-off Date Balance has its own metric", () => {

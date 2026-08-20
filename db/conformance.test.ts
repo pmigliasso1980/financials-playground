@@ -245,7 +245,7 @@ await check("no observation is lost", () => {
   const round = loaded!.properties.flatMap((p) => p.observations.map((o) => `${p.row_index}:${o.metric_key}`));
   eq(round.length, original.length, "cantidad");
   for (const key of original) {
-    assert(round.includes(key), `falta ${key}`);
+    assert(round.includes(key), `missing ${key}`);
   }
 });
 

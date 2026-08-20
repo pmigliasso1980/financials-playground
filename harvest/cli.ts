@@ -316,7 +316,7 @@ async function saveResult(result: Awaited<ReturnType<typeof rowsToObservations>>
 
   const health = await ping();
   if (!health.ok) {
-    console.log(`  \x1b[33m⚠ no se pudo persistir\x1b[0m`);
+    console.log(`  \x1b[33m⚠ could not persist\x1b[0m`);
     console.log(`  ${health.message.split("\n").join("\n  ")}`);
     await closePool();
     return;

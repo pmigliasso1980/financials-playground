@@ -207,12 +207,12 @@ if (AUDIT) {
                  WHERE l.accession = f.accession
                    AND fa.metric_key = 'occupancy'
                    AND fa.value ~ '^-?[0-9.]+$'
-              ) AS tiene
+              ) AS has_occ
          FROM corpus.filings f
         WHERE f.accession = ANY($1)
      )
      SELECT shelf, count(*)::text AS total,
-            count(*) FILTER (WHERE tiene)::text AS with_occ
+            count(*) FILTER (WHERE has_occ)::text AS with_occ
        FROM e GROUP BY shelf HAVING count(*) >= 2 ORDER BY 1`,
     [accs],
   );

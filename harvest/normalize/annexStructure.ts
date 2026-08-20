@@ -132,11 +132,11 @@ function dropPhantomRows(
   // Without either column there is nothing to decide on: everything is kept.
   if (nameCol === null && amountCol === null) return { kept: data, dropped: 0 };
 
-  const tiene = (row: unknown[], col: number | null, conDigito: boolean) => {
+  const hasValue = (row: unknown[], col: number | null, requireDigit: boolean) => {
     if (col === null) return false;
     const v = String(row?.[col] ?? "").trim();
     if (!v) return false;
-    return conDigito ? /\d/.test(v) : true;
+    return requireDigit ? /\d/.test(v) : true;
   };
 
   /**
@@ -157,22 +157,22 @@ function dropPhantomRows(
    * columns. A numbering row is all digits. No number has to be chosen to tell
    * them apart.
    */
-  const sinLetras = (row: unknown[]) =>
+  const noLetters = (row: unknown[]) =>
     !row?.some((c) => /[a-zA-Z]/.test(String(c ?? "")));
 
   const kept: unknown[][] = [];
-  const fantasma: unknown[][] = [];
+  const phantom: unknown[][] = [];
   for (const row of data) {
-    const pareceLoan = tiene(row, nameCol, false) || tiene(row, amountCol, true);
-    if (pareceLoan && !sinLetras(row)) kept.push(row);
-    else fantasma.push(row);
+    const looksLikeLoan = hasValue(row, nameCol, false) || hasValue(row, amountCol, true);
+    if (looksLikeLoan && !noLetters(row)) kept.push(row);
+    else phantom.push(row);
   }
 
-  if (data.length > 0 && fantasma.length / data.length > MAX_PHANTOM_SHARE) {
+  if (data.length > 0 && phantom.length / data.length > MAX_PHANTOM_SHARE) {
     // Too many: it is the hypothesis about the columns that is wrong.
     return { kept: data, dropped: 0 };
   }
-  return { kept, dropped: fantasma.length };
+  return { kept, dropped: phantom.length };
 }
 
 /**
