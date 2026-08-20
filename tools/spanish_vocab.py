@@ -97,7 +97,8 @@ encontrado encontrados encontrada encontradas revisado revisados
 esperado esperados esperada esperadas obtenido obtenidos
 listo listos correcto correctos incorrecto incorrectos
 vacia vacias lleno llenos roto rotas rotos sano sanos
-prueba pruebas corrida corridas
+prueba pruebas corrida corridas mapeada mapeadas mapeado mapeados
+mapear mapeo faltante faltantes ninguna ninguno
 """.split()
 
 HIGH_SIGNAL = """de del los las para con por una que en dentro sin cierran

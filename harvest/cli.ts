@@ -281,7 +281,7 @@ async function harvestFiling(filing: FilingRef, score: number) {
   );
 
   if (result.columnsMapped.length > 0) {
-    console.log(`  mapeadas: ${result.columnsMapped.map((c) => c.metric).join(", ")}`);
+    console.log(`  mapped: ${result.columnsMapped.map((c) => c.metric).join(", ")}`);
   }
 
   const issues = checkSanity(result);

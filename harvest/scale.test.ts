@@ -1,27 +1,26 @@
 /**
- * Test de escala del harvester.
+ * Harvester scale test.
  *
- * Genera un Annex A sintético con la forma y el volumen de uno real —500
- * propiedades, encabezados agrupados por colspan, columnas parcialmente
- * pobladas— y verifica cobertura, sanidad y tiempos.
+ * Generates a synthetic Annex A with the shape and volume of a real one —500
+ * properties, headers grouped by colspan, partially populated columns— and
+ * checks coverage, sanity and timings.
  *
- * POR QUÉ EXISTE
+ * WHY IT EXISTS
  *
- * Los tests de unidad usan tablas de 2-3 filas, y con eso no aparecen los
- * problemas de mapeo que sí surgen a escala. Dos bugs reales los encontró este
- * test, no los otros:
+ * The unit tests use tables of 2-3 rows, and that does not surface the mapping
+ * problems that do appear at scale. Two real bugs were found by this test and
+ * not by the others:
  *
- *   1. El encabezado de grupo "Physical & Occupancy" se pegaba por colspan a la
- *      columna "Net Rentable Area (SF)". El texto resultante matcheaba
- *      *occupancy* con más puntaje que *square feet*, así que se robaba la
- *      columna: 500 valores de superficie guardados como ocupancia, y la
- *      ocupancia real sin mapear.
+ *   1. The group header "Physical & Occupancy" was glued by colspan onto the
+ *      "Net Rentable Area (SF)" column. The resulting text matched *occupancy*
+ *      with a higher score than *square feet*, so it stole the column: 500 area
+ *      values stored as occupancy, and the real occupancy left unmapped.
  *
- *   2. La exclusión `/rent/i` de square_feet mataba "Net **Rent**able Area",
- *      el nombre más común de esa columna.
+ *   2. The `/rent/i` exclusion on square_feet killed "Net **Rent**able Area",
+ *      the most common name for that column.
  *
- * Ninguno de los dos tira error. El primero lo cazó `checkSanity()`; el segundo
- * apareció al revisar la cobertura por métrica.
+ * Neither throws an error. The first was caught by `checkSanity()`; the second
+ * turned up while reviewing coverage per metric.
  *
  *   npm run harvest:scale
  */
@@ -87,7 +86,7 @@ function buildAnnexHtml(): string {
       `<td>${(4.5 + (i % 25) / 20).toFixed(2)}%</td></tr>`;
   }
 
-  // Encabezados de grupo con colspan: la fuente de los bugs de mapeo.
+  // Group headers with colspan: the source of the mapping bugs.
   return (
     `<html><body><p>ANNEX A-1</p><table>` +
     `<tr><td colspan="7">Property Information</td>` +
@@ -103,7 +102,7 @@ const SOURCE: SourceRef = {
   fileName: "annexa1.htm", fileUrl: "https://www.sec.gov/scale-test",
 };
 
-console.log(`\nEscala — Annex A sintético de ${N} propiedades\n`);
+console.log(`\nScale — synthetic Annex A of ${N} properties\n`);
 
 const html = buildAnnexHtml();
 console.log(`  documento: ${(Buffer.byteLength(html) / 1e6).toFixed(2)} MB`);
@@ -113,70 +112,70 @@ const tables = extractFromHtml(html);
 const parseMs = Date.now() - t0;
 
 const header = findHeaderRow(tables[0]!.rows);
-assert(header, "no se detectaron encabezados");
+assert(header, "no headers were detected");
 
 const t1 = Date.now();
 const result = rowsToObservations(tables[0]!.rows, header.rowIndex, SOURCE);
 const normalizeMs = Date.now() - t1;
 
-console.log(`  parseo: ${parseMs} ms · normalización: ${normalizeMs} ms · heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB\n`);
+console.log(`  parsing: ${parseMs} ms · normalisation: ${normalizeMs} ms · heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB\n`);
 
 // ---------------------------------------------------------------------------
 
-check("parsea todas las filas sin perder ninguna", () => {
-  assert(tables.length === 1, `esperaba 1 tabla, hay ${tables.length}`);
-  assert(result.stats.propertiesKept === N, `${result.stats.propertiesKept} de ${N} propiedades`);
+check("parses every row without losing any", () => {
+  assert(tables.length === 1, `expected 1 table, there are ${tables.length}`);
+  assert(result.stats.propertiesKept === N, `${result.stats.propertiesKept} of ${N} properties`);
 });
 
-check("mapea todas las columnas del Annex A", () => {
-  // 19 columnas menos "Loan No.", que no es una métrica nuestra.
+check("maps every Annex A column", () => {
+  // 19 columns minus "Loan No.", which is not one of our metrics.
   assert(
     result.columnsMapped.length >= 18,
-    `solo ${result.columnsMapped.length} columnas mapeadas: ${result.columnsMapped.map((c) => c.metric).join(", ")}`,
+    `only ${result.columnsMapped.length} columns mapped: ${result.columnsMapped.map((c) => c.metric).join(", ")}`,
   );
 });
 
-check("el encabezado de grupo no se roba la columna de superficie", () => {
-  // El bug original: "Physical & Occupancy" + "Net Rentable Area (SF)" hacía
-  // que occupancy ganara la columna de superficie.
+check("the group header does not steal the area column", () => {
+  // The original bug: "Physical & Occupancy" + "Net Rentable Area (SF)" made
+  // occupancy win the area column.
   const occ = result.columnsMapped.find((c) => c.metric === "occupancy");
-  assert(occ, "occupancy no se mapeó");
+  assert(occ, "occupancy was not mapped");
   assert(
     /^occupancy$/i.test(occ!.header.trim()),
-    `occupancy tomó la columna "${occ!.header}" en vez de "Occupancy"`,
+    `occupancy took the column "${occ!.header}" instead of "Occupancy"`,
   );
 });
 
 check("square feet se mapea pese a llamarse 'Net Rentable Area'", () => {
   const sf = result.columnsMapped.find((c) => c.metric === "square_feet");
-  assert(sf, "square_feet no se mapeó — ¿alguna exclusión demasiado amplia?");
-  assert(/rentable/i.test(sf!.header), `mapeó a "${sf!.header}"`);
+  assert(sf, "square_feet was not mapped — is some exclusion too broad?");
+  assert(/rentable/i.test(sf!.header), `mapped to "${sf!.header}"`);
 });
 
-check("UW NOI y Most Recent NOI van a columnas distintas", () => {
+check("UW NOI and Most Recent NOI go to different columns", () => {
   const uw = result.columnsMapped.find((c) => c.metric === "noi_underwritten");
   const recent = result.columnsMapped.find((c) => c.metric === "noi_most_recent");
-  assert(uw && recent, "faltó alguno de los dos NOI");
-  assert(uw!.header !== recent!.header, "los dos apuntan al mismo encabezado");
+  assert(uw && recent, "one of the two NOIs is missing");
+  assert(uw!.header !== recent!.header, "both point at the same header");
 });
 
-check("las columnas parcialmente pobladas tienen cobertura parcial", () => {
-  // units y square_feet son mutuamente excluyentes en el fixture.
+check("partially populated columns have partial coverage", () => {
+  // units and square_feet are mutually exclusive in the fixture.
   const units = result.stats.coverageByMetric.units ?? 0;
   const sf = result.stats.coverageByMetric.square_feet ?? 0;
-  assert(units > 0 && units < N, `units=${units}, esperaba entre 0 y ${N}`);
-  assert(sf > 0 && sf < N, `square_feet=${sf}, esperaba entre 0 y ${N}`);
+  assert(units > 0 && units < N, `units=${units}, expected between 0 and ${N}`);
+  assert(sf > 0 && sf < N, `square_feet=${sf}, expected between 0 and ${N}`);
   assert(units + sf === N, `units+sf=${units + sf}, esperaba ${N}`);
 });
 
-check("las métricas centrales cubren todas las filas", () => {
+check("the core metrics cover every row", () => {
   for (const key of ["noi_underwritten", "occupancy", "loan_amount", "ltv", "dscr"]) {
     const count = result.stats.coverageByMetric[key] ?? 0;
-    assert(count === N, `${key}: ${count} de ${N}`);
+    assert(count === N, `${key}: ${count} of ${N}`);
   }
 });
 
-check("los chequeos de sanidad no encuentran nada", () => {
+check("the sanity checks find nothing", () => {
   const issues = checkSanity(result);
   assert(
     issues.length === 0,
@@ -184,33 +183,33 @@ check("los chequeos de sanidad no encuentran nada", () => {
   );
 });
 
-check("los valores quedan en el rango correcto para su unidad", () => {
+check("the values stay in the right range for their unit", () => {
   const sample = result.properties.slice(0, 50);
   for (const prop of sample) {
     for (const obs of prop.observations) {
       if (obs.unit !== "percent") continue;
       const v = Number(obs.value);
-      assert(v >= 0 && v <= 1, `${obs.metric_key}=${v} fuera de 0-1`);
+      assert(v >= 0 && v <= 1, `${obs.metric_key}=${v} outside 0-1`);
     }
   }
 });
 
-check("los ids de observation son únicos a escala", () => {
+check("the observation ids are unique at scale", () => {
   const ids = result.properties.flatMap((p) => p.observations.map((o) => o.id));
   assert(new Set(ids).size === ids.length, `${ids.length - new Set(ids).size} ids duplicados`);
 });
 
 check("el rendimiento se mantiene razonable", () => {
-  // Umbrales holgados: buscamos detectar una regresión de orden de magnitud,
-  // no medir performance con precisión.
-  assert(parseMs < 5000, `el parseo tardó ${parseMs} ms`);
-  assert(normalizeMs < 5000, `la normalización tardó ${normalizeMs} ms`);
+  // Loose thresholds: we are looking to detect an order-of-magnitude
+  // regression, not to measure performance precisely.
+  assert(parseMs < 5000, `parsing took ${parseMs} ms`);
+  assert(normalizeMs < 5000, `normalisation took ${normalizeMs} ms`);
 });
 
 // ---------------------------------------------------------------------------
 
 console.log(
-  `\n  cobertura: ${Object.entries(result.stats.coverageByMetric)
+  `\n  coverage: ${Object.entries(result.stats.coverageByMetric)
     .map(([k, v]) => `${k}=${v}`)
     .join(" ")}`,
 );

@@ -1,20 +1,20 @@
 /**
- * Test contra HTML crudo de Annex A reales.
+ * Test against raw HTML from real Annex A files.
  *
- * Corre sobre cualquier fixture que encuentre en `harvest/fixtures/`. Si no hay
- * ninguno, avisa cómo capturar uno y termina sin fallar —así el pipeline de
- * tests no se rompe en una máquina que todavía no descargó nada.
+ * Runs over whatever fixtures it finds in `harvest/fixtures/`. If there are
+ * none, it says how to capture one and exits without failing —so the test
+ * pipeline does not break on a machine that has not downloaded anything yet.
  *
- *   npm run harvest:capture -- 2053102   # una vez, requiere red
- *   npm run harvest:fixtures             # después, offline para siempre
+ *   npm run harvest:capture -- 2053102   # once, needs the network
+ *   npm run harvest:fixtures             # afterwards, offline forever
  *
- * QUÉ APORTA QUE NO APORTEN LOS OTROS TESTS
+ * WHAT IT ADDS THAT THE OTHER TESTS DO NOT
  *
- * `harvest:real` usa los encabezados y valores reales, pero transcritos a
- * arrays de TypeScript. Este corre sobre el **markup original**: `<font>`
- * anidados dentro de `<td>`, estilos inline, `&nbsp;`, filas de separación,
- * encabezados en tres niveles de colspan. Es lo único que ejercita de verdad
- * el parser de HTML contra la suciedad real.
+ * `harvest:real` uses the real headers and values, but transcribed into
+ * TypeScript arrays. This one runs over the **original markup**: `<font>`
+ * nested inside `<td>`, inline styles, `&nbsp;`, separator rows, headers across
+ * three levels of colspan. It is the only thing that really exercises the HTML
+ * parser against the real dirt.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -65,17 +65,17 @@ let files: string[] = [];
 try {
   files = (await readdir(FIXTURES_DIR)).filter((f) => f.endsWith(".html")).sort();
 } catch {
-  // el directorio no existe todavía
+  // the directory does not exist yet
 }
 
 if (files.length === 0) {
   console.log("  \x1b[90mNo hay fixtures capturados.\x1b[0m\n");
-  console.log("  Para capturar uno (requiere red y SEC_USER_AGENT):\n");
+  console.log("  To capture one (needs the network and SEC_USER_AGENT):\n");
   console.log('    export SEC_USER_AGENT="Tu Nombre tu@email.com"');
   console.log("    npm run harvest:capture -- 2053102     # Wells Fargo 2025-C64");
   console.log("    npm run harvest:capture -- 2110410     # Benchmark 2026-B42");
   console.log("    npm run harvest:capture -- 2104049     # BANK5 2026-5YR20\n");
-  console.log("  Queda versionado y a partir de ahí este test corre offline.\n");
+  console.log("  It gets versioned and from then on this test runs offline.\n");
   process.exit(0);
 }
 
@@ -106,54 +106,54 @@ for (const file of files) {
   const tables = extractFromHtml(html);
   const parseMs = Date.now() - t0;
 
-  check("el parser extrae al menos una tabla", () => {
-    assert(tables.length > 0, "no extrajo ninguna tabla");
+  check("the parser extracts at least one table", () => {
+    assert(tables.length > 0, "extracted no tables");
   });
 
-  // Las páginas de continuación no repiten el encabezado: hay que adoptarlas
-  // en el bloque al que pertenecen o se pierde la mayor parte del pool.
+  // Continuation pages do not repeat the header: they have to be adopted into
+  // the block they belong to, or most of the pool is lost.
   const { tables: annexTables, adopted, orphans } = attachContinuationTables(
     tables,
     (rows) => findHeaderRow(rows),
   );
 
-  check("detecta encabezados reconocibles", () => {
+  check("detects recognisable headers", () => {
     assert(
       annexTables.length > 0,
-      `ninguna de las ${tables.length} tablas tiene encabezados mapeables. ` +
-        `Primera fila: ${JSON.stringify(tables[0]?.rows[0]).slice(0, 200)}`,
+      `none of the ${tables.length} tables has mappable headers. ` +
+        `First row: ${JSON.stringify(tables[0]?.rows[0]).slice(0, 200)}`,
     );
   });
 
-  check("ninguna tabla huérfana contiene préstamos", () => {
+  check("no orphaned table contains loans", () => {
     /**
-     * Esta prueba antes exigía `adopted > 0`, con el razonamiento de que un
-     * Annex A reparte cada bloque en muchas páginas y solo la primera trae
-     * encabezados, así que sin adopción se pierde el pool.
+     * This test used to require `adopted > 0`, on the reasoning that an Annex A
+     * splits each block across many pages and only the first carries headers,
+     * so without adoption the pool is lost.
      *
-     * Sobre el documento real la premisa resultó falsa y la prueba falsa-positiva.
-     * Wells Fargo 2025-C64 repite los encabezados en cada página, así que el
-     * apilado por encabezado idéntico ya recupera todo: 13 bloques con
-     * encabezado producen los 32 préstamos, y las 112 tablas sin encabezado son
-     * pies de página, notas al pie y adornos de maquetación. Rechazarlas es
-     * correcto —la validación por continuidad de Loan ID está haciendo su
-     * trabajo— y exigir que se adopte alguna pedía que el parser tragara basura.
+     * Against the real document the premise turned out false and the test a
+     * false positive. Wells Fargo 2025-C64 repeats the headers on every page, so
+     * stacking by identical header already recovers everything: 13 blocks with a
+     * header produce all 32 loans, and the 112 tables without one are page
+     * footers, footnotes and layout decoration. Rejecting them is correct —the
+     * Loan ID continuity validation is doing its job— and requiring some to be
+     * adopted was asking the parser to swallow junk.
      *
-     * Lo que sí importa verificar es la propiedad de fondo: que ninguna tabla
-     * descartada tenga filas con pinta de préstamo. Eso detecta la pérdida real
-     * de datos sin atarse a cómo se recuperan.
+     * What is worth checking is the underlying property: that no discarded table
+     * has rows that look like loans. That detects real data loss without being
+     * tied to how it is recovered.
      */
     const headerless = tables.length - annexTables.length;
     if (headerless === 0) return;
 
-    /** Loan IDs que aparecen en una tabla, sean del bloque que sean. */
+    /** Loan IDs appearing in a table, whichever block it belongs to. */
     const loanIdsOf = (rows: unknown[][]): string[] => {
       const ids: string[] = [];
       for (const row of rows) {
         const filled = row.filter((c) => c !== null && String(c).trim() !== "");
         if (filled.length < 8) continue;
         const first = String(filled[0] ?? "").trim();
-        // Un Loan ID de Annex A es entero o entero con decimales (3, 3.00, 3.01).
+        // An Annex A Loan ID is an integer or an integer with decimals (3, 3.00, 3.01).
         if (/^\d{1,3}(\.\d{1,2})?$/.test(first)) ids.push(String(Math.trunc(Number(first))));
       }
       return ids;
@@ -163,22 +163,23 @@ for (const file of files) {
     const orphanTables = tables.filter((t) => !annexTables.some((a) => a.name === t.name));
 
     /**
-     * Dos cosas distintas que antes se confundían.
+     * Two different things that used to get conflated.
      *
-     * Un bloque huérfano CON préstamos puede ser una de dos:
+     * An orphaned block WITH loans can be one of two:
      *
-     *   a) préstamos que no están en ningún bloque parseado → pérdida real,
-     *   b) los mismos préstamos con otras columnas → pérdida de métricas.
+     *   a) loans that are in no parsed block → real loss,
+     *   b) the same loans with other columns → loss of metrics.
      *
-     * (b) es lo que pasa en Wells Fargo 2025-C64: tres bloques de 71 filas con
+     * (b) is what happens in Wells Fargo 2025-C64: three blocks of 71 rows with
      * "Annual Debt Service", "Amortization Type", "Upfront RE Tax Reserve",
-     * "Holdback/Earnout". Ninguna de esas columnas está en el mapeo, así que
-     * `detectHeader` los da por no-Annex y se descartan enteros. Los préstamos
-     * no se pierden —están en los bloques que sí leemos— pero esas métricas sí.
+     * "Holdback/Earnout". None of those columns is in the mapping, so
+     * `detectHeader` judges them non-Annex and they are discarded whole. The
+     * loans are not lost —they are in the blocks we do read— but those metrics
+     * are.
      *
-     * Solo (a) hace fallar la prueba. (b) se reporta, porque es cola de trabajo
-     * del mapeo y hoy es invisible: el listado de "sin mapear" solo cubre
-     * columnas de bloques que abrimos, nunca bloques que nunca abrimos.
+     * Only (a) fails the test. (b) is reported, because it is mapping backlog
+     * and today it is invisible: the "unmapped" listing only covers columns of
+     * blocks we opened, never blocks we never opened.
      */
     const lost: string[] = [];
     const columnLoss: string[] = [];
@@ -191,19 +192,19 @@ for (const file of files) {
 
     if (columnLoss.length > 0) {
       console.log(
-        `      \x1b[90m${columnLoss.length} bloque(s) con préstamos conocidos pero sin ` +
-          `columnas mapeables: ${columnLoss.slice(0, 4).join(", ")}\x1b[0m`,
+        `      \x1b[90m${columnLoss.length} block(s) with known loans but no ` +
+          `mappable columns: ${columnLoss.slice(0, 4).join(", ")}\x1b[0m`,
       );
       console.log(
-        `      \x1b[90mno se pierden préstamos, se pierden métricas — cola de trabajo del mapeo\x1b[0m`,
+        `      \x1b[90mno loans lost, metrics lost — mapping backlog\x1b[0m`,
       );
     }
 
     assert(
       lost.length === 0,
-      `${lost.length} bloque(s) huérfanos con préstamos que NO aparecen en ningún ` +
-        `bloque parseado: ${lost.slice(0, 3).join(", ")}. Pérdida real de datos ` +
-        `(adoptadas: ${adopted}, huérfanas: ${orphans}).`,
+      `${lost.length} orphaned block(s) with loans that appear in NO parsed ` +
+        `block: ${lost.slice(0, 3).join(", ")}. Real data loss ` +
+        `(adopted: ${adopted}, orphaned: ${orphans}).`,
     );
   });
 
@@ -216,8 +217,8 @@ for (const file of files) {
 
   const joined = joinAnnexTables(annexTables);
 
-  check("arma una tabla de datos", () => {
-    assert(joined, "joinAnnexTables devolvió null");
+  check("assembles a data table", () => {
+    assert(joined, "joinAnnexTables returned null");
   });
 
   if (!joined) {
@@ -235,34 +236,34 @@ for (const file of files) {
 
   // --- verificaciones -------------------------------------------------------------
 
-  check("produce propiedades con observations", () => {
-    assert(result.stats.propertiesKept > 0, "no produjo ninguna propiedad");
-    assert(result.stats.observations > 0, "no produjo ninguna observation");
+  check("produces properties with observations", () => {
+    assert(result.stats.propertiesKept > 0, "produced no properties");
+    assert(result.stats.observations > 0, "produced no observations");
   });
 
-  check("mapea al menos 8 columnas", () => {
+  check("maps at least 8 columns", () => {
     assert(
       result.columnsMapped.length >= 8,
       `solo ${result.columnsMapped.length}: ${result.columnsMapped.map((c) => c.metric).join(", ")}`,
     );
   });
 
-  check("captura alguna métrica financiera central", () => {
+  check("captures some core financial metric", () => {
     const keys = new Set(result.columnsMapped.map((c) => c.metric));
     const core = ["noi_underwritten", "noi_most_recent", "loan_amount", "dscr", "occupancy", "occupancy_economic"];
     const found = core.filter((k) => keys.has(k as never));
-    assert(found.length >= 2, `solo encontró: ${found.join(", ") || "(ninguna)"}`);
+    assert(found.length >= 2, `only found: ${found.join(", ") || "(none)"}`);
   });
 
-  check("cada propiedad tiene nombre o dirección", () => {
+  check("every property has a name or an address", () => {
     const anonymous = result.properties.filter((p) => !p.label.property_name && !p.label.address);
     assert(
       anonymous.length === 0,
-      `${anonymous.length} de ${result.properties.length} propiedades sin identificar`,
+      `${anonymous.length} of ${result.properties.length} properties unidentified`,
     );
   });
 
-  check("los porcentajes quedan en 0-1", () => {
+  check("percentages stay in 0-1", () => {
     const bad: string[] = [];
     for (const prop of result.properties) {
       for (const obs of prop.observations) {
@@ -271,10 +272,10 @@ for (const file of files) {
         if (v < 0 || v > 1) bad.push(`${obs.metric_key}=${obs.value} (${obs.raw_value})`);
       }
     }
-    assert(bad.length === 0, `${bad.length} fuera de rango: ${bad.slice(0, 3).join(", ")}`);
+    assert(bad.length === 0, `${bad.length} out of range: ${bad.slice(0, 3).join(", ")}`);
   });
 
-  check("no se cuelan marcadores de ausencia como valores", () => {
+  check("absence markers do not slip in as values", () => {
     const junk: string[] = [];
     for (const prop of result.properties) {
       for (const obs of prop.observations) {
@@ -286,74 +287,74 @@ for (const file of files) {
     assert(junk.length === 0, `${junk.length} valores basura: ${junk.slice(0, 3).join(", ")}`);
   });
 
-  check("los chequeos de sanidad no encuentran errores", () => {
+  check("the sanity checks find no errors", () => {
     const issues = checkSanity(result);
     const errors = issues.filter((i) => i.severity === "error");
     assert(errors.length === 0, errors.map((e) => `[${e.metric}] ${e.message}`).join("; "));
   });
 
-  check("el parseo del markup real no es lento", () => {
-    assert(parseMs < 10_000, `tardó ${parseMs} ms`);
+  check("parsing the real markup is not slow", () => {
+    assert(parseMs < 10_000, `took ${parseMs} ms`);
   });
 
   /**
-   * Las filas de propiedad, que el harvester descartaba.
+   * The property rows, which the harvester used to discard.
    *
-   * Estos chequeos existen porque los dos defectos que tuvo `toProperties` eran
-   * invisibles a ojo: el índice desfasado en uno perdía la primera propiedad de
-   * cada documento y ataba las demás a la fila anterior, y el ID leído del mapa de
-   * columnas dejaba 49 propiedades sin préstamo en un fixture y no en los otros
-   * dos. Ninguno tira una excepción; los dos producen una tabla que parece bien.
+   * These checks exist because the two defects `toProperties` had were invisible
+   * by eye: the off-by-one index lost the first property of every document and
+   * tied the rest to the previous row, and the ID read from the column map left
+   * 49 properties with no loan in one fixture and not in the other two. Neither
+   * throws; both produce a table that looks fine.
    *
-   * Se afirma contra `filtered.propertyRows`, que es lo que el filtro dice haber
-   * descartado, y no contra un número escrito a mano: un fixture nuevo entra sin
-   * tocar el test, y si el filtro cambia el test lo acusa.
+   * They assert against `filtered.propertyRows`, which is what the filter says
+   * it discarded, and not against a hand-written number: a new fixture enters
+   * without touching the test, and if the filter changes the test says so.
    */
-  const propiedades = toProperties(
+  const properties = toProperties(
     joined.rows, joined.headerRowIndex, filtered.droppedPropertyRows, source,
   );
 
-  check("no se pierde ninguna fila de propiedad", () => {
+  check("no property row is lost", () => {
     assert(
-      propiedades.length === filtered.propertyRows,
-      `el filtro descartó ${filtered.propertyRows} y se normalizaron ${propiedades.length}`,
+      properties.length === filtered.propertyRows,
+      `the filter discarded ${filtered.propertyRows} and ${properties.length} were normalised`,
     );
   });
 
-  check("cada propiedad conserva su fila original y no se repite", () => {
-    const idx = new Set(propiedades.map((p) => p.rowIndex));
+  check("every property keeps its original row and is not repeated", () => {
+    const idx = new Set(properties.map((p) => p.rowIndex));
     assert(
-      idx.size === propiedades.length,
-      `${propiedades.length - idx.size} rowIndex repetidos: la clave estable no lo es`,
+      idx.size === properties.length,
+      `${properties.length - idx.size} repeated rowIndex values: the stable key is not stable`,
     );
     const delFiltro = new Set(filtered.droppedPropertyRows.map((d) => d.rowIndex));
-    const ajenos = [...idx].filter((i) => !delFiltro.has(i));
-    assert(ajenos.length === 0, `rowIndex que el filtro no descartó: ${ajenos.slice(0, 5).join(", ")}`);
+    const foreign = [...idx].filter((i) => !delFiltro.has(i));
+    assert(foreign.length === 0, `rowIndex values the filter did not discard: ${foreign.slice(0, 5).join(", ")}`);
   });
 
-  check("las propiedades traen el estado, que es el motivo de guardarlas", () => {
-    if (propiedades.length === 0) return;
-    const con = propiedades.filter((p) => p.state).length;
+  check("the properties carry the state, which is the reason for storing them", () => {
+    if (properties.length === 0) return;
+    const withState = properties.filter((p) => p.state).length;
     assert(
-      con / propiedades.length >= 0.9,
-      `solo ${con} de ${propiedades.length} tienen estado`,
+      withState / properties.length >= 0.9,
+      `only ${withState} of ${properties.length} have a state`,
     );
   });
 
-  check("cada propiedad ata a un préstamo por la numeración del emisor", () => {
-    if (propiedades.length === 0) return;
-    const con = propiedades.filter((p) => p.loanRef).length;
+  check("every property ties to a loan by the issuer's numbering", () => {
+    if (properties.length === 0) return;
+    const withLoan = properties.filter((p) => p.loanRef).length;
     assert(
-      con / propiedades.length >= 0.9,
-      `solo ${con} de ${propiedades.length} atan a un préstamo`,
+      withLoan / properties.length >= 0.9,
+      `only ${withLoan} of ${properties.length} tie to a loan`,
     );
   });
 
-  check("el estado de las propiedades queda en código de dos letras", () => {
-    const malos = propiedades
+  check("the properties' state ends up as a two-letter code", () => {
+    const unnormalised = properties
       .map((p) => p.state)
       .filter((e): e is string => e !== null && !/^[A-Z]{2}$/.test(e));
-    assert(malos.length === 0, `sin normalizar: ${[...new Set(malos)].slice(0, 4).join(" | ")}`);
+    assert(unnormalised.length === 0, `not normalised: ${[...new Set(unnormalised)].slice(0, 4).join(" | ")}`);
   });
 
   // --- informe ---------------------------------------------------------------------
@@ -363,21 +364,21 @@ for (const file of files) {
 
   console.log(
     `\n    \x1b[90m${tables.length} tablas → ${annexTables.length} bloques ` +
-      `(${adopted} continuaciones adoptadas, ${orphans} huérfanas) → ` +
+      `(${adopted} continuations adopted, ${orphans} orphaned) → ` +
       `${joined.stackedGroups ?? "?"} tras apilar → ${joined.tablesJoined} unidos\x1b[0m`,
   );
   console.log(
-    `    \x1b[90m${result.stats.propertiesKept} propiedades · ${result.stats.observations} observations · ` +
-      `${result.columnsMapped.length} columnas · ${parseMs} ms\x1b[0m`,
+    `    \x1b[90m${result.stats.propertiesKept} properties · ${result.stats.observations} observations · ` +
+      `${result.columnsMapped.length} columns · ${parseMs} ms\x1b[0m`,
   );
 
   if (filtered.hadFlagColumn) {
     console.log(
-      `    \x1b[90m${filtered.loanRows} préstamos, ${filtered.propertyRows} filas de propiedad descartadas\x1b[0m`,
+      `    \x1b[90m${filtered.loanRows} loans, ${filtered.propertyRows} property rows discarded\x1b[0m`,
     );
   }
 
-  console.log(`    \x1b[90mmapeadas: ${result.columnsMapped.map((c) => c.metric).join(", ")}\x1b[0m`);
+  console.log(`    \x1b[90mmapped: ${result.columnsMapped.map((c) => c.metric).join(", ")}\x1b[0m`);
 
   if (warnings.length > 0) {
     for (const w of warnings) console.log(`    \x1b[33m⚠ [${w.metric}] ${w.message}\x1b[0m`);
@@ -386,7 +387,7 @@ for (const file of files) {
   if (result.columnsUnmapped.length > 0) {
     const sample = result.columnsUnmapped.slice(0, 8).join(" | ");
     console.log(
-      `    \x1b[90msin mapear (${result.columnsUnmapped.length}): ${sample}` +
+      `    \x1b[90munmapped (${result.columnsUnmapped.length}): ${sample}` +
         `${result.columnsUnmapped.length > 8 ? " …" : ""}\x1b[0m`,
     );
   }
