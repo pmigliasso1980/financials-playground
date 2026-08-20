@@ -393,8 +393,8 @@ console.log(`${"─".repeat(78)}\n`);
  * It used to use only the trust balance and reported 865 broken loans spread over
  * 99 filings, with the conclusion "the problem is per loan". That was true —the
  * problem was the pari passu, which is a property of the loan— but the diagnosis
- * went stale the moment it was fixed. A probe that measures against a
- * supuesto viejo sigue reportando el problema viejo.
+ * went stale the moment it was fixed. A probe measuring against an old
+ * assumption keeps reporting the old problem.
  */
 const { rows: byFiling } = await query<{
   filings: string; clean: string; broken: string; mixed: string;
@@ -435,10 +435,10 @@ const profileFailing = failCount[0]?.n ?? "0";
 const bf = byFiling[0];
 if (bf) {
   console.log(`  Using "debt yield = NOI / balance" as the probe:\n`);
-  console.log(`    filings evaluados        ${String(bf.filings).padStart(4)}`);
+  console.log(`    filings evaluated       ${String(bf.filings).padStart(4)}`);
   console.log(`    all its loans OK        ${String(bf.clean).padStart(4)}`);
-  console.log(`    ninguno OK               ${String(bf.broken).padStart(4)}`);
-  console.log(`    mezclados                ${String(bf.mixed).padStart(4)}`);
+  console.log(`    none OK                 ${String(bf.broken).padStart(4)}`);
+  console.log(`    mixed                   ${String(bf.mixed).padStart(4)}`);
 
   const total = Number(bf.filings);
   const mixed = Number(bf.mixed);

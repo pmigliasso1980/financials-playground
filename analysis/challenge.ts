@@ -1,32 +1,32 @@
 /**
- * Intentos de falsear los hallazgos.
+ * Attempts to falsify the findings.
  *
  *   npm run db:challenge
  *
- * POR QUÉ EXISTE
+ * WHY IT EXISTS
  *
- * Dos resultados salieron del corpus:
+ * Two results came out of the corpus:
  *
- *   A) Office se suscribe ~13% por encima de su NOI real, en 4 de cada 5 préstamos.
- *   B) Multifamily rompió en 2026 su banda de dos años en DSCR, LTV y debt yield.
+ *   A) Office is underwritten ~13% above its actual NOI, in 4 of every 5 loans.
+ *   B) Multifamily broke its two-year band in 2026 on DSCR, LTV and debt yield.
  *
- * Antes de mostrárselos a alguien conviene atacarlos uno mismo. Este script lo
- * hace, y los dos cayeron.
+ * Before showing them to anyone it is worth attacking them yourself. This script
+ * does that, and both fell.
  *
- * A aguantó cuatro pruebas —lease-up, tamaño de préstamo, emisor, selección de
- * deals— y murió en la quinta. Comparado contra industrial, que comparte
- * estructura de contrato, office solo queda arriba en 58% de los deals. Lo que
- * la brecha mide no es agresividad sino cuánta renta futura hay bajo contrato:
+ * A withstood four tests —lease-up, loan size, issuer, deal selection— and died
+ * on the fifth. Compared against industrial, which shares contract structure,
+ * office only comes out ahead in 58% of deals. What the gap measures is not
+ * aggressiveness but how much future rent is under contract:
  * hospitality -0.5%, self storage 1.2%, retail 3.5%, industrial 10.8%,
  * office 13.1%.
  *
- * B murió antes: el "quiebre de 2026" era en parte 221 préstamos cooperativos
- * mezclados dentro de Multifamily, y el DSCR resultó plano (R² 0.06). Lo que
- * quedó en su lugar es una deriva gradual de apalancamiento desde 2024.
+ * B died earlier: the "2026 break" was partly 221 cooperative loans mixed in
+ * with Multifamily, and DSCR turned out flat (R² 0.06). What stands in its place
+ * is a gradual leverage drift since 2024.
  *
- * Los dos reemplazos son más chicos que los titulares originales y están mejor
- * sostenidos. El script se mantiene para que cualquier hallazgo futuro pase por
- * el mismo filtro antes de que alguien construya encima.
+ * Both replacements are smaller than the original headlines and better
+ * supported. The script stays so that any future finding goes through the same
+ * filter before anyone builds on top of it.
  */
 
 import { closePool, ping, query } from "../db/client.js";
@@ -43,17 +43,17 @@ const pct = (v: number | null, decimals = 1) =>
 const num = (v: number | null, decimals = 2) => (v === null ? "—" : v.toFixed(decimals));
 
 console.log(`\n${"═".repeat(78)}`);
-console.log("Falsificación de hallazgos");
+console.log("Falsifying the findings");
 console.log(`${"═".repeat(78)}`);
 
 // ===========================================================================
-// A) Office: ¿es lease-up?
+// A) Office: is it lease-up?
 // ===========================================================================
 
-console.log(`\n\x1b[1mA. Office se suscribe 13% por encima del NOI real\x1b[0m`);
-console.log(`\x1b[90m   Hipótesis alternativa: son edificios en lease-up.\x1b[0m`);
+console.log(`\n\x1b[1mA. Office is underwritten 13% above actual NOI\x1b[0m`);
+console.log(`\x1b[90m   Alternative hypothesis: they are buildings in lease-up.\x1b[0m`);
 console.log(
-  `\x1b[90m   Si fuera cierto, los préstamos con más brecha tendrían ocupación baja.\x1b[0m\n`,
+  `\x1b[90m   If that were true, the loans with the largest gap would have low occupancy.\x1b[0m\n`,
 );
 
 const { rows: leaseUp } = await query<{
@@ -88,7 +88,7 @@ const { rows: leaseUp } = await query<{
 );
 
 if (leaseUp.length > 0) {
-  console.log(`   ${"tramo".padEnd(20)} ${"n".padStart(5)}  ${"brecha".padStart(9)}  ${"ocupación".padStart(10)}`);
+  console.log(`   ${"bucket".padEnd(20)} ${"n".padStart(5)}  ${"gap".padStart(9)}  ${"occupancy".padStart(10)}`);
   for (const r of leaseUp) {
     console.log(
       `   ${r.bucket.padEnd(20)} ${String(r.n).padStart(5)}  ${pct(r.gap).padStart(9)}  ${pct(r.occ).padStart(10)}`,
@@ -102,27 +102,27 @@ if (leaseUp.length > 0) {
     console.log();
     if (delta > 0.08) {
       console.log(
-        `   \x1b[33mLa hipótesis se sostiene:\x1b[0m los de mayor brecha tienen ${pct(delta)} menos`,
+        `   \x1b[33mThe hypothesis holds:\x1b[0m those with the largest gap have ${pct(delta)} less`,
       );
-      console.log(`   de ocupación. Es consistente con lease-up, no con agresividad.`);
+      console.log(`   occupancy. That is consistent with lease-up, not with aggressiveness.`);
     } else if (delta > 0.03) {
       console.log(
-        `   \x1b[33mParcialmente:\x1b[0m ${pct(delta)} menos de ocupación en los de mayor brecha.`,
+        `   \x1b[33mPartially:\x1b[0m ${pct(delta)} less occupancy among those with the largest gap.`,
       );
-      console.log(`   Explica parte del fenómeno, probablemente no todo.`);
+      console.log(`   It explains part of the phenomenon, probably not all of it.`);
     } else {
       console.log(
-        `   \x1b[32mLa hipótesis NO se sostiene:\x1b[0m la ocupación es similar (${pct(Math.abs(delta))} de`,
+        `   \x1b[32mThe hypothesis does NOT hold:\x1b[0m occupancy is similar (${pct(Math.abs(delta))} of`,
       );
       console.log(
-        `   diferencia). Los préstamos con más brecha no están más vacíos, así que`,
+        `   difference). Loans with a larger gap are not emptier, so the projection`,
       );
-      console.log(`   la proyección no se explica por lease-up.`);
+      console.log(`   is not explained by lease-up.`);
     }
   }
 }
 
-// --- ¿es un puñado de préstamos grandes? ------------------------------------
+// --- is it a handful of large loans? ----------------------------------------
 
 const { rows: byWeight } = await query<{
   unweighted: number | null; weighted: number | null; n: string;
@@ -148,18 +148,18 @@ const { rows: byWeight } = await query<{
 
 const w = byWeight[0];
 if (w?.unweighted != null && w?.weighted != null) {
-  console.log(`\n   Ponderación por tamaño de préstamo:`);
-  console.log(`     promedio simple      ${pct(w.unweighted)}`);
-  console.log(`     ponderado por saldo  ${pct(w.weighted)}`);
+  console.log(`\n   Weighting by loan size:`);
+  console.log(`     simple average         ${pct(w.unweighted)}`);
+  console.log(`     weighted by balance    ${pct(w.weighted)}`);
   const gap = Math.abs(w.weighted - w.unweighted);
   console.log(
     gap > 0.05
-      ? `   \x1b[33m   La diferencia sugiere que unos pocos préstamos grandes mueven el promedio.\x1b[0m`
-      : `   \x1b[32m   Similares: el fenómeno no depende de unos pocos préstamos grandes.\x1b[0m`,
+      ? `   \x1b[33m   The difference suggests a few large loans move the average.\x1b[0m`
+      : `   \x1b[32m   Similar: the phenomenon does not depend on a few large loans.\x1b[0m`,
   );
 }
 
-// --- ¿es un solo emisor? ------------------------------------------------------
+// --- is it a single issuer? ---------------------------------------------------
 
 const { rows: byIssuer } = await query<{ issuer: string; n: string; gap: number | null }>(
   `WITH pairs AS (
@@ -179,32 +179,32 @@ const { rows: byIssuer } = await query<{ issuer: string; n: string; gap: number 
 );
 
 if (byIssuer.length > 1) {
-  console.log(`\n   Por emisor:`);
+  console.log(`\n   By issuer:`);
   for (const r of byIssuer) {
     console.log(`     ${r.issuer.padEnd(16)} ${String(r.n).padStart(4)}  ${pct(r.gap).padStart(8)}`);
   }
   const positives = byIssuer.filter((r) => (r.gap ?? 0) > 0.05).length;
   console.log(
     positives === byIssuer.length
-      ? `   \x1b[32m   Todos los emisores muestran el mismo patrón: no es de uno solo.\x1b[0m`
-      : `   \x1b[33m   ${positives} de ${byIssuer.length} emisores. Revisar si depende de quién origina.\x1b[0m`,
+      ? `   \x1b[32m   Every issuer shows the same pattern: it is not one issuer's.\x1b[0m`
+      : `   \x1b[33m   ${positives} of ${byIssuer.length} issuers. Check whether it depends on who originates.\x1b[0m`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// A2) ¿Office está solo, o hay otros tipos igual de altos?
+// A2) Is office alone, or are other types just as high?
 // ---------------------------------------------------------------------------
 
 /**
- * Hasta acá comparamos office contra "el resto", que es un promedio de tipos muy
- * distintos. Si hotel o retail también corren alto, el hallazgo no es sobre
- * office sino sobre tipos con renta volátil, y el titular cambia.
+ * So far we compared office against "the rest", which is an average of very
+ * different types. If hotel or retail also run high, the finding is not about
+ * office but about types with volatile rent, and the headline changes.
  */
 const { rows: byType } = await query<{
   ptype: string; n: string; median: number | null; share: number | null;
 }>(
   `WITH pairs AS (
-     SELECT coalesce(nullif(l.property_type, ''), 'sin tipo') AS ptype,
+     SELECT coalesce(nullif(l.property_type, ''), 'no type') AS ptype,
             uw.value::numeric / NULLIF(mr.value::numeric, 0) - 1 AS gap
      FROM corpus.loans l
      JOIN corpus.facts uw ON uw.loan_id = l.id AND uw.metric_key = 'noi_underwritten'
@@ -219,8 +219,8 @@ const { rows: byType } = await query<{
 );
 
 if (byType.length > 2) {
-  console.log(`\n   \x1b[1mBrecha por tipo de propiedad\x1b[0m \x1b[90m(¿office está solo?)\x1b[0m\n`);
-  console.log(`     tipo                   n    mediana     ≥5%`);
+  console.log(`\n   \x1b[1mGap by property type\x1b[0m \x1b[90m(is office alone?)\x1b[0m\n`);
+  console.log(`     type                   n     median     ≥5%`);
   for (const r of byType) {
     const hot = (r.median ?? 0) >= 0.08;
     const label = hot ? `\x1b[33m${r.ptype.padEnd(18)}\x1b[0m` : r.ptype.padEnd(18);
@@ -233,28 +233,28 @@ if (byType.length > 2) {
   if (top && second) {
     console.log(
       top.ptype.toLowerCase().includes("office")
-        ? `\n   \x1b[32mOffice encabeza\x1b[0m, ${(((top.median ?? 0) - (second.median ?? 0)) * 100).toFixed(1)} pp por encima de ${second.ptype}.`
-        : `\n   \x1b[33mOffice NO encabeza: ${top.ptype} está más alto (${pct(top.median)}).\x1b[0m\n` +
-          `   El hallazgo no es sobre office; hay que reformularlo.`,
+        ? `\n   \x1b[32mOffice leads\x1b[0m, ${(((top.median ?? 0) - (second.median ?? 0)) * 100).toFixed(1)} pp above ${second.ptype}.`
+        : `\n   \x1b[33mOffice does NOT lead: ${top.ptype} is higher (${pct(top.median)}).\x1b[0m\n` +
+          `   The finding is not about office; it has to be reformulated.`,
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// A3) Control dentro del mismo deal
+// A3) Control within the same deal
 // ---------------------------------------------------------------------------
 
 /**
- * La explicación alternativa más difícil de descartar es la selección: los
- * office que llegan a CMBS en 2024-2026 podrían ser una muestra rara —activos
- * con una historia que contar, refinanciaciones con reposicionamiento— y no un
- * reflejo de cómo se suscribe office en general.
+ * The hardest alternative explanation to rule out is selection: the office
+ * properties that reach CMBS in 2024-2026 could be an odd sample —assets with a
+ * story to tell, refinancings with repositioning— rather than a reflection of
+ * how office is underwritten in general.
  *
- * El control es comparar office contra el resto DENTRO del mismo deal. Mismo
- * emisor, misma fecha, mismo comité de crédito, mismo apetito de riesgo. Si la
- * brecha sobrevive pareada, la selección a nivel deal queda descartada.
+ * The control is to compare office against the rest WITHIN the same deal. Same
+ * issuer, same date, same credit committee, same risk appetite. If the gap
+ * survives paired, deal-level selection is ruled out.
  */
-/** Compara office contra un grupo de control, pareado por deal. */
+/** Compares office against a control group, paired by deal. */
 async function pairedVs(
   label: string,
   controlSql: string,
@@ -302,28 +302,28 @@ async function pairedVs(
 }
 
 console.log(
-  `\n   \x1b[1mControl pareado dentro del mismo deal\x1b[0m \x1b[90m(descarta selección por emisor y vintage)\x1b[0m\n`,
+  `\n   \x1b[1mPaired control within the same deal\x1b[0m \x1b[90m(rules out issuer and vintage selection)\x1b[0m\n`,
 );
-console.log(`     grupo de control            deals    office arriba   dif. mediana`);
+console.log(`     control group               deals    office ahead    median diff.`);
 
-const vsAll = await pairedVs("todo el resto del pool", "ptype <> 'Office'", 5);
+const vsAll = await pairedVs("the whole rest of the pool", "ptype <> 'Office'", 5);
 
 /**
- * El control decisivo es industrial, no "el resto".
+ * The decisive control is industrial, not "the rest".
  *
- * La tabla por tipo mostró un orden que se explica solo: hospitality -0.5%,
- * self storage 1.2%, retail 3.5%, industrial 10.8%, office 13.1%. Eso no parece
- * agresividad sino visibilidad de renta contractual —un hotel no tiene contratos
- * que proyectar, una oficina sí, y suscribir por encima del trailing con
- * escalones firmados es legítimo.
+ * The table by type showed an order that explains itself: hospitality -0.5%,
+ * self storage 1.2%, retail 3.5%, industrial 10.8%, office 13.1%. That does not
+ * look like aggressiveness but like visibility of contractual rent —a hotel has
+ * no contracts to project, an office does, and underwriting above the trailing
+ * figure with signed step-ups is legitimate.
  *
- * Si esa es la explicación, office e industrial deberían parecerse, porque
- * comparten estructura de contrato. Y de hecho están a 2.3 pp. Comparar office
- * contra "el resto" infla la brecha metiendo hoteles y self storage en el
- * denominador.
+ * If that is the explanation, office and industrial should look alike, because
+ * they share contract structure. And in fact they are 2.3 pp apart. Comparing
+ * office against "the rest" inflates the gap by putting hotels and self storage
+ * in the denominator.
  *
- * Este par es el que decide: contra industrial, dentro del mismo deal, ¿office
- * sigue arriba?
+ * This pair is the one that decides: against industrial, within the same deal,
+ * does office stay ahead?
  */
 const vsIndustrial = await pairedVs(
   "solo industrial",
@@ -334,70 +334,70 @@ const vsIndustrial = await pairedVs(
 console.log();
 if (vsAll && vsAll.rate >= 0.7) {
   console.log(
-    `   \x1b[32mContra todo el pool office queda arriba en ${pct(vsAll.rate, 0)} de los deals.\x1b[0m`,
+    `   \x1b[32mAgainst the whole pool, office stays ahead in ${pct(vsAll.rate, 0)} of deals.\x1b[0m`,
   );
-  console.log(`   Mismo emisor, misma fecha, mismo comité: no es selección de deals.`);
+  console.log(`   Same issuer, same date, same committee: it is not deal selection.`);
 }
 
 if (vsIndustrial) {
   console.log();
   if (vsIndustrial.rate >= 0.65) {
     console.log(
-      `   \x1b[32mY contra industrial —misma estructura de contrato— sigue arriba\x1b[0m`,
+      `   \x1b[32mAnd against industrial —same contract structure— it stays ahead\x1b[0m`,
     );
     console.log(
-      `   \x1b[32men ${pct(vsIndustrial.rate, 0)} de los deals.\x1b[0m La visibilidad de renta contractual no`,
+      `   \x1b[32min ${pct(vsIndustrial.rate, 0)} of deals.\x1b[0m Contractual rent visibility does not`,
     );
-    console.log(`   alcanza a explicarlo: office se despega de su propio comparable.`);
+    console.log(`   fully explain it: office departs from its own comparable.`);
   } else {
     console.log(
       `   \x1b[33mContra industrial la ventaja se diluye (${pct(vsIndustrial.rate, 0)}).\x1b[0m Office e industrial`,
     );
     console.log(
-      `   \x1b[33mcomparten estructura de contrato, así que lo que mide la brecha es\x1b[0m`,
+      `   \x1b[33mthey share contract structure, so what the gap measures is\x1b[0m`,
     );
     console.log(
-      `   \x1b[33mvisibilidad de renta futura, no agresividad propia de office.\x1b[0m`,
+      `   \x1b[33mvisibility of future rent, not aggressiveness particular to office.\x1b[0m`,
     );
     console.log(
-      `   \x1b[90mEl titular correcto sería "los tipos con contratos largos se suscriben\x1b[0m`,
+      `   \x1b[90mThe correct headline would be "types with long contracts are underwritten\x1b[0m`,
     );
-    console.log(`   \x1b[90mmuy por encima del trailing", con office en el extremo.\x1b[0m`);
+    console.log(`   \x1b[90mwell above trailing", with office at the extreme.\x1b[0m`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Contraste con la literatura
+// Contrast with the literature
 // ---------------------------------------------------------------------------
 
 /**
- * Contraste con Griffin (2023), Journal of Finance — y por qué NO es comparable.
+ * Contrast with Griffin (2023), Journal of Finance — and why it is NOT comparable.
  *
- * "Is COVID Revealing a Virus in CMBS 2.0?" mide el NOI suscrito contra el NOI
- * *real reportado por el servicer en el primer año posterior al cierre*. Es una
- * comparación hacia adelante: promesa contra resultado.
+ * "Is COVID Revealing a Virus in CMBS 2.0?" measures underwritten NOI against
+ * the NOI *actually reported by the servicer in the first year after closing*.
+ * It is a forward comparison: promise against outcome.
  *
- * Nosotros medimos el NOI suscrito contra `noi_most_recent`, que es el NOI
- * histórico del último período cerrado *antes* del cierre, tal como lo publica
- * el Annex A. Es una comparación hacia atrás: promesa contra historia.
+ * We measure underwritten NOI against `noi_most_recent`, which is the trailing
+ * NOI of the last closed period *before* closing, as published in the Annex A.
+ * It is a backward comparison: promise against history.
  *
- * Son cantidades distintas y no se pueden poner en la misma tabla:
+ * They are different quantities and cannot go in the same table:
  *
- *   - Nuestra brecha tiene un componente legítimo grande. Suscribir por encima
- *     del trailing es la práctica normal cuando hay escalones de renta
- *     contractuales, contratos firmados sin ocupar, o gastos no recurrentes que
- *     se normalizan. Un 46% acá no es un 46% de préstamos mal suscritos.
+ *   - Our gap has a large legitimate component. Underwriting above the trailing
+ *     figure is normal practice when there are contractual rent step-ups, signed
+ *     but unoccupied leases, or non-recurring expenses being normalised. A 46%
+ *     here is not 46% of loans badly underwritten.
  *
- *   - Y tiene un sesgo conocido en contra. Griffin también encontró que los
- *     originadores inflan los financieros pasados que publican. Si el
- *     denominador viene inflado, nuestra brecha sale más chica que la real.
+ *   - And it has a known bias against it. Griffin also found that originators
+ *     inflate the past financials they publish. If the denominator comes in
+ *     inflated, our gap comes out smaller than the real one.
  *
- * Para replicar a Griffin haría falta el NOI post-originación, que no está en el
- * Annex A: sale de los reportes del servicer (10-D en EDGAR, o Trepp). Es otra
- * fuente y otro pipeline.
+ * Replicating Griffin would need post-origination NOI, which is not in the
+ * Annex A: it comes from servicer reports (10-D on EDGAR, or Trepp). Another
+ * source and another pipeline.
  *
- * Lo que este bloque sí puede hacer es reportar nuestro número con su nombre
- * correcto, y dejar registrado por qué no es el de Griffin.
+ * What this block can do is report our number under its correct name, and put
+ * on record why it is not Griffin's.
  */
 const GAP_THRESHOLD = 0.05;
 
@@ -408,7 +408,7 @@ const { rows: gapRows } = await query<{
   median: number | null;
 }>(
   `WITH pairs AS (
-     SELECT coalesce(nullif(pt.value, ''), 'sin tipo') AS ptype,
+     SELECT coalesce(nullif(pt.value, ''), 'no type') AS ptype,
             uw.value::numeric / NULLIF(mr.value::numeric, 0) - 1 AS gap
      FROM corpus.loans l
      JOIN corpus.facts uw ON uw.loan_id = l.id AND uw.metric_key = 'noi_underwritten'
@@ -434,33 +434,33 @@ const { rows: gapRows } = await query<{
 
 const total = gapRows.find((r) => r.segment === "TOTAL");
 if (total && Number(total.n) > 100) {
-  console.log(`\n\n\x1b[1mContraste con la literatura — y por qué no aplica\x1b[0m`);
+  console.log(`\n\n\x1b[1mContrast with the literature — and why it does not apply\x1b[0m`);
   console.log(
     `\x1b[90m   Griffin (2023), Journal of Finance — "Is COVID Revealing a Virus in CMBS 2.0?"\x1b[0m`,
   );
   console.log(
-    `\x1b[90m   Comparó el NOI suscrito contra el NOI reportado por el servicer en el\x1b[0m`,
+    `\x1b[90m   He compared underwritten NOI against the NOI reported by the servicer in\x1b[0m`,
   );
   console.log(
-    `\x1b[90m   primer año POSTERIOR al cierre. 29% de 39.522 préstamos con brecha ≥5%.\x1b[0m`,
+    `\x1b[90m   the first year AFTER closing. 29% of 39,522 loans with a gap ≥5%.\x1b[0m`,
   );
   console.log(
-    `\n   \x1b[31mNosotros medimos otra cosa\x1b[0m: suscrito contra el histórico ANTERIOR al`,
+    `\n   \x1b[31mWe measure something else\x1b[0m: underwritten against the trailing figure`,
   );
-  console.log(`   cierre, que es lo único que publica el Annex A.`);
+  console.log(`   BEFORE closing, which is all the Annex A publishes.`);
   console.log(
-    `\n   \x1b[90m   Griffin:  promesa vs. resultado   → cuánto se equivocó el suscriptor\x1b[0m`,
-  );
-  console.log(
-    `   \x1b[90m   Nosotros: promesa vs. historia    → cuánto se despegó del trailing\x1b[0m`,
+    `\n   \x1b[90m   Griffin:  promise vs. outcome   → how wrong the underwriter was\x1b[0m`,
   );
   console.log(
-    `\n   Los números no se comparan. Suscribir por encima del trailing es normal`,
+    `   \x1b[90m   Us:       promise vs. history   → how far they departed from trailing\x1b[0m`,
   );
-  console.log(`   con escalones de renta o gastos no recurrentes normalizados.\n`);
+  console.log(
+    `\n   The numbers do not compare. Underwriting above the trailing figure is normal`,
+  );
+  console.log(`   with rent step-ups or normalised non-recurring expenses.\n`);
 
-  console.log(`   Brecha suscrito / trailing en este corpus:\n`);
-  console.log(`     segmento        n     ≥5%    mediana`);
+  console.log(`   Underwritten / trailing gap in this corpus:\n`);
+  console.log(`     segment         n     ≥5%     median`);
   for (const r of gapRows) {
     console.log(
       `     ${r.segment.padEnd(10)}${String(r.n).padStart(6)}  ${pct(r.share, 0).padStart(6)}  ${pct(r.median, 1).padStart(9)}`,
@@ -468,39 +468,39 @@ if (total && Number(total.n) > 100) {
   }
 
   /**
-   * Este corte office/resto quedó superado por A2 y A3.
+   * This office/rest split has been superseded by A2 and A3.
    *
-   * "Resto" promedia hoteles con oficinas, y la separación de 10 puntos sale
-   * mayormente de meter hospitality y self storage en el denominador. Contra
-   * industrial —el comparable real— la ventaja de office cae a 58% de los deals.
-   * Se deja la fila para no perder continuidad con corridas anteriores, pero la
-   * lectura correcta es la escala por tipo de A2.
+   * "Rest" averages hotels with offices, and the ten-point separation comes
+   * mostly from putting hospitality and self storage in the denominator. Against
+   * industrial —the real comparable— office's advantage falls to 58% of deals.
+   * The row stays so as not to lose continuity with earlier runs, but the
+   * correct reading is the by-type scale from A2.
    */
   console.log(
-    `\n   \x1b[90mEsta partición quedó superada: "resto" mezcla hoteles con oficinas.\x1b[0m`,
+    `\n   \x1b[90mThis partition has been superseded: "rest" mixes hotels with offices.\x1b[0m`,
   );
-  console.log(`   \x1b[90mLa lectura buena es la escala por tipo de arriba.\x1b[0m`);
+  console.log(`   \x1b[90mThe good reading is the by-type scale above.\x1b[0m`);
   console.log(
-    `\n   \x1b[90mPara replicar a Griffin haría falta el NOI post-originación: reportes\x1b[0m`,
+    `\n   \x1b[90mReplicating Griffin would need post-origination NOI: servicer reports\x1b[0m`,
   );
   console.log(
-    `   \x1b[90mdel servicer (10-D en EDGAR o Trepp). Otra fuente, otro pipeline.\x1b[0m`,
+    `   \x1b[90m(10-D on EDGAR or Trepp). Another source, another pipeline.\x1b[0m`,
   );
 }
 
 // ===========================================================================
-// B) Multifamily: ¿son las tasas?
+// B) Multifamily: is it the rates?
 // ===========================================================================
 
 /**
- * Las cooperativas de vivienda vienen etiquetadas como "Multifamily" pero son
- * otro negocio: la cooperativa es dueña del edificio y toma deuda mínima contra
- * un valor alto. LTV de 10-20% con DSCR de 4x a 12x es normal ahí, y absurdo en
- * multifamily convencional.
+ * Housing cooperatives come labelled as "Multifamily" but are a different
+ * business: the co-op owns the building and takes minimal debt against a high
+ * value. An LTV of 10-20% with a DSCR of 4x to 12x is normal there, and absurd
+ * in conventional multifamily.
  *
- * Mientras estén mezcladas, cualquier mediana de multifamily es una mezcla de
- * dos poblaciones distintas. Se identifican por las columnas Coop-* del Annex A,
- * que ya cosechamos.
+ * While they stay mixed in, any multifamily median is a blend of two different
+ * populations. They are identified by the Annex A's Coop-* columns, which we
+ * already harvest.
  */
 const COOP_METRICS = ["coop_units", "coop_sponsor_units", "coop_rental_value", "coop_ltv_as_rental"];
 const IS_COOP = `EXISTS (
@@ -510,9 +510,9 @@ const IS_COOP = `EXISTS (
      AND c.value ~ '^[0-9.]+$' AND c.value::numeric > 0
 )`;
 
-console.log(`\n\n\x1b[1mB. Multifamily rompió su banda en 2026\x1b[0m`);
+console.log(`\n\n\x1b[1mB. Multifamily broke its band in 2026\x1b[0m`);
 
-// --- censo de cooperativas ----------------------------------------------------
+// --- cooperative census -------------------------------------------------------
 
 const { rows: coopCensus } = await query<{
   issuer: string; total: string; coops: string; ltv_coop: number | null; ltv_conv: number | null;
@@ -535,7 +535,7 @@ const { rows: coopCensus } = await query<{
 const coopTotal = coopCensus.reduce((a, r) => a + Number(r.coops), 0);
 if (coopTotal > 0) {
   console.log(
-    `\n   \x1b[1mCooperativas detectadas\x1b[0m \x1b[90m(columnas Coop-* del Annex A pobladas)\x1b[0m\n`,
+    `\n   \x1b[1mCooperatives detected\x1b[0m \x1b[90m(Annex A Coop-* columns populated)\x1b[0m\n`,
   );
   console.log(`     emisor            coop / total    LTV coop   LTV resto`);
   for (const r of coopCensus) {
@@ -545,25 +545,25 @@ if (coopTotal > 0) {
     );
   }
   console.log(
-    `\n   \x1b[32m${coopTotal} préstamos cooperativos confirmados por dato, no por inferencia.\x1b[0m`,
+    `\n   \x1b[32m${coopTotal} cooperative loans confirmed by data, not by inference.\x1b[0m`,
   );
   console.log(
-    `   \x1b[90mEl LTV bajo era correcto. El error era mezclarlos. De acá en adelante\x1b[0m`,
+    `   \x1b[90mThe low LTV was correct. The error was mixing them in. From here on\x1b[0m`,
   );
   console.log(`   \x1b[90mmultifamily excluye cooperativas.\x1b[0m`);
 } else {
   console.log(
-    `\n   \x1b[33mNingún préstamo de multifamily tiene columnas Coop-* pobladas.\x1b[0m`,
+    `\n   \x1b[33mNo multifamily loan has populated Coop-* columns.\x1b[0m`,
   );
   console.log(
-    `   \x1b[33mLa explicación cooperativa queda sin respaldo en el dato: el LTV bajo\x1b[0m`,
+    `   \x1b[33mThe cooperative explanation has no support in the data: some issuer's\x1b[0m`,
   );
-  console.log(`   \x1b[33mde algún emisor sigue sin explicar.\x1b[0m`);
+  console.log(`   \x1b[33mlow LTV remains unexplained.\x1b[0m`);
 }
 
-console.log(`\n\x1b[90m   Hipótesis alternativa: el DSCR cae porque subieron las tasas.\x1b[0m`);
+console.log(`\n\x1b[90m   Alternative hypothesis: DSCR falls because rates went up.\x1b[0m`);
 console.log(
-  `\x1b[90m   Si fuera cierto, la tasa mediana debería subir junto con la caída del DSCR.\x1b[0m\n`,
+  `\x1b[90m   If true, the median rate should rise alongside the DSCR decline.\x1b[0m\n`,
 );
 
 const { rows: rates } = await query<{
@@ -589,7 +589,7 @@ const { rows: rates } = await query<{
 
 if (rates.length > 2) {
   console.log(
-    `   ${"período".padEnd(10)} ${"n".padStart(5)}  ${"DSCR".padStart(7)} ${"LTV".padStart(7)} ${"debt yield".padStart(11)} ${"tasa".padStart(8)}`,
+    `   ${"period".padEnd(10)} ${"n".padStart(5)}  ${"DSCR".padStart(7)} ${"LTV".padStart(7)} ${"debt yield".padStart(11)} ${"rate".padStart(8)}`,
   );
   for (const r of rates) {
     console.log(
@@ -599,20 +599,17 @@ if (rates.length > 2) {
   }
 
   /**
-   * Tendencia sobre toda la serie, no "los últimos dos contra el resto".
+   * Trend over the whole series, not "the last two against the rest".
    *
-   * La comparación de dos bloques tenía dos defectos que se hicieron visibles al
-   * excluir las cooperativas. El umbral de muestra estaba calibrado sobre una
-   * población que incluía 221 préstamos cooperativos; al sacarlos, dejó afuera
-   * seis de once trimestres y "los últimos dos" pasaron a ser 2025-Q3 y 2026-Q2,
-   * salteándose los del medio. La etiqueta decía una cosa y el cálculo hacía
-   * otra.
+   * The two-block comparison had two defects that became visible once the
+   * cooperatives were excluded. The sample threshold was calibrated on a
+   * population that included 221 cooperative loans; removing them left six of
+   * eleven quarters out, and "the last two" became 2025-Q3 and 2026-Q2, skipping
+   * the ones in between. The label said one thing and the calculation did
+   * another.
    *
-   * El defecto de fondo es anterior: partir la serie en dos bloques obliga a
-   * elegir dónde cortar, y el corte se elige mirando el resultado. Una pendiente
-   * sobre todos los trimestres no tiene ese grado de libertad.
-   *
-   * Reportamos también el R²: una pendiente sin ajuste es ruido con dirección.
+   * The underlying defect is prior to that: splitting the series into two blocks
+   * forces a choice of where to cut, and the cut gets chosen by looking at the
    */
   const MIN_QUARTER = 40;
   const usable = rates.filter((r) => Number(r.n) >= MIN_QUARTER);
@@ -620,11 +617,11 @@ if (rates.length > 2) {
 
   if (excluded.length > 0) {
     console.log(
-      `   \x1b[90mExcluidos por muestra chica: ${excluded.map((r) => `${r.period} (n=${r.n})`).join(", ")}\x1b[0m`,
+      `   \x1b[90mExcluded for small sample: ${excluded.map((r) => `${r.period} (n=${r.n})`).join(", ")}\x1b[0m`,
     );
   }
 
-  /** Pendiente OLS por trimestre y bondad de ajuste. */
+  /** OLS slope per quarter and goodness of fit. */
   function trend(ys: Array<number | null>): { perYear: number; r2: number; n: number } | null {
     const pts = ys
       .map((y, i) => ({ x: i, y }))
@@ -651,7 +648,7 @@ if (rates.length > 2) {
 
   if (tLtv && tDy && tRate && tDscr) {
     console.log(
-      `\n   Deriva anual sobre los ${usable.length} trimestres usables \x1b[90m(pendiente OLS)\x1b[0m\n`,
+      `\n   Annual drift over the ${usable.length} usable quarters \x1b[90m(OLS slope)\x1b[0m\n`,
     );
     const line = (label: string, t: { perYear: number; r2: number }, unit: "pp" | "x") =>
       `     ${label.padEnd(12)} ${(t.perYear >= 0 ? "+" : "") + (unit === "pp" ? (t.perYear * 100).toFixed(2) + " pp" : t.perYear.toFixed(3) + "x")}`.padEnd(
@@ -670,45 +667,45 @@ if (rates.length > 2) {
     console.log();
     if (leverageUp && dyDown) {
       console.log(
-        `   \x1b[33mApalancamiento en aumento sostenido.\x1b[0m LTV sube ${(tLtv.perYear * 100).toFixed(1)} pp/año y el`,
+        `   \x1b[33mLeverage rising steadily.\x1b[0m LTV rises ${(tLtv.perYear * 100).toFixed(1)} pp/yr and`,
       );
       console.log(
-        `   debt yield cae ${Math.abs(tDy.perYear * 100).toFixed(1)} pp/año. El debt yield es el control decisivo:`,
+        `   debt yield falls ${Math.abs(tDy.perYear * 100).toFixed(1)} pp/yr. Debt yield is the decisive control:`,
       );
-      console.log(`   no depende ni de tasas ni de tasaciones, así que la caída es más`);
-      console.log(`   deuda por dólar de NOI, no un artefacto de valuación.`);
+      console.log(`   it depends on neither rates nor appraisals, so the fall is more`);
+      console.log(`   debt per dollar of NOI, not a valuation artefact.`);
       console.log(
-        `\n   \x1b[1mPero no es lo que decía la hipótesis.\x1b[0m No hay quiebre en 2026: hay`,
+        `\n   \x1b[1mBut it is not what the hypothesis said.\x1b[0m There is no 2026 break: there is`,
       );
       console.log(
-        `   una deriva gradual desde 2024. "Rompió su banda" queda descartado;`,
+        `   a gradual drift since 2024. "Broke its band" is discarded;`,
       );
-      console.log(`   lo que sobrevive es un aflojamiento lento y continuo.`);
+      console.log(`   what survives is a slow, continuous loosening.`);
     } else if (leverageUp) {
       console.log(
-        `   \x1b[33mEl LTV sube ${(tLtv.perYear * 100).toFixed(1)} pp/año, pero el debt yield no acompaña.\x1b[0m`,
+        `   \x1b[33mLTV rises ${(tLtv.perYear * 100).toFixed(1)} pp/yr, but debt yield does not follow.\x1b[0m`,
       );
-      console.log(`   Sin ese control, la suba puede ser de tasaciones y no de deuda.`);
+      console.log(`   Without that control, the rise could be appraisals rather than debt.`);
     } else {
-      console.log(`   \x1b[32mNinguna serie muestra deriva con ajuste suficiente.\x1b[0m`);
-      console.log(`   La hipótesis del aflojamiento no se sostiene sobre estos datos.`);
+      console.log(`   \x1b[32mNo series shows drift with sufficient fit.\x1b[0m`);
+      console.log(`   The loosening hypothesis does not hold on this data.`);
     }
 
     if (Math.abs(tRate.perYear) > 0.002 && tRate.r2 > FIT) {
       console.log(
-        `\n   \x1b[90mControl de tasas: ${tRate.perYear > 0 ? "suben" : "bajan"} ${Math.abs(tRate.perYear * 100).toFixed(2)} pp/año (R² ${tRate.r2.toFixed(2)}).\x1b[0m`,
+        `\n   \x1b[90mRate control: ${tRate.perYear > 0 ? "rising" : "falling"} ${Math.abs(tRate.perYear * 100).toFixed(2)} pp/yr (R² ${tRate.r2.toFixed(2)}).\x1b[0m`,
       );
       console.log(
         tRate.perYear < 0
-          ? `   \x1b[90mCon tasas en baja el DSCR debería subir. Que siga plano es consistente\x1b[0m\n` +
-            `   \x1b[90mcon más deuda, no con costo de deuda.\x1b[0m`
-          : `   \x1b[90mParte del movimiento del DSCR es mecánico por costo de deuda.\x1b[0m`,
+          ? `   \x1b[90mWith rates falling, DSCR should rise. That it stays flat is consistent\x1b[0m\n` +
+            `   \x1b[90mwith more debt, not with the cost of debt.\x1b[0m`
+          : `   \x1b[90mPart of the DSCR movement is mechanical, from the cost of debt.\x1b[0m`,
       );
     }
   }
 }
 
-// --- ¿un solo emisor? ---------------------------------------------------------
+// --- a single issuer? ---------------------------------------------------------
 
 const { rows: mfIssuers } = await query<{ issuer: string; n: string; ltv: number | null }>(
   `SELECT split_part(fi.company_name, ' ', 1) AS issuer,
@@ -722,24 +719,24 @@ const { rows: mfIssuers } = await query<{ issuer: string; n: string; ltv: number
 );
 
 if (mfIssuers.length > 1) {
-  console.log(`\n   LTV de multifamily en 2026, por emisor \x1b[90m(sin cooperativas)\x1b[0m:`);
+  console.log(`\n   Multifamily LTV in 2026, by issuer \x1b[90m(excluding cooperatives)\x1b[0m:`);
 
   /**
-   * Un LTV muy bajo NO es necesariamente un error.
+   * A very low LTV is NOT necessarily an error.
    *
-   * Acá me equivoqué: marqué en rojo el 11,0% de la familia BANK asumiendo que
-   * un préstamo de CMBS no cotiza así. La aritmética decía otra cosa —préstamo
-   * de $8,5M contra tasación de $38,6M, con cap rate normal de 5,9%— y el
-   * corpus tenía la respuesta en columnas que yo había descartado por
-   * aburridas: "Coop - Coop Units", "Coop - LTV as Rental".
+   * I got this wrong: I flagged the BANK family's 11.0% in red, assuming a CMBS
+   * loan does not price like that. The arithmetic said otherwise —an $8.5M loan
+   * against a $38.6M appraisal, with a normal 5.9% cap rate— and the corpus had
+   * the answer in columns I had dismissed as boring: "Coop - Coop Units",
+   * "Coop - LTV as Rental".
    *
-   * Son préstamos a cooperativas de vivienda, típicamente de Nueva York. La
-   * cooperativa es dueña del edificio y toma deuda mínima contra un valor alto:
-   * LTV de 10-20% con DSCR de 4x a 12x es lo normal en ese nicho.
+   * They are loans to housing cooperatives, typically in New York. The co-op
+   * owns the building and takes minimal debt against a high value: an LTV of
+   * 10-20% with a DSCR of 4x to 12x is normal in that niche.
    *
-   * Vienen clasificados como "Multifamily", así que arrastran las medianas de
-   * esa categoría. La marca ahora señala eso —hay que segmentarlos— en vez de
-   * afirmar que el dato está roto.
+   * They come classified as "Multifamily", so they drag that category's medians.
+   * The flag now points at that —they need segmenting— instead of asserting that
+   * the data is broken.
    */
   const unusual: string[] = [];
   for (const r of mfIssuers) {
@@ -752,91 +749,91 @@ if (mfIssuers.length > 1) {
 
   if (unusual.length > 0) {
     console.log(
-      `\n   \x1b[33m   ${unusual.join(", ")}: LTV bajo 30% con las cooperativas YA excluidas.\x1b[0m`,
+      `\n   \x1b[33m   ${unusual.join(", ")}: LTV below 30% with cooperatives ALREADY excluded.\x1b[0m`,
     );
     console.log(
-      `   \x1b[90m   Queda otro nicho de deuda baja sin identificar. Los candidatos son\x1b[0m`,
+      `   \x1b[90m   There is another low-debt niche still unidentified. The candidates are\x1b[0m`,
     );
     console.log(
-      `   \x1b[90m   vivienda subsidiada con deuda pública subordinada, ground leases, y\x1b[0m`,
+      `   \x1b[90m   subsidised housing with subordinated public debt, ground leases, and\x1b[0m`,
     );
     console.log(
-      `   \x1b[90m   préstamos suplementarios sobre deuda de agencia ya existente.\x1b[0m`,
+      `   \x1b[90m   supplemental loans on existing agency debt.\x1b[0m`,
     );
     console.log(
-      `   \x1b[90m   Inspeccioná el detalle antes de asumir que el pipeline está roto:\x1b[0m`,
+      `   \x1b[90m   Inspect the detail before assuming the pipeline is broken:\x1b[0m`,
     );
     console.log(
-      `   \x1b[90m   la vez pasada lo era, y el dato estaba bien.\x1b[0m`,
+      `   \x1b[90m   last time it was assumed broken, the data was right.\x1b[0m`,
     );
   } else {
     console.log(
-      `   \x1b[90m   Si un emisor domina y el resto está mucho más abajo, el hallazgo es suyo,\x1b[0m`,
+      `   \x1b[90m   If one issuer dominates and the rest are far below, the finding is theirs,\x1b[0m`,
     );
-    console.log(`   \x1b[90m   no del mercado.\x1b[0m`);
+    console.log(`   \x1b[90m   not the market's.\x1b[0m`);
   }
 }
 
 // ===========================================================================
-// Estado de los hallazgos
+// Status of the findings
 // ===========================================================================
 
 console.log(`\n\n${"═".repeat(78)}`);
-console.log("Estado de los hallazgos");
+console.log("Status of the findings");
 console.log(`${"═".repeat(78)}\n`);
 
 console.log(`\x1b[31m✗ DESCARTADO\x1b[0m  "Office se suscribe agresivamente"`);
 console.log(
-  `\x1b[90m             Sobrevivió a lease-up, a ponderación por tamaño, a emisor y a\x1b[0m`,
+  `\x1b[90m             Survived lease-up, size weighting, issuer, and deal\x1b[0m`,
 );
 console.log(
-  `\x1b[90m             selección de deals. Cayó contra su propio comparable: pareado\x1b[0m`,
+  `\x1b[90m             selection. It fell against its own comparable: paired\x1b[0m`,
 );
 console.log(
-  `\x1b[90m             dentro del deal, office supera a industrial en 58% de los casos.\x1b[0m\n`,
+  `\x1b[90m             within the deal, office beats industrial in 58% of cases.\x1b[0m\n`,
 );
 
-console.log(`\x1b[32m✓ SOBREVIVE\x1b[0m  La brecha escala con la visibilidad de renta contractual`);
+console.log(`\x1b[32m✓ SURVIVES\x1b[0m   The gap scales with contractual rent visibility`);
 console.log(
   `\x1b[90m             Hospitality -0.5% → self storage 1.2% → retail 3.5% →\x1b[0m`,
 );
 console.log(
-  `\x1b[90m             industrial 10.8% → office 13.1%. Ordena por cuánta renta futura\x1b[0m`,
+  `\x1b[90m             industrial 10.8% → office 13.1%. It orders by how much future\x1b[0m`,
 );
 console.log(
-  `\x1b[90m             hay bajo contrato, no por agresividad. Es más chico que el\x1b[0m`,
+  `\x1b[90m             rent is under contract, not by aggressiveness. It is smaller\x1b[0m`,
 );
-console.log(`\x1b[90m             titular original y está mejor sostenido.\x1b[0m\n`);
+console.log(`\x1b[90m             than the original headline and better supported.\x1b[0m\n`);
 
-console.log(`\x1b[31m✗ DESCARTADO\x1b[0m  "Multifamily rompió su banda en 2026"`);
+console.log(`\x1b[31m✗ DISCARDED\x1b[0m  "Multifamily broke its band in 2026"`);
 console.log(
-  `\x1b[90m             No hay quiebre. El DSCR es plano (R² 0.06) y el supuesto salto\x1b[0m`,
+  `\x1b[90m             There is no break. DSCR is flat (R² 0.06) and the supposed 2026\x1b[0m`,
 );
 console.log(
-  `\x1b[90m             de 2026 era en parte 221 cooperativas mezcladas en la categoría.\x1b[0m\n`,
+  `\x1b[90m             jump was partly 221 cooperatives mixed into the category.\x1b[0m\n`,
 );
 
-console.log(`\x1b[32m✓ SOBREVIVE\x1b[0m  Deriva de apalancamiento en multifamily convencional`);
+console.log(`\x1b[32m✓ SURVIVES\x1b[0m   Leverage drift in conventional multifamily`);
 console.log(
-  `\x1b[90m             LTV +2.3 pp/año y debt yield -0.6 pp/año, R² ~0.65, sostenido\x1b[0m`,
+  `\x1b[90m             LTV +2.3 pp/yr and debt yield -0.6 pp/yr, R² ~0.65, sustained\x1b[0m`,
 );
 console.log(
-  `\x1b[90m             desde 2024. Con tasas en baja el DSCR debería subir y está plano:\x1b[0m`,
+  `\x1b[90m             since 2024. With rates falling DSCR should rise and it is flat:\x1b[0m`,
 );
-console.log(`\x1b[90m             la capacidad extra se tomó como deuda, no como colchón.\x1b[0m\n`);
+console.log(`\x1b[90m             the extra capacity was taken as debt, not as cushion.\x1b[0m\n`);
 
-console.log(`\x1b[32m✓ CONTROL\x1b[0m    Hospitality en -0.5% valida el instrumento`);
+console.log(`\x1b[32m✓ CONTROL\x1b[0m    Hospitality at -0.5% validates the instrument`);
 console.log(
-  `\x1b[90m             Donde no hay contratos que proyectar la brecha desaparece. Si el\x1b[0m`,
+  `\x1b[90m             Where there are no contracts to project, the gap disappears. If\x1b[0m`,
 );
 console.log(
-  `\x1b[90m             pipeline inflara sistemáticamente, aparecería también ahí.\x1b[0m\n`,
+  `\x1b[90m             the pipeline inflated systematically, it would show up there too.\x1b[0m\n`,
 );
 
 console.log(`${"─".repeat(78)}`);
 console.log(
-  `\n  \x1b[90mDos hallazgos entraron, dos salieron reemplazados por versiones más chicas\x1b[0m`,
+  `\n  \x1b[90mTwo findings went in, two came out replaced by smaller and better\x1b[0m`,
 );
-console.log(`  \x1b[90my mejor sostenidas. Eso es el proceso funcionando, no fallando.\x1b[0m\n`);
+console.log(`  \x1b[90msupported versions. That is the process working, not failing.\x1b[0m\n`);
 
 await closePool();

@@ -81,7 +81,8 @@ ciudad ciudades incidencia transferencia transferencias cobertura
 HIGH_SIGNAL = """de del los las para con por una que en dentro sin cierran
 incidencia transferencias primeros menos cobertura diferencia relevante peor
 mejor aunque mientras cuando donde porque entre desde hasta cada entonces
-segun ciudad""".split()
+segun ciudad sigue arriba abajo acerca cualquier ninguna ninguno tampoco
+todavia siempre nunca antes despues luego ademas asimismo""".split()
 
 # The two real false positives for rule 4, measured on files verified clean:
 #   "en-US"  — toLocaleString locale tags, in every print helper

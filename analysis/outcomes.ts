@@ -222,7 +222,7 @@ if (vintages.length >= 3) {
       `   \x1b[33mThe vintage matters more than the level:\x1b[0m ${pct(lo.share, 0)} in ${lo.vintage} ` +
         `against ${pct(hi.share, 0)} in ${hi.vintage}.`,
     );
-    console.log(`   Cualquier cifra agregada promedia esos extremos y no describe a ninguno.`);
+    console.log(`   Any aggregate figure averages those extremes and describes neither.`);
 
     /**
      * The question that decides what the series means.
