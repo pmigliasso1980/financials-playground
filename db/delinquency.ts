@@ -247,7 +247,7 @@ if (distinguishable.length > 0) {
   );
   console.log(`  \x1b[90m—where 0 of 10 pairs were distinguishable.\x1b[0m\n`);
 } else {
-  console.log(`  \x1b[33mNinguno.\x1b[0m\n`);
+  console.log(`  \x1b[33mNone.\x1b[0m\n`);
   console.log(
     `  \x1b[90mDelinquency does not separate vintages with this sample either. The problem\x1b[0m`,
   );

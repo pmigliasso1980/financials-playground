@@ -92,13 +92,34 @@ for a, b, v in parsed:
     if lost:
         warnings.append((a, b, "DROPPED: " + ", ".join(sorted(lost))[:60]))
 
+# LINE-COUNT CHECK: did the replacement quietly drop a line?
+#
+# The token check above catches a vanished URL or `npm run` command. It did not
+# catch this: translating harvest/real.test.ts, a range swallowed a whole
+# FIXTURE ROW —["Warehouse Memphis", "425,000", "SF", ...]— out of the middle of
+# an array. The file compiled, and the test only failed at runtime because the
+# lookup for that property came back undefined.
+#
+# Prose translation is close to line-for-line, so a replacement shorter than the
+# range it covers is worth a second look. Condensing two lines into one is
+# legitimate and will warn; that is the right trade, because the alternative is
+# losing data rows in silence.
+for a, b, v in parsed:
+    span = b - a + 1
+    got = len(v.split("\n"))
+    if got < span:
+        warnings.append((a, b, f"SHORTER: {span} lines replaced by {got}"))
+
 for a, b, v in parsed:
     lines[a - 1:b] = v.split("\n")
 
 path.write_text("\n".join(lines))
 print(f"spliced {len(parsed)} ranges into {path.name}")
 for a, b, note in warnings:
-    if note.startswith("DROPPED: "):
+    if note.startswith("SHORTER: "):
+        print(f"! range {a}-{b} is {note[9:]} — check nothing was dropped",
+              file=sys.stderr)
+    elif note.startswith("DROPPED: "):
         print(f"! range {a}-{b} lost content the replacement should have kept:"
               f" {note[9:]}", file=sys.stderr)
     else:

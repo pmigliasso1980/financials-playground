@@ -1,21 +1,20 @@
 /**
- * Test contra la estructura REAL de un Annex A.
+ * Test against the REAL structure of an Annex A.
  *
- * Los encabezados y las filas de este archivo están copiados de un documento
- * de verdad en EDGAR:
+ * The headers and rows in this file are copied from an actual document on
+ * EDGAR:
  *
  *   Wells Fargo Commercial Mortgage Trust 2025-C64
  *   FWP · ANNEX A-1 · 2025-02-03
  *   https://www.sec.gov/Archives/edgar/data/2053102/000153949725000290/n4801_x5-annexa1.htm
  *
- * Es la referencia contra la que conviene medir cualquier cambio al mapeo. Los
- * fixtures sintéticos son más limpios que la realidad en cuatro sentidos, y
- * cada uno rompía algo:
+ * It is the reference to measure any mapping change against. The synthetic
+ * fixtures are cleaner than reality in four ways, and each one broke something:
  *
- *   1. La tabla viene partida en bloques horizontales unidos por Loan ID.
- *   2. Hay filas de préstamo y filas de propiedad mezcladas.
- *   3. Los encabezados están duplicados con matices ("NOI DSCR" vs "NCF DSCR").
- *   4. Usa NAP, NAV y "Various" como marcadores de dato ausente.
+ *   1. The table comes split into horizontal blocks joined by Loan ID.
+ *   2. There are loan rows and property rows mixed together.
+ *   3. The headers are duplicated with nuances ("NOI DSCR" vs "NCF DSCR").
+ *   4. It uses NAP, NAV and "Various" as absent-data markers.
  *
  *   npm run harvest:real
  */
@@ -46,11 +45,11 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 function eq<T>(actual: T, expected: T, label: string) {
-  if (actual !== expected) throw new Error(`${label}: esperaba ${String(expected)}, recibí ${String(actual)}`);
+  if (actual !== expected) throw new Error(`${label}: expected ${String(expected)}, got ${String(actual)}`);
 }
 
 // ---------------------------------------------------------------------------
-// Bloque 1 — características del préstamo y la propiedad
+// Block 1 — loan and property characteristics
 // ---------------------------------------------------------------------------
 
 const BLOCK_1_HEADERS = [
@@ -72,7 +71,7 @@ const BLOCK_1_DATA: unknown[][] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Bloque 2 — datos financieros, mismas claves, otras columnas
+// Block 2 — financial data, same keys, different columns
 // ---------------------------------------------------------------------------
 
 const BLOCK_2_HEADERS = [
@@ -105,7 +104,7 @@ const PREAMBLE: unknown[][] = [
 function block(headers: string[], data: unknown[][], name: string): AnnexTable {
   const rows = [...PREAMBLE, headers, ...data];
   const found = findHeaderRow(rows);
-  assert(found, `no se detectaron encabezados en ${name}`);
+  assert(found, `no headers detected in ${name}`);
   return { name, rows, headerRowIndex: found!.rowIndex };
 }
 
@@ -123,53 +122,53 @@ const SOURCE: SourceRef = {
 
 console.log("\nAnnex A real — Wells Fargo 2025-C64\n");
 
-console.log("Marcadores de dato ausente");
+console.log("Absent-data markers");
 
-check("NAP, NAV y Various se leen como ausencia de dato", () => {
+check("NAP, NAV and Various read as an absence of data", () => {
   for (const marker of ["NAP", "NAV", "nap", "nav", "Various", "various"]) {
-    assert(parseValue(marker, "currency") === null, `"${marker}" debería ser null`);
-    assert(parseValue(marker, "years") === null, `"${marker}" debería ser null`);
+    assert(parseValue(marker, "currency") === null, `"${marker}" should be null`);
+    assert(parseValue(marker, "years") === null, `"${marker}" should be null`);
   }
 });
 
-check("un año compuesto como '1980-1991' no se inventa", () => {
-  // Aparece cuando un préstamo cubre propiedades de distintas épocas.
+check("a compound year like '1980-1991' is not invented", () => {
+  // It appears when a loan covers properties from different eras.
   const v = parseValue("1980-1991", "years");
-  assert(v === null || v === "1980", `devolvió "${v}"`);
+  assert(v === null || v === "1980", `returned "${v}"`);
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nEncabezados reales");
+console.log("\nHeaders reales");
 
 const headers1 = BLOCK_1_HEADERS;
 const headers2 = BLOCK_2_HEADERS;
 
-check("mapea las columnas del bloque de características", () => {
+check("maps the characteristics block's columns", () => {
   const { matches } = mapColumns(headers1);
   const keys = new Set(matches.map((m) => m.metric.key));
   for (const expected of ["loan_id", "loan_property_flag", "property_name", "property_type", "property_type_detailed", "year_built", "year_renovated", "units", "unit_of_measure", "loan_amount", "interest_rate"]) {
-    assert(keys.has(expected as never), `falta ${expected} · mapeadas: ${[...keys].join(", ")}`);
+    assert(keys.has(expected as never), `missing ${expected} · mapped: ${[...keys].join(", ")}`);
   }
 });
 
-check("mapea las columnas del bloque financiero", () => {
+check("maps the financial block's columns", () => {
   const { matches } = mapColumns(headers2);
   const keys = new Set(matches.map((m) => m.metric.key));
   for (const expected of ["occupancy_economic", "noi_underwritten", "net_cash_flow", "dscr", "dscr_ncf", "debt_yield", "debt_yield_ncf"]) {
-    assert(keys.has(expected as never), `falta ${expected} · mapeadas: ${[...keys].join(", ")}`);
+    assert(keys.has(expected as never), `missing ${expected} · mapped: ${[...keys].join(", ")}`);
   }
 });
 
-check("cada añada de NOI va a su propia métrica", () => {
+check("each NOI vintage goes to its own metric", () => {
   /**
-   * Encontrado corriendo el Index sobre datos reales: el fact "Net Operating
-   * Income" de TheWit Chicago devolvía $9.731.261, que es el NOI de hace TRES
-   * períodos. El patrón genérico /most recent.*noi/ matchea "Third Most
-   * Recent NOI" y se quedaba con la columna más vieja.
+   * Found by running the Index over real data: the "Net Operating Income" fact
+   * for TheWit Chicago returned $9,731,261, which is the NOI from THREE periods
+   * ago. The generic /most recent.*noi/ pattern matches "Third Most Recent NOI"
+   * and was keeping the oldest column.
    *
-   * Para un analista es peor que un dato faltante: un número plausible,
-   * correctamente extraído, con la etiqueta equivocada.
+   * For an analyst that is worse than a missing datum: a plausible number,
+   * correctly extracted, under the wrong label.
    */
   const vintages = [
     "Property Name",
@@ -190,14 +189,14 @@ check("cada añada de NOI va a su propia métrica", () => {
   assert(/underwritten/i.test(byKey.get("noi_underwritten") ?? ""), `uw → "${byKey.get("noi_underwritten")}"`);
 });
 
-check("las añadas de EGI y gastos también se separan", () => {
+check("the EGI and expense vintages separate too", () => {
   /**
-   * Las ocho columnas, en el orden en que las trae el Annex A conduit.
+   * All eight columns, in the order the conduit Annex A carries them.
    *
-   * La versión anterior pasaba solo cuatro —third y underwritten de cada
-   * familia— porque con la taxonomía vieja no había más claves donde ponerlas.
-   * Con ocho claves hay que dar las ocho columnas: si se afirma sobre una que
-   * no está en la entrada, el test falla por ausencia y no por mapeo.
+   * The previous version passed only four —third and underwritten of each
+   * family— because under the old taxonomy there were no more keys to put them
+   * in. With eight keys you have to supply all eight columns: asserting on one
+   * that is not in the input fails for absence, not for mapping.
    */
   const { matches } = mapColumns([
     "Most Recent EGI ($)", "Second Most Recent EGI ($)",
@@ -208,10 +207,10 @@ check("las añadas de EGI y gastos también se separan", () => {
   const byKey = new Map(matches.map((m) => [m.metric.key, m.header]));
 
   /**
-   * Una clave por columna. La versión anterior afirmaba esto mismo con cuatro
-   * claves para ocho columnas, y pasaba por el orden del fixture: los pares
-   * empataban en el puntaje y el desempate era posicional. Con las claves
-   * separadas, si el mapeo se rompe la afirmación falla.
+   * One key per column. The previous version asserted this same thing with four
+   * keys for eight columns, and passed because of the fixture's order: the pairs
+   * tied on score and the tie-break was positional. With the keys separated, if
+   * the mapping breaks the assertion fails.
    */
   assert(/underwritten/i.test(byKey.get("egi_underwritten") ?? ""), "EGI underwritten");
   assert(/most recent/i.test(byKey.get("egi_most_recent") ?? ""), "EGI most recent");
@@ -223,15 +222,15 @@ check("las añadas de EGI y gastos también se separan", () => {
   assert(/third/i.test(byKey.get("expenses_third_most_recent") ?? ""), "gastos third most recent");
 });
 
-check("las estructuras de deuda no se confunden entre sí", () => {
+check("the debt structures do not get confused with each other", () => {
   /**
-   * Encontrado en el corpus persistido: `ltv` tenía 25% de cobertura. El valor
-   * era correcto pero de otra métrica — habíamos mapeado "Whole Loan Cut-off
-   * Date LTV", que solo existe para préstamos partidos en notas pari passu.
+   * Found in the persisted corpus: `ltv` had 25% coverage. The value was
+   * correct but belonged to another metric — we had mapped "Whole Loan Cut-off
+   * Date LTV", which only exists for loans split into pari passu notes.
    *
-   * No es un matiz: el whole loan incluye los pedazos que quedaron en otros
-   * trusts, y el total debt suma mezzanine. Son denominadores distintos, así
-   * que el mismo préstamo puede tener 60% de whole loan LTV y 45% del trust.
+   * It is not a nuance: the whole loan includes the pieces left in other
+   * trusts, and total debt adds mezzanine. They are different denominators, so
+   * the same loan can have 60% whole loan LTV and 45% at the trust.
    */
   const headers = [
     "Cut-off Date LTV Ratio (%)",
@@ -242,14 +241,14 @@ check("las estructuras de deuda no se confunden entre sí", () => {
   const { matches, unmapped } = mapColumns(headers);
   const byKey = new Map(matches.map((m) => [m.metric.key, m.header]));
 
-  eq(byKey.get("ltv"), "Cut-off Date LTV Ratio (%)", "LTV del trust");
+  eq(byKey.get("ltv"), "Cut-off Date LTV Ratio (%)", "trust LTV");
   eq(byKey.get("ltv_whole_loan"), "Whole Loan Cut-off Date LTV Ratio (%)", "whole loan");
   eq(byKey.get("ltv_total_debt"), "Total Debt Cut-off Date LTV Ratio (%)", "total debt");
-  eq(byKey.get("ltv_maturity"), "LTV Ratio at Maturity / ARD (%)", "al vencimiento");
-  eq(unmapped.length, 0, `quedaron sin mapear: ${unmapped.map((u) => u.header).join(", ")}`);
+  eq(byKey.get("ltv_maturity"), "LTV Ratio at Maturity / ARD (%)", "at maturity");
+  eq(unmapped.length, 0, `left unmapped: ${unmapped.map((u) => u.header).join(", ")}`);
 });
 
-check("DSCR y debt yield tampoco se cruzan entre estructuras", () => {
+check("DSCR and debt yield do not cross between structures either", () => {
   const { matches } = mapColumns([
     "Underwritten NOI DSCR (x)",
     "Underwritten NCF DSCR (x)",
@@ -260,23 +259,23 @@ check("DSCR y debt yield tampoco se cruzan entre estructuras", () => {
   ]);
   const byKey = new Map(matches.map((m) => [m.metric.key, m.header]));
 
-  assert(!/whole|total/i.test(byKey.get("dscr") ?? ""), `dscr tomó "${byKey.get("dscr")}"`);
-  assert(!/whole|total/i.test(byKey.get("dscr_ncf") ?? ""), `dscr_ncf tomó "${byKey.get("dscr_ncf")}"`);
-  assert(!/whole|total/i.test(byKey.get("debt_yield") ?? ""), `debt_yield tomó "${byKey.get("debt_yield")}"`);
-  assert(byKey.has("dscr_whole_loan"), "no capturó el DSCR de whole loan");
-  assert(byKey.has("debt_yield_whole_loan"), "no capturó el debt yield de whole loan");
+  assert(!/whole|total/i.test(byKey.get("dscr") ?? ""), `dscr took "${byKey.get("dscr")}"`);
+  assert(!/whole|total/i.test(byKey.get("dscr_ncf") ?? ""), `dscr_ncf took "${byKey.get("dscr_ncf")}"`);
+  assert(!/whole|total/i.test(byKey.get("debt_yield") ?? ""), `debt_yield took "${byKey.get("debt_yield")}"`);
+  assert(byKey.has("dscr_whole_loan"), "did not capture the whole loan DSCR");
+  assert(byKey.has("debt_yield_whole_loan"), "did not capture the whole loan debt yield");
 });
 
-check("el NOI real no se lo roba el DSCR ni el debt yield", () => {
-  // El bug que encontró este test: "Underwritten NOI DSCR (x)" contiene
-  // "Underwritten" y "NOI", así que matcheaba noi_underwritten con puntaje
-  // máximo y dejaba huérfana a "Underwritten Net Operating Income ($)".
+check("the real NOI is not stolen by the DSCR or the debt yield", () => {
+  // The bug this test found: "Underwritten NOI DSCR (x)" contains
+  // "Underwritten" and "NOI", so it matched noi_underwritten at the maximum
+  // score and orphaned "Underwritten Net Operating Income ($)".
   const { matches } = mapColumns(headers2);
   const noi = matches.find((m) => m.metric.key === "noi_underwritten");
-  assert(noi, "noi_underwritten no se mapeó");
+  assert(noi, "noi_underwritten was not mapped");
   assert(
     /net operating income/i.test(noi!.header),
-    `noi_underwritten tomó "${noi!.header}"`,
+    `noi_underwritten took "${noi!.header}"`,
   );
 });
 
@@ -284,96 +283,96 @@ check("NOI DSCR y NCF DSCR no se confunden", () => {
   const { matches } = mapColumns(headers2);
   const noi = matches.find((m) => m.metric.key === "dscr");
   const ncf = matches.find((m) => m.metric.key === "dscr_ncf");
-  assert(noi && ncf, "faltó alguno de los dos");
-  assert(/noi/i.test(noi!.header), `dscr tomó "${noi!.header}"`);
-  assert(/ncf/i.test(ncf!.header), `dscr_ncf tomó "${ncf!.header}"`);
+  assert(noi && ncf, "one of the two is missing");
+  assert(/noi/i.test(noi!.header), `dscr took "${noi!.header}"`);
+  assert(/ncf/i.test(ncf!.header), `dscr_ncf took "${ncf!.header}"`);
 });
 
 check("NOI Debt Yield y NCF Debt Yield no se confunden", () => {
   const { matches } = mapColumns(headers2);
   const noi = matches.find((m) => m.metric.key === "debt_yield");
   const ncf = matches.find((m) => m.metric.key === "debt_yield_ncf");
-  assert(noi && ncf, "faltó alguno de los dos");
-  assert(/noi/i.test(noi!.header), `debt_yield tomó "${noi!.header}"`);
-  assert(/ncf/i.test(ncf!.header), `debt_yield_ncf tomó "${ncf!.header}"`);
+  assert(noi && ncf, "one of the two is missing");
+  assert(/noi/i.test(noi!.header), `debt_yield took "${noi!.header}"`);
+  assert(/ncf/i.test(ncf!.header), `debt_yield_ncf took "${ncf!.header}"`);
 });
 
-check("la ocupancia económica se mapea a su propia métrica", () => {
-  // Este Annex solo publica ocupancia económica. Antes la exclusión /economic/
-  // de `occupancy` la descartaba y quedábamos sin ninguna ocupancia.
+check("economic occupancy maps to its own metric", () => {
+  // This Annex publishes only economic occupancy. Previously the /economic/
+  // exclusion on `occupancy` discarded it and we were left with none at all.
   const { matches } = mapColumns(headers2);
   const eco = matches.find((m) => m.metric.key === "occupancy_economic");
-  assert(eco, "no mapeó la ocupancia económica");
-  assert(/economic/i.test(eco!.header), `tomó "${eco!.header}"`);
+  assert(eco, "economic occupancy was not mapped");
+  assert(/economic/i.test(eco!.header), `took "${eco!.header}"`);
 });
 
-check("ocupancia física y económica no se pisan cuando están las dos", () => {
+check("physical and economic occupancy do not clash when both are present", () => {
   const { matches } = mapColumns(["Physical Occupancy (%)", "Underwritten Economic Occupancy (%)"]);
   const phys = matches.find((m) => m.metric.key === "occupancy");
   const eco = matches.find((m) => m.metric.key === "occupancy_economic");
-  assert(phys && eco, "faltó alguna de las dos");
-  assert(phys!.columnIndex !== eco!.columnIndex, "cayeron en la misma columna");
+  assert(phys && eco, "one of the two is missing");
+  assert(phys!.columnIndex !== eco!.columnIndex, "they landed on the same column");
 });
 
-check("'Unit of Measure' no se roba la columna de conteo de unidades", () => {
+check("'Unit of Measure' does not steal the unit-count column", () => {
   const { matches } = mapColumns(headers1);
   const units = matches.find((m) => m.metric.key === "units");
   const measure = matches.find((m) => m.metric.key === "unit_of_measure");
-  assert(units, "units no se mapeó");
-  assert(measure, "unit_of_measure no se mapeó");
-  assert(/number of units/i.test(units!.header), `units tomó "${units!.header}"`);
-  assert(/measure/i.test(measure!.header), `unit_of_measure tomó "${measure!.header}"`);
+  assert(units, "units was not mapped");
+  assert(measure, "unit_of_measure was not mapped");
+  assert(/number of units/i.test(units!.header), `units took "${units!.header}"`);
+  assert(/measure/i.test(measure!.header), `unit_of_measure took "${measure!.header}"`);
 });
 
-check("'Loan Per Unit ($)' no se confunde con Loan Amount", () => {
+check("'Loan Per Unit ($)' is not confused with Loan Amount", () => {
   const { matches } = mapColumns(headers1);
   const loan = matches.find((m) => m.metric.key === "loan_amount");
-  assert(loan, "no mapeó loan_amount");
+  assert(loan, "loan_amount was not mapped");
   assert(
     !/per\s*unit/i.test(loan!.header),
-    `loan_amount tomó "${loan!.header}", que es un valor por unidad`,
+    `loan_amount took "${loan!.header}", which is a per-unit value`,
   );
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nFilas de préstamo vs. de propiedad");
+console.log("\nLoan rows vs. property rows");
 
-check("classifyRow distingue los dos tipos", () => {
+check("classifyRow tells the two apart", () => {
   eq(classifyRow("Loan"), "loan", "Loan");
   eq(classifyRow("Property"), "property", "Property");
-  eq(classifyRow(""), "unknown", "vacío");
+  eq(classifyRow(""), "unknown", "empty");
 });
 
 const t1 = block(headers1, BLOCK_1_DATA, "block-1");
 
-check("descarta las filas de propiedad y conserva los préstamos", () => {
+check("discards the property rows and keeps the loans", () => {
   const filtered = keepLoanRows(t1.rows, t1.headerRowIndex);
-  assert(filtered.hadFlagColumn, "no detectó la columna de flag");
-  eq(filtered.loanRows, 3, "préstamos");
-  eq(filtered.propertyRows, 2, "filas de propiedad descartadas");
+  assert(filtered.hadFlagColumn, "the flag column was not detected");
+  eq(filtered.loanRows, 3, "loans");
+  eq(filtered.propertyRows, 2, "property rows discarded");
 });
 
-check("sin columna de flag, el Loan ID distingue préstamos de propiedades", () => {
+check("without a flag column, the Loan ID separates loans from properties", () => {
   /**
-   * La columna de flag solo aparece en el 79% de los filings. Sin este
-   * respaldo, en el 21% restante cada propiedad de un portfolio entraba como
-   * préstamo: BANK5 2026-5YR23 figuraba con 173 préstamos teniendo 33.
+   * The flag column only appears in 79% of filings. Without this fallback, in
+   * the remaining 21% each property of a portfolio entered as a loan: BANK5
+   * 2026-5YR23 showed 173 loans while having 33.
    *
-   * El delator fue aritmético: 173 IDs distintos con máximo 33.
+   * The giveaway was arithmetic: 173 distinct IDs with a maximum of 33.
    */
   const noFlag = headers1.filter((h) => !/flag/i.test(h));
   const data = BLOCK_1_DATA.map((r) => r.filter((_, i) => i !== 1));
-  const table = block(noFlag, data, "sin-flag");
+  const table = block(noFlag, data, "no-flag");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
 
-  // Los datos traen 1.00, 2.00, 3.00 (préstamos) y 3.01, 3.02 (propiedades).
-  eq(filtered.loanRows, 3, "préstamos");
-  eq(filtered.propertyRows, 2, "filas de propiedad descartadas");
+  // The data carries 1.00, 2.00, 3.00 (loans) and 3.01, 3.02 (properties).
+  eq(filtered.loanRows, 3, "loans");
+  eq(filtered.propertyRows, 2, "property rows discarded");
 });
 
-check("con IDs enteros no descarta nada", () => {
-  // Los filings que numeran 1, 2, 3 no tienen filas de propiedad separadas.
+check("with integer IDs it discards nothing", () => {
+  // Filings that number 1, 2, 3 have no separate property rows.
   const noFlag = headers1.filter((h) => !/flag/i.test(h));
   const data = BLOCK_1_DATA.slice(0, 3).map((r, i) => {
     const row = r.filter((_, j) => j !== 1);
@@ -382,127 +381,128 @@ check("con IDs enteros no descarta nada", () => {
   });
   const table = block(noFlag, data, "ids-enteros");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
-  eq(filtered.loanRows, 3, "debería conservar los tres");
-  eq(filtered.propertyRows, 0, "no hay filas de propiedad");
+  eq(filtered.loanRows, 3, "should keep all three");
+  eq(filtered.propertyRows, 0, "there are no property rows");
 });
 
-check("descarta la fila que numera las columnas", () => {
+check("discards the row that numbers the columns", () => {
   /**
-   * El caso real: en el Annex A conduit la primera fila después del encabezado
-   * numera las columnas (1, 2, 3...) y entraba como préstamo. Aparecían 7 en la
-   * cohorte 2026, con property_type = "2" — el número de columna leído como tipo.
+   * The real case: in the conduit Annex A the first row after the header
+   * numbers the columns (1, 2, 3...) and was entering as a loan. Seven appeared
+   * in the 2026 cohort, with property_type = "2" — the column number read as
+   * the type.
    *
-   * No se puede filtrar por cantidad de observations: tenían exactamente 3, y
-   * sobre las 9.751 filas del corpus la distribución es continua desde 3. Un
-   * préstamo tiene nombre o tiene saldo; esta fila no tiene ninguno.
+   * It cannot be filtered by observation count: they had exactly 3, and across
+   * the corpus's 9,751 rows the distribution is continuous from 3. A loan has a
+   * name or has a balance; this row has neither.
    */
   /**
-   * La fila se construye con la forma REAL, no con una plausible.
+   * The row is built in its REAL shape, not a plausible one.
    *
-   * La primera versión de este test ponía un número en cada columna, así que la
-   * fila tenía valor en "Property Name" y el filtro —correctamente— no la
-   * descartaba. Las 5 fantasma que se encontraron en el corpus tienen el nombre
-   * vacío, el conteo nulo y la unidad nula: el único valor que sobrevive es el
-   * número de columna en la posición del tipo de propiedad.
+   * The first version of this test put a number in every column, so the row had
+   * a value in "Property Name" and the filter —correctly— did not discard it.
+   * The 5 phantoms found in the corpus have an empty name, a null count and a
+   * null unit: the only value that survives is the column number in the
+   * position of the property type.
    *
-   * El test fallaba por estar mal escrito, no por el filtro. Vale como
-   * recordatorio de que un caso inventado "parecido" no prueba lo mismo que el
-   * caso observado.
+   * The test was failing because it was badly written, not because of the
+   * filter. It stands as a reminder that an invented "similar" case does not
+   * prove the same thing as the observed one.
    */
   /**
-   * La fila numeradora REAL: un número en cada columna, no celdas vacías.
+   * The REAL numbering row: a number in every column, not empty cells.
    *
-   * Esta era la primera versión del test. Falló, y en vez de arreglar el filtro
-   * cambié el test a celdas vacías para que pasara — con el resultado de que las
-   * dos filas de BMO 2026-5C15 sobrevivieron a una recosecha completa. Vuelve a
-   * la forma real, que es la que el filtro tiene que aguantar.
+   * This was the first version of the test. It failed, and instead of fixing
+   * the filter I changed the test to empty cells so it would pass — with the
+   * result that the two rows of BMO 2026-5C15 survived a full re-harvest. It
+   * goes back to the real shape, which is what the filter has to handle.
    */
-  const numeradora = headers1.map((_, i) => String(i + 1));
+  const numberingRow = headers1.map((_, i) => String(i + 1));
 
   /**
-   * Y hacen falta suficientes filas reales para no chocar con la guarda del 15%.
-   * Con 3 préstamos, descartar 1 es el 25% y el filtro se abstiene — que es el
-   * comportamiento correcto y hacía fallar el test por otra razón.
+   * And enough real rows are needed not to hit the 15% guard. With 3 loans,
+   * discarding 1 is 25% and the filter abstains — which is the correct
+   * behaviour and was making the test fail for another reason.
    */
-  const prestamos = BLOCK_1_DATA.filter((r) => r[1] === "Loan");
-  const muchos = [numeradora, ...prestamos, ...prestamos, ...prestamos, ...prestamos];
-  const table = block(headers1, muchos, "con-numeradora");
+  const loans = BLOCK_1_DATA.filter((r) => r[1] === "Loan");
+  const many = [numberingRow, ...loans, ...loans, ...loans, ...loans];
+  const table = block(headers1, many, "with-numbering-row");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
 
-  eq(filtered.phantomRows, 1, "la fila numeradora");
-  eq(filtered.loanRows, 12, "los 12 préstamos reales quedan");
+  eq(filtered.phantomRows, 1, "the numbering row");
+  eq(filtered.loanRows, 12, "the 12 real loans remain");
   assert(
-    !filtered.rows.slice(table.headerRowIndex + 1).some((r) => r === numeradora),
-    "la numeradora no debería quedar entre los datos",
+    !filtered.rows.slice(table.headerRowIndex + 1).some((r) => r === numberingRow),
+    "the numbering row should not remain among the data",
   );
 });
 
-check("con pocas filas la guarda gana sobre el filtro", () => {
+check("with few rows the guard beats the filter", () => {
   /**
-   * El mismo caso con 3 préstamos en vez de 12: descartar 1 sería el 25% y el
-   * filtro se abstiene. Preferimos una fila fantasma de más a borrar un cuarto
-   * de un pool chico por una hipótesis sobre dos columnas.
+   * The same case with 3 loans instead of 12: discarding 1 would be 25% and the
+   * filter abstains. We prefer one extra phantom row to deleting a quarter of a
+   * small pool on a hypothesis about two columns.
    */
-  const numeradora = headers1.map((_, i) => String(i + 1));
-  const prestamos = BLOCK_1_DATA.filter((r) => r[1] === "Loan");
-  const table = block(headers1, [numeradora, ...prestamos], "pocas-filas");
+  const numberingRow = headers1.map((_, i) => String(i + 1));
+  const loans = BLOCK_1_DATA.filter((r) => r[1] === "Loan");
+  const table = block(headers1, [numberingRow, ...loans], "few-rows");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
-  eq(filtered.phantomRows, 0, "debería abstenerse con 1 de 4");
+  eq(filtered.phantomRows, 0, "should abstain with 1 of 4");
 });
 
-check("se abstiene si tendría que descartar demasiadas filas", () => {
+check("it abstains if it would have to discard too many rows", () => {
   /**
-   * La guarda que importa: si el filtro quiere borrar más del 15% de las filas,
-   * lo más probable es que las columnas de nombre y saldo no estén donde creemos
-   * —no que el 20% del pool sean fantasmas—. Borrar medio Annex A en silencio es
-   * peor que dejar entrar unas filas de más.
+   * The guard that matters: if the filter wants to delete more than 15% of the
+   * rows, the likeliest explanation is that the name and balance columns are
+   * not where we think —not that 20% of the pool are phantoms. Deleting half an
+   * Annex A silently is worse than letting a few extra rows through.
    */
-  const vacias = BLOCK_1_DATA.map((r) => r.map(() => ""));
-  const table = block(headers1, vacias, "todas-vacias");
+  const empties = BLOCK_1_DATA.map((r) => r.map(() => ""));
+  const table = block(headers1, empties, "all-empty");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
-  eq(filtered.phantomRows, 0, "debería abstenerse, no vaciar la tabla");
+  eq(filtered.phantomRows, 0, "should abstain, not empty the table");
 });
 
-check("sin flag ni Loan ID conserva todo", () => {
-  // Preferimos datos de más a datos silenciosamente perdidos.
+check("with no flag and no Loan ID it keeps everything", () => {
+  // We prefer too much data to data silently lost.
   const headers = headers1.filter((h) => !/flag/i.test(h) && !/loan id/i.test(h));
   const data = BLOCK_1_DATA.map((r) => r.filter((_, i) => i !== 0 && i !== 1));
-  const table = block(headers, data, "sin-nada");
+  const table = block(headers, data, "nothing");
   const filtered = keepLoanRows(table.rows, table.headerRowIndex);
-  eq(filtered.loanRows, 5, "debería conservar todas");
-  eq(filtered.propertyRows, 0, "sin forma de distinguir");
+  eq(filtered.loanRows, 5, "should keep them all");
+  eq(filtered.propertyRows, 0, "no way to tell them apart");
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nUnión de bloques horizontales");
+console.log("\nJoining horizontal blocks");
 
 const t2 = block(headers2, BLOCK_2_DATA, "block-2");
 const joined = joinAnnexTables([t1, t2]);
 
-check("une los dos bloques por Loan ID", () => {
-  assert(joined, "no devolvió nada");
+check("joins the two blocks by Loan ID", () => {
+  assert(joined, "returned nothing");
   eq(joined!.tablesJoined, 2, "tablas unidas");
 });
 
-check("la unión conserva las columnas de ambos bloques", () => {
+check("the join keeps the columns of both blocks", () => {
   const { matches } = mapColumns(joined!.rows[joined!.headerRowIndex]!.map((c) => String(c ?? "")));
   const keys = new Set(matches.map((m) => m.metric.key));
-  // Del bloque 1
-  assert(keys.has("units"), "perdió units");
-  assert(keys.has("interest_rate"), "perdió interest_rate");
-  // Del bloque 2
-  assert(keys.has("noi_underwritten"), "perdió noi_underwritten");
-  assert(keys.has("dscr_ncf"), "perdió dscr_ncf");
+  // From block 1
+  assert(keys.has("units"), "lost units");
+  assert(keys.has("interest_rate"), "lost interest_rate");
+  // From block 2
+  assert(keys.has("noi_underwritten"), "lost noi_underwritten");
+  assert(keys.has("dscr_ncf"), "lost dscr_ncf");
 });
 
-check("no duplica las columnas clave repetidas entre bloques", () => {
+check("it does not duplicate the key columns repeated across blocks", () => {
   const headers = joined!.rows[joined!.headerRowIndex]!.map((c) => String(c ?? "").trim().toLowerCase());
   const nonEmpty = headers.filter(Boolean);
   eq(new Set(nonEmpty).size, nonEmpty.length, `duplicados: ${nonEmpty.filter((h, i) => nonEmpty.indexOf(h) !== i).join(", ")}`);
 });
 
-check("los datos quedan alineados con su préstamo", () => {
+check("the data stays aligned with its loan", () => {
   const headers = joined!.rows[joined!.headerRowIndex]!.map((c) => String(c ?? ""));
   const { matches } = mapColumns(headers);
   const nameCol = matches.find((m) => m.metric.key === "property_name")!.columnIndex;
@@ -510,57 +510,57 @@ check("los datos quedan alineados con su préstamo", () => {
 
   const dataRows = joined!.rows.slice(joined!.headerRowIndex + 1);
   const theWit = dataRows.find((r) => String(r[nameCol]).includes("TheWit"));
-  assert(theWit, "no encontró TheWit Chicago");
-  // Su NOI underwritten en el documento real es 10.932.267
-  eq(String(theWit![noiCol]), "10,932,267", "NOI de TheWit");
+  assert(theWit, "TheWit Chicago not found");
+  // Its underwritten NOI in the real document is 10,932,267
+  eq(String(theWit![noiCol]), "10,932,267", "TheWit's NOI");
 });
 
-check("apila las páginas del mismo bloque en vez de cruzarlas", () => {
-  // Caso real: un Annex A trae una tabla POR PÁGINA, no por bloque de columnas.
-  // Wells Fargo 2025-C64 tiene 126 tablas. Si cada página se toma como bloque
-  // distinto, la unión por Loan ID deja solo los préstamos que aparecen en la
-  // primera página de todos — en la primera corrida real, 7 de un pool entero.
+check("stacks the pages of the same block instead of crossing them", () => {
+  // Real case: an Annex A carries one table PER PAGE, not per column block.
+  // Wells Fargo 2025-C64 has 126 tables. If each page is taken as a different
+  // block, joining by Loan ID leaves only the loans appearing on the first page
+  // of all of them — in the first real run, 7 out of a whole pool.
   const page1 = block(headers1, BLOCK_1_DATA.slice(0, 2), "b1-p1");
   const page2 = block(headers1, [
-    ["4.00", "Loan", "", 1, "Cuarto Préstamo", "Retail", "Strip", "1999", "NAP", 42, "Units", "150,000.00", "6,300,000", "6,300,000", "6,300,000", "6.50000%", "0.01800%", "6.48200%", "NAP", "39,800.00"],
+    ["4.00", "Loan", "", 1, "Fourth Loan", "Retail", "Strip", "1999", "NAP", 42, "Units", "150,000.00", "6,300,000", "6,300,000", "6,300,000", "6.50000%", "0.01800%", "6.48200%", "NAP", "39,800.00"],
   ], "b1-p2");
 
   const { tables: stacked, groups } = stackPagedTables([page1, page2]);
-  eq(groups, 1, "debería quedar un solo bloque lógico");
+  eq(groups, 1, "should end up as a single logical block");
   const data = stacked[0]!.rows.slice(stacked[0]!.headerRowIndex + 1);
-  eq(data.length, 3, "filas apiladas");
+  eq(data.length, 3, "stacked rows");
 });
 
-check("no apila bloques con encabezados distintos", () => {
+check("it does not stack blocks with different headers", () => {
   const { groups } = stackPagedTables([t1, t2]);
-  eq(groups, 2, "son bloques de columnas distintos, no páginas");
+  eq(groups, 2, "they are different column blocks, not pages");
 });
 
-check("apilar y unir se combinan bien", () => {
-  // Dos bloques, cada uno partido en dos páginas.
+check("stacking and joining combine correctly", () => {
+  // Two blocks, each split across two pages.
   const b1p1 = block(headers1, BLOCK_1_DATA.slice(0, 3), "b1-p1");
   const b1p2 = block(headers1, BLOCK_1_DATA.slice(3), "b1-p2");
   const b2p1 = block(headers2, BLOCK_2_DATA.slice(0, 3), "b2-p1");
   const b2p2 = block(headers2, BLOCK_2_DATA.slice(3), "b2-p2");
 
   const result = joinAnnexTables([b1p1, b1p2, b2p1, b2p2]);
-  assert(result, "no devolvió nada");
-  eq(result!.stackedGroups, 2, "grupos tras apilar");
+  assert(result, "returned nothing");
+  eq(result!.stackedGroups, 2, "groups after stacking");
   eq(result!.tablesJoined, 2, "bloques unidos");
 
   const headers = result!.rows[result!.headerRowIndex]!.map((c) => String(c ?? ""));
   const { matches } = mapColumns(headers);
   const keys = new Set(matches.map((m) => m.metric.key));
-  assert(keys.has("units") && keys.has("noi_underwritten"), "perdió columnas al combinar");
+  assert(keys.has("units") && keys.has("noi_underwritten"), "lost columns when combining");
 
   const dataRows = result!.rows.slice(result!.headerRowIndex + 1);
-  eq(dataRows.length, 5, "debería tener las 5 filas del bloque");
+  eq(dataRows.length, 5, "should have the block's 5 rows");
 });
 
-check("adopta las páginas de continuación sin encabezado", () => {
-  // Caso real: de las 126 tablas del Annex A de Wells Fargo, solo 18 traen
-  // encabezados. Las otras 108 son continuaciones —páginas siguientes del
-  // mismo bloque— y descartarlas dejaba 7 préstamos de un pool entero.
+check("adopts the continuation pages with no header", () => {
+  // Real case: of the 126 tables in the Wells Fargo Annex A, only 18 carry
+  // headers. The other 108 are continuations —following pages of the same
+  // block— and discarding them left 7 loans out of a whole pool.
   const headed = block(headers1, BLOCK_1_DATA.slice(0, 2), "pagina-1");
   const continuation = {
     name: "pagina-2",
@@ -575,125 +575,125 @@ check("adopta las páginas de continuación sin encabezado", () => {
     (rows) => findHeaderRow(rows),
   );
 
-  eq(adoptedTables.length, 1, "debería quedar un solo bloque");
-  eq(adopted, 1, "continuaciones adoptadas");
-  eq(orphans, 0, "huérfanas");
+  eq(adoptedTables.length, 1, "should end up as a single block");
+  eq(adopted, 1, "continuations adopted");
+  eq(orphans, 0, "orphaned");
 
   const data = adoptedTables[0]!.rows.slice(adoptedTables[0]!.headerRowIndex + 1);
-  eq(data.length, 4, "filas totales tras adoptar");
+  eq(data.length, 4, "total rows after adopting");
 });
 
-check("no adopta una tabla con otra cantidad de columnas", () => {
-  // Adoptar el bloque equivocado desalinea todos los datos: peor que perderlos.
-  const headed = block(headers1, BLOCK_1_DATA.slice(0, 2), "bloque");
-  const ajena = { name: "otra-cosa", rows: [["a", "b"], ["c", "d"]] };
+check("it does not adopt a table with a different column count", () => {
+  // Adopting the wrong block misaligns all the data: worse than losing it.
+  const headed = block(headers1, BLOCK_1_DATA.slice(0, 2), "block");
+  const foreign = { name: "something-else", rows: [["a", "b"], ["c", "d"]] };
 
   const { adopted, orphans } = attachContinuationTables(
-    [{ name: headed.name, rows: headed.rows }, ajena],
+    [{ name: headed.name, rows: headed.rows }, foreign],
     (rows) => findHeaderRow(rows),
   );
 
-  eq(adopted, 0, "no debería adoptar");
-  eq(orphans, 1, "debería quedar huérfana");
+  eq(adopted, 0, "should not adopt");
+  eq(orphans, 1, "should be left orphaned");
 });
 
-check("Number of Units + Unit of Measure = SF se guarda como superficie", () => {
-  // El Annex usa una sola columna de conteo; Unit of Measure dice qué se cuenta.
-  // Un galpón con 425.000 "unidades" son metros cuadrados.
+check("Number of Units + Unit of Measure = SF is stored as area", () => {
+  // The Annex uses a single count column; Unit of Measure says what is counted.
+  // A warehouse with 425,000 "units" is square feet.
   const rows = [
     ["Property Name", "Number of Units", "Unit of Measure", "UW NOI", "Original Balance"],
-    ["Galpón Memphis", "425,000", "SF", "$5,900,000", "$72,000,000"],
+    ["Warehouse Memphis", "425,000", "SF", "$5,900,000", "$72,000,000"],
     ["Hotel Chicago", "310", "Rooms", "$10,932,267", "$81,000,000"],
   ];
   const h = findHeaderRow(rows, { minMatches: 3 })!;
   const res = rowsToObservations(rows, h.rowIndex, SOURCE, { minObservationsPerRow: 3 });
 
-  const galpon = res.properties.find((p) => p.label.property_name?.includes("Galpón"))!;
+  const warehouse = res.properties.find((p) => p.label.property_name?.includes("Warehouse"))!;
   const hotel = res.properties.find((p) => p.label.property_name?.includes("Hotel"))!;
 
-  eq(galpon.observations.find((o) => o.metric_key === "square_feet")?.value, "425000", "superficie del galpón");
+  eq(warehouse.observations.find((o) => o.metric_key === "square_feet")?.value, "425000", "the warehouse's area");
   assert(
-    !galpon.observations.some((o) => o.metric_key === "units"),
-    "el galpón no debería tener units",
+    !warehouse.observations.some((o) => o.metric_key === "units"),
+    "the warehouse should not have units",
   );
-  eq(hotel.observations.find((o) => o.metric_key === "units")?.value, "310", "habitaciones del hotel");
+  eq(hotel.observations.find((o) => o.metric_key === "units")?.value, "310", "the hotel's rooms");
 });
 
-check("con columna de superficie propia, el conteo en SF se descarta", () => {
-  // Caso real de Wells Fargo: el Annex trae `Number of Units` + `Unit of
-  // Measure` Y ADEMÁS columnas de superficie dedicadas. Para una propiedad
-  // medida en SF, el valor de `Number of Units` no es un conteo de unidades y
-  // guardarlo como tal contamina cualquier comparación entre activos.
+check("with a dedicated area column, the SF count is discarded", () => {
+  // Real Wells Fargo case: the Annex carries `Number of Units` + `Unit of
+  // Measure` AND dedicated area columns as well. For a property measured in SF,
+  // the `Number of Units` value is not a unit count and storing it as one
+  // contaminates any comparison between assets.
   const rows = [
     ["Property Name", "Number of Units", "Unit of Measure", "Net Rentable Area (SF)", "UW NOI", "Original Balance"],
-    ["Galpón", "425,000", "SF", "425,000", "$5,900,000", "$72,000,000"],
+    ["Warehouse", "425,000", "SF", "425,000", "$5,900,000", "$72,000,000"],
     ["Torre", "180", "Units", "", "$3,100,000", "$38,000,000"],
   ];
   const h = findHeaderRow(rows, { minMatches: 3 })!;
   const res = rowsToObservations(rows, h.rowIndex, SOURCE, { minObservationsPerRow: 3 });
 
-  const galpon = res.properties.find((p) => p.label.property_name === "Galpón")!;
+  const warehouse = res.properties.find((p) => p.label.property_name === "Warehouse")!;
   assert(
-    !galpon.observations.some((o) => o.metric_key === "units"),
-    "425.000 no son unidades: debería descartarse",
+    !warehouse.observations.some((o) => o.metric_key === "units"),
+    "425,000 are not units: it should be discarded",
   );
-  eq(galpon.observations.find((o) => o.metric_key === "square_feet")?.value, "425000", "superficie");
+  eq(warehouse.observations.find((o) => o.metric_key === "square_feet")?.value, "425000", "superficie");
 
   const torre = res.properties.find((p) => p.label.property_name === "Torre")!;
   eq(torre.observations.find((o) => o.metric_key === "units")?.value, "180", "unidades reales intactas");
 });
 
-check("sin Loan ID común devuelve la mejor tabla sola", () => {
-  const noId1 = block(headers1.slice(1), BLOCK_1_DATA.map((r) => r.slice(1)), "sin-id-1");
-  const noId2 = block(headers2.slice(1), BLOCK_2_DATA.map((r) => r.slice(1)), "sin-id-2");
+check("with no common Loan ID it returns the best table alone", () => {
+  const noId1 = block(headers1.slice(1), BLOCK_1_DATA.map((r) => r.slice(1)), "no-id-1");
+  const noId2 = block(headers2.slice(1), BLOCK_2_DATA.map((r) => r.slice(1)), "no-id-2");
   const result = joinAnnexTables([noId1, noId2]);
-  assert(result, "no devolvió nada");
-  eq(result!.tablesJoined, 1, "no debería haber unido");
+  assert(result, "returned nothing");
+  eq(result!.tablesJoined, 1, "should not have joined");
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nPipeline completo sobre datos reales");
+console.log("\nFull pipeline over real data");
 
 const filtered = keepLoanRows(joined!.rows, joined!.headerRowIndex);
 const result = rowsToObservations(filtered.rows, joined!.headerRowIndex, SOURCE);
 
-check("produce un deal por préstamo, no por fila", () => {
-  eq(result.stats.propertiesKept, 3, "préstamos");
+check("produces one deal per loan, not per row", () => {
+  eq(result.stats.propertiesKept, 3, "loans");
 });
 
-check("los valores reales se parsean bien", () => {
+check("the real values parse correctly", () => {
   const theWit = result.properties.find((p) => p.label.property_name?.includes("TheWit"));
-  assert(theWit, "no encontró TheWit");
+  assert(theWit, "TheWit not found");
 
   const get = (key: string) => theWit!.observations.find((o) => o.metric_key === key)?.value;
 
   eq(get("noi_underwritten"), "10932267", "NOI underwritten");
-  eq(get("occupancy_economic"), "0.698", "ocupancia económica");
+  eq(get("occupancy_economic"), "0.698", "economic occupancy");
   eq(get("dscr"), "1.83", "NOI DSCR");
   eq(get("dscr_ncf"), "1.59", "NCF DSCR");
   eq(get("debt_yield"), "0.135", "NOI debt yield");
   eq(get("units"), "310", "habitaciones");
-  eq(get("unit_of_measure"), "Rooms", "unidad de medida");
+  eq(get("unit_of_measure"), "Rooms", "unit of measure");
 });
 
-check("las filas con NAV no generan observations falsas", () => {
+check("rows with NAV do not generate false observations", () => {
   const ventana = result.properties.find((p) => p.label.property_name?.includes("Ventana"));
-  assert(ventana, "no encontró Ventana Residences");
-  // Todo su histórico es NAV; solo debería tener los datos underwritten.
+  assert(ventana, "Ventana Residences not found");
+  // Its whole history is NAV; it should only have the underwritten data.
   const hasNav = ventana!.observations.some((o) => /^(nav|nap)$/i.test(o.value));
-  assert(!hasNav, "se coló un NAV como valor");
+  assert(!hasNav, "a NAV slipped in as a value");
   eq(ventana!.observations.find((o) => o.metric_key === "noi_underwritten")?.value, "5819367", "NOI");
 });
 
-check("un hotel de 548 habitaciones no se guarda como 548 unidades", () => {
+check("a 548-room hotel is not stored as 548 units", () => {
   const soho = result.properties.find((p) => p.label.property_name?.includes("Soho"));
-  assert(soho, "no encontró Soho Grand");
+  assert(soho, "Soho Grand not found");
   const measure = soho!.observations.find((o) => o.metric_key === "unit_of_measure")?.value;
-  eq(measure, "Rooms", "unidad de medida");
+  eq(measure, "Rooms", "unit of measure");
 });
 
-check("los chequeos de sanidad pasan sobre datos reales", () => {
+check("the sanity checks pass over real data", () => {
   const issues = checkSanity(result);
   const errors = issues.filter((i) => i.severity === "error");
   assert(errors.length === 0, errors.map((e) => `[${e.metric}] ${e.message}`).join("; "));
@@ -702,8 +702,8 @@ check("los chequeos de sanidad pasan sobre datos reales", () => {
 // ---------------------------------------------------------------------------
 
 console.log(
-  `\n  columnas mapeadas: ${result.columnsMapped.length}` +
-    `\n  sin mapear: ${result.columnsUnmapped.length ? result.columnsUnmapped.join(" | ") : "(ninguna)"}`,
+  `\n  columns mapped: ${result.columnsMapped.length}` +
+    `\n  unmapped: ${result.columnsUnmapped.length ? result.columnsUnmapped.join(" | ") : "(none)"}`,
 );
 
 console.log(

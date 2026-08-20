@@ -1,13 +1,13 @@
 /**
- * Test offline del harvester.
+ * Offline harvester test.
  *
- * Prueba todo lo que NO depende de la red: detección de la fila de headers,
- * mapeo de columnas, parseo de valores, normalización a observations y los
- * chequeos de sanidad.
+ * Tests everything that does NOT depend on the network: header row detection,
+ * column mapping, value parsing, normalisation to observations and the sanity
+ * checks.
  *
- * Los fixtures imitan las variantes de headers que usan distintos emisores de
- * CMBS. Si algún día conseguís un Annex A real y el mapeo falla, agregá esa
- * variante acá antes de tocar los patrones — así el fix queda cubierto.
+ * The fixtures imitate the header variants different CMBS issuers use. If you
+ * ever get hold of a real Annex A and the mapping fails, add that variant here
+ * before touching the patterns — that way the fix stays covered.
  *
  *   npm run harvest:test
  */
@@ -37,14 +37,15 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 function eq<T>(actual: T, expected: T, label: string) {
-  if (actual !== expected) throw new Error(`${label}: esperaba ${String(expected)}, recibí ${String(actual)}`);
+  if (actual !== expected) throw new Error(`${label}: expected ${String(expected)}, got ${String(actual)}`);
 }
 
 // ---------------------------------------------------------------------------
-// Fixtures: variantes reales de headers entre emisores
+// ---------------------------------------------------------------------------
+// Fixtures: real header variants across issuers
 // ---------------------------------------------------------------------------
 
-/** Estilo "clásico": nombres largos y explícitos. */
+/** "Classic" style: long, explicit names. */
 const HEADERS_VERBOSE = [
   "Loan No.", "Property Name", "Street Address", "City", "State", "Zip Code",
   "Property Type", "Year Built", "Year Renovated", "Units/Rooms/Pads",
@@ -61,7 +62,7 @@ const HEADERS_TERSE = [
   "Cut-off Balance", "Value", "LTV", "DSCR", "Debt Yield", "Coupon",
 ];
 
-/** Estilo con símbolos y unidades entre paréntesis. */
+/** Style with symbols and units in parentheses. */
 const HEADERS_SYMBOLS = [
   "#", "Property Name", "Address", "City", "State", "Zip",
   "Property Type", "YOC", "# of Units", "NRA (SF)", "Occupancy Rate (%)",
@@ -70,7 +71,7 @@ const HEADERS_SYMBOLS = [
 ];
 
 function buildRows(headers: string[], dataRows: unknown[][], preamble = 3): unknown[][] {
-  // Los Annex A reales arrancan con títulos y notas antes de la tabla.
+  // Real Annex A files start with titles and notes before the table.
   const junk: unknown[][] = [
     ["ANNEX A-1"],
     ["Certain Characteristics of the Mortgage Loans and Mortgaged Properties"],
@@ -93,54 +94,54 @@ const SOURCE: SourceRef = {
 
 console.log("\nHarvester — tests offline\n");
 
-console.log("Parseo de valores");
+console.log("Value parsing");
 
-check("moneda con $ y comas", () => {
+check("currency with $ and commas", () => {
   eq(parseValue("$1,234,567", "currency"), "1234567", "moneda");
 });
 
-check("negativo contable entre paréntesis", () => {
+check("accounting negative in parentheses", () => {
   eq(parseValue("(45,000)", "currency"), "-45000", "negativo");
 });
 
-check("porcentaje con signo → fracción", () => {
-  eq(parseValue("94.5%", "percent"), "0.945", "pct con signo");
+check("percentage with a sign → fraction", () => {
+  eq(parseValue("94.5%", "percent"), "0.945", "pct with sign");
 });
 
-check("porcentaje sin signo pero > 1.5 → fracción", () => {
-  eq(parseValue("94.5", "percent"), "0.945", "pct sin signo");
+check("percentage without a sign but > 1.5 → fraction", () => {
+  eq(parseValue("94.5", "percent"), "0.945", "pct without sign");
 });
 
-check("fracción ya normalizada se respeta", () => {
-  eq(parseValue("0.945", "percent"), "0.945", "fracción");
+check("an already normalised fraction is respected", () => {
+  eq(parseValue("0.945", "percent"), "0.945", "fraction");
 });
 
-check("ratio con sufijo x", () => {
+check("ratio with an x suffix", () => {
   eq(parseValue("1.25x", "ratio"), "1.25", "ratio");
 });
 
 check("N/A y variantes → null", () => {
   for (const v of ["N/A", "n/a", "NA", "-", "—", "", "   ", "None"]) {
-    assert(parseValue(v, "currency") === null, `"${v}" debería ser null`);
+    assert(parseValue(v, "currency") === null, `"${v}" should be null`);
   }
 });
 
-check("año fuera de rango → null", () => {
-  eq(parseValue("1985", "years"), "1985", "año válido");
-  assert(parseValue("0", "years") === null, "año 0 debería ser null");
-  assert(parseValue("99999", "years") === null, "año absurdo debería ser null");
+check("year out of range → null", () => {
+  eq(parseValue("1985", "years"), "1985", "valid year");
+  assert(parseValue("0", "years") === null, "year 0 should be null");
+  assert(parseValue("99999", "years") === null, "an absurd year should be null");
 });
 
-check("cero es un valor, no ausencia", () => {
-  eq(parseValue("0", "currency"), "0", "cero");
-  eq(parseValue("$0", "currency"), "0", "cero con símbolo");
+check("zero is a value, not an absence", () => {
+  eq(parseValue("0", "currency"), "0", "zero");
+  eq(parseValue("$0", "currency"), "0", "zero with a symbol");
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nMapeo de columnas");
+console.log("\nColumn mapping");
 
-check("headers verbosos: mapea las métricas centrales", () => {
+check("verbose headers: maps the core metrics", () => {
   const { matches } = mapColumns(HEADERS_VERBOSE);
   const keys = new Set(matches.map((m) => m.metric.key));
   for (const expected of ["noi_underwritten", "noi_most_recent", "occupancy", "units", "loan_amount", "ltv", "dscr"]) {
@@ -156,7 +157,7 @@ check("headers abreviados: mapea igual", () => {
   }
 });
 
-check("headers con símbolos: mapea igual", () => {
+check("headers with symbols: maps just the same", () => {
   const { matches } = mapColumns(HEADERS_SYMBOLS);
   const keys = new Set(matches.map((m) => m.metric.key));
   for (const expected of ["noi_underwritten", "occupancy", "units", "ltv", "dscr", "interest_rate"]) {
@@ -168,68 +169,68 @@ check("UW NOI y Most Recent NOI no se confunden", () => {
   const { matches } = mapColumns(HEADERS_VERBOSE);
   const uw = matches.find((m) => m.metric.key === "noi_underwritten");
   const recent = matches.find((m) => m.metric.key === "noi_most_recent");
-  assert(uw && recent, "deberían mapearse las dos");
-  assert(uw!.columnIndex !== recent!.columnIndex, "cayeron en la misma columna");
-  assert(/underwritten/i.test(uw!.header), `UW mapeó a "${uw!.header}"`);
-  assert(/most recent/i.test(recent!.header), `Most Recent mapeó a "${recent!.header}"`);
+  assert(uw && recent, "both should be mapped");
+  assert(uw!.columnIndex !== recent!.columnIndex, "they landed on the same column");
+  assert(/underwritten/i.test(uw!.header), `UW mapped to "${uw!.header}"`);
+  assert(/most recent/i.test(recent!.header), `Most Recent mapped to "${recent!.header}"`);
 });
 
-check("'Occupancy Date' no se toma por ocupancia", () => {
+check("'Occupancy Date' is not taken for occupancy", () => {
   const { matches } = mapColumns(["Occupancy", "Occupancy Date"]);
   const occ = matches.find((m) => m.metric.key === "occupancy");
-  assert(occ, "debería mapear Occupancy");
-  eq(occ!.header, "Occupancy", "eligió la columna equivocada");
+  assert(occ, "Occupancy should map");
+  eq(occ!.header, "Occupancy", "picked the wrong column");
 });
 
-check("'per unit' y '/SF' no se toman por units ni square feet", () => {
+check("'per unit' and '/SF' are not taken for units or square feet", () => {
   const { matches } = mapColumns(["Price per Unit", "Rent / SF", "Units", "NRA (SF)"]);
   const units = matches.find((m) => m.metric.key === "units");
   const sf = matches.find((m) => m.metric.key === "square_feet");
-  eq(units?.header, "Units", "units mapeó mal");
-  eq(sf?.header, "NRA (SF)", "square feet mapeó mal");
+  eq(units?.header, "Units", "units mapped wrong");
+  eq(sf?.header, "NRA (SF)", "square feet mapped wrong");
 });
 
-check("una columna no se asigna a dos métricas", () => {
+check("a column is not assigned to two metrics", () => {
   const { matches } = mapColumns(HEADERS_VERBOSE);
   const cols = matches.map((m) => m.columnIndex);
-  eq(new Set(cols).size, cols.length, "hay columnas duplicadas");
+  eq(new Set(cols).size, cols.length, "there are duplicate columns");
 });
 
-check("una métrica no toma dos columnas", () => {
+check("a metric does not take two columns", () => {
   const { matches } = mapColumns(HEADERS_VERBOSE);
   const keys = matches.map((m) => m.metric.key);
-  eq(new Set(keys).size, keys.length, "hay métricas duplicadas");
+  eq(new Set(keys).size, keys.length, "there are duplicate metrics");
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nDetección de la fila de headers");
+console.log("\nHeader row detection");
 
-check("saltea el preámbulo de títulos", () => {
+check("skips the preamble of titles", () => {
   const rows = buildRows(HEADERS_VERBOSE, [[1, "Test", "1 Main St"]]);
   const found = findHeaderRow(rows);
-  assert(found, "no encontró headers");
-  eq(found!.rowIndex, 3, "índice de fila");
+  assert(found, "no headers found");
+  eq(found!.rowIndex, 3, "row index");
 });
 
-check("elige la fila con más métricas si hay varias candidatas", () => {
+check("picks the row with the most metrics when there are several candidates", () => {
   const rows: unknown[][] = [
-    ["Loan No.", "City", "State", "Zip", "Notes"],   // pocas métricas
+    ["Loan No.", "City", "State", "Zip", "Notes"],   // few metrics
     HEADERS_VERBOSE,                                  // muchas
     [1, "Test"],
   ];
   const found = findHeaderRow(rows);
-  eq(found?.rowIndex, 1, "eligió la fila equivocada");
+  eq(found?.rowIndex, 1, "picked the wrong row");
 });
 
-check("sin tabla reconocible devuelve null", () => {
-  const rows: unknown[][] = [["Título"], ["Nota al pie"], []];
-  assert(findHeaderRow(rows) === null, "debería ser null");
+check("no recognisable table returns null", () => {
+  const rows: unknown[][] = [["Title"], ["Footnote"], []];
+  assert(findHeaderRow(rows) === null, "should be null");
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nNormalización a observations");
+console.log("\nNormalisation to observations");
 
 const DATA_VERBOSE: unknown[][] = [
   [1, "Harbor Point Plaza", "925 Harbor Point Dr", "Charleston", "SC", "29403",
@@ -238,7 +239,7 @@ const DATA_VERBOSE: unknown[][] = [
   [2, "Mesa Crossing", "4400 E Mesa Blvd", "Phoenix", "AZ", "85018",
    "Retail", 1998, 2015, null, 84000, "91.2%", "2018-03-31",
    "$1,140,000", "$1,085,000", "$12,400,000", "$19,000,000", "65.3%", "1.35x", "5.10%"],
-  // Fila basura: subtotal, casi sin datos.
+  // Junk row: a subtotal, with almost no data.
   [null, "TOTAL", null, null, null, null, null, null, null, null, null, null, null,
    "$4,110,696", null, "$44,100,000", null, null, null, null],
 ];
@@ -247,54 +248,54 @@ const rowsVerbose = buildRows(HEADERS_VERBOSE, DATA_VERBOSE);
 const headerVerbose = findHeaderRow(rowsVerbose)!;
 const harvest = rowsToObservations(rowsVerbose, headerVerbose.rowIndex, SOURCE);
 
-check("descarta las filas de subtotal", () => {
-  eq(harvest.stats.propertiesKept, 2, "propiedades");
-  eq(harvest.stats.rowsSkipped, 1, "filas descartadas");
+check("discards the subtotal rows", () => {
+  eq(harvest.stats.propertiesKept, 2, "properties");
+  eq(harvest.stats.rowsSkipped, 1, "rows discarded");
 });
 
-check("cada observation lleva su provenance", () => {
+check("every observation carries its provenance", () => {
   const obs = harvest.properties[0]!.observations[0]!;
-  assert(obs.source.accession === SOURCE.accession, "falta el accession");
-  assert(obs.source.fileUrl.startsWith("https://www.sec.gov/"), "falta la URL del archivo");
-  assert(obs.source_header.length > 0, "falta el header original");
-  assert(typeof obs.source_column_index === "number", "falta el índice de columna");
+  assert(obs.source.accession === SOURCE.accession, "the accession is missing");
+  assert(obs.source.fileUrl.startsWith("https://www.sec.gov/"), "the file URL is missing");
+  assert(obs.source_header.length > 0, "the original header is missing");
+  assert(typeof obs.source_column_index === "number", "the column index is missing");
 });
 
-check("conserva el valor crudo junto al parseado", () => {
+check("keeps the raw value alongside the parsed one", () => {
   const noi = harvest.properties[0]!.observations.find((o) => o.metric_key === "noi_underwritten")!;
   eq(noi.value, "2970696", "valor parseado");
   eq(noi.raw_value, "$2,970,696", "valor crudo");
 });
 
-check("la ocupancia queda en fracción", () => {
+check("occupancy ends up as a fraction", () => {
   const occ = harvest.properties[0]!.observations.find((o) => o.metric_key === "occupancy")!;
   eq(occ.value, "0.945", "ocupancia");
 });
 
-check("las etiquetas de texto quedan accesibles", () => {
-  eq(harvest.properties[0]!.label.property_name, "Harbor Point Plaza", "nombre");
-  eq(harvest.properties[0]!.label.state, "SC", "estado");
-  eq(harvest.properties[1]!.label.property_type, "Retail", "tipo");
+check("the text labels stay accessible", () => {
+  eq(harvest.properties[0]!.label.property_name, "Harbor Point Plaza", "name");
+  eq(harvest.properties[0]!.label.state, "SC", "state");
+  eq(harvest.properties[1]!.label.property_type, "Retail", "type");
 });
 
-check("las celdas vacías no generan observations", () => {
+check("empty cells generate no observations", () => {
   const p0 = harvest.properties[0]!;
-  assert(!p0.observations.some((o) => o.metric_key === "square_feet"), "multifamily no tenía SF");
-  assert(!p0.observations.some((o) => o.metric_key === "year_renovated"), "no tenía renovación");
+  assert(!p0.observations.some((o) => o.metric_key === "square_feet"), "multifamily had no SF");
+  assert(!p0.observations.some((o) => o.metric_key === "year_renovated"), "it had no renovation");
 });
 
-check("los ids de observation son estables y únicos", () => {
+check("the observation ids are stable and unique", () => {
   const ids = harvest.properties.flatMap((p) => p.observations.map((o) => o.id));
   eq(new Set(ids).size, ids.length, "hay ids duplicados");
   const again = rowsToObservations(rowsVerbose, headerVerbose.rowIndex, SOURCE);
-  eq(again.properties[0]!.observations[0]!.id, harvest.properties[0]!.observations[0]!.id, "no es estable");
+  eq(again.properties[0]!.observations[0]!.id, harvest.properties[0]!.observations[0]!.id, "it is not stable");
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nChequeos de sanidad");
+console.log("\nSanity checks");
 
-check("un harvest correcto no dispara errores", () => {
+check("a correct harvest raises no errors", () => {
   const issues = checkSanity(harvest);
   const errors = issues.filter((i) => i.severity === "error");
   assert(errors.length === 0, `errores inesperados: ${errors.map((e) => e.message).join("; ")}`);
@@ -310,25 +311,25 @@ check("detecta NOI y loan amount cruzados", () => {
   const issues = checkSanity(bad);
   assert(
     issues.some((i) => i.severity === "error" && i.metric === "noi_underwritten"),
-    "no detectó el cruce NOI/loan",
+    "did not detect the NOI/loan crossover",
   );
 });
 
-check("detecta ocupancia fuera de rango", () => {
-  // Forzamos el bug: valores ya en fracción pero > 1 tras el parseo.
+check("detects occupancy out of range", () => {
+  // We force the bug: values already in fraction but > 1 after parsing.
   const rows = buildRows(["Property Name", "Occupancy", "UW NOI", "Original Balance", "Units"], [
     ["A", 9450, "$1,000,000", "$10,000,000", 100],
   ]);
   const h = findHeaderRow(rows, { minMatches: 3 });
-  assert(h, "debería encontrar headers");
+  assert(h, "should find headers");
   const bad = rowsToObservations(rows, h!.rowIndex, SOURCE, { minObservationsPerRow: 2 });
   const issues = checkSanity(bad);
-  assert(issues.some((i) => i.metric === "occupancy"), "no detectó la ocupancia rota");
+  assert(issues.some((i) => i.metric === "occupancy"), "did not detect the broken occupancy");
 });
 
-check("avisa cuando falta un concepto central", () => {
-  // El aviso es por CONCEPTO, no por métrica: un Annex A puede traer solo
-  // ocupancia económica o solo NOI underwritten y eso no es un problema.
+check("warns when a core concept is missing", () => {
+  // The warning is by CONCEPT, not by metric: an Annex A may carry only
+  // economic occupancy or only underwritten NOI, and that is not a problem.
   const rows = buildRows(["Property Name", "City", "State", "Units", "Year Built"], [
     ["A", "X", "SC", 100, 2000],
     ["B", "Y", "AZ", 200, 2010],
@@ -339,8 +340,8 @@ check("avisa cuando falta un concepto central", () => {
   assert(issues.some((i) => i.metric === "NOI"), `avisos: ${issues.map((i) => i.metric).join(", ")}`);
 });
 
-check("no avisa si el concepto está cubierto por una variante", () => {
-  // Solo ocupancia económica: no debería quejarse por la física.
+check("does not warn if the concept is covered by a variant", () => {
+  // Economic occupancy only: it should not complain about the physical one.
   const rows = buildRows(
     ["Property Name", "Underwritten Economic Occupancy (%)", "UW NOI", "Original Balance"],
     [["A", "94.0%", "$1,000,000", "$11,000,000"], ["B", "91.0%", "$2,000,000", "$22,000,000"]],
@@ -350,20 +351,20 @@ check("no avisa si el concepto está cubierto por una variante", () => {
   const issues = checkSanity(result);
   assert(
     !issues.some((i) => i.metric === "occupancy"),
-    `avisó igual: ${issues.map((i) => i.message).join("; ")}`,
+    `it warned anyway: ${issues.map((i) => i.message).join("; ")}`,
   );
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nSelección del filing con el Annex A");
+console.log("\nSelecting the filing with the Annex A");
 
 /**
- * Filings reales observados en EDGAR (agosto 2026), de tres familias de
- * emisores distintas. Cada una nombra y describe su Annex A a su manera.
+ * Real filings observed on EDGAR (August 2026), from three different issuer
+ * families. Each names and describes its Annex A in its own way.
  *
- * Si aparece un emisor que rompe el mapeo, agregá su caso ACÁ antes de tocar
- * los pesos de scoreAnnexFiling.
+ * If an issuer turns up that breaks the mapping, add its case HERE before
+ * touching scoreAnnexFiling's weights.
  */
 const REAL_FILINGS: Array<{
   issuer: string; form: string; documentName: string;
@@ -378,29 +379,30 @@ const REAL_FILINGS: Array<{
   { issuer: "WFCM", form: "10-D", documentName: "wcm25c64_10d-202606.htm", documentDescription: "", sizeBytes: 1_690_088, isAnnex: false },
 
   // Benchmark 2026-B42 Mortgage Trust (CIK 2110410)
-  // Descripción genérica "FWP", y el term sheet pesa casi lo mismo.
+  // Generic "FWP" description, and the term sheet weighs almost the same.
   { issuer: "Benchmark", form: "FWP", documentName: "n5676_x3-annexa.htm", documentDescription: "FWP", sizeBytes: 8_910_695, isAnnex: true },
   { issuer: "Benchmark", form: "FWP", documentName: "n5676_x4-ts.htm", documentDescription: "FWP", sizeBytes: 6_899_495, isAnnex: false },
   { issuer: "Benchmark", form: "FWP", documentName: "n5676_x12-xafinpricdetails.htm", documentDescription: "FWP", sizeBytes: 16_009, isAnnex: false },
   { issuer: "Benchmark", form: "424H", documentName: "n5676_x5-424h.htm", documentDescription: "424H", sizeBytes: 21_777_523, isAnnex: false },
 
   // BANK5 2026-5YR20 (CIK 2104049)
-  // Descripción "FREE WRITING PROSPECTUS" — otra grafía más.
+  // Description "FREE WRITING PROSPECTUS" — yet another spelling.
   { issuer: "BANK5", form: "FWP", documentName: "n5543_x4-annexa1.htm", documentDescription: "FREE WRITING PROSPECTUS", sizeBytes: 15_798_735, isAnnex: true },
   { issuer: "BANK5", form: "FWP", documentName: "n5543_x5-ts.htm", documentDescription: "FWP", sizeBytes: 8_465_975, isAnnex: false },
   { issuer: "BANK5", form: "FWP", documentName: "n5543_x9-xapricingdetails.htm", documentDescription: "FWP", sizeBytes: 15_796, isAnnex: false },
 
   // BANK 2026-BNK52 (CIK 2138709)
-  // Abrevia el anexo a "a1" sin escribir "annex". En una corrida de 100 trusts
-  // este formato fue parte de los 29 que se perdieron por no reconocerlo.
+  // Abbreviates the annex to "a1" without writing "annex". In a run of 100
+  // trusts this format was part of the 29 lost for not being recognised.
   { issuer: "BNK52", form: "FWP", documentName: "n5947_x2-a1.htm", documentDescription: "FWP", sizeBytes: 3_774_325, isAnnex: true },
   { issuer: "BNK52", form: "FWP", documentName: "n5947_x3-ts.htm", documentDescription: "FWP", sizeBytes: 8_028_283, isAnnex: false },
   { issuer: "BNK52", form: "FWP", documentName: "n5947_x15-xapricing.htm", documentDescription: "FWP", sizeBytes: 16_003, isAnnex: false },
   { issuer: "BNK52", form: "424H", documentName: "n5947_x5-424h.htm", documentDescription: "424H", sizeBytes: 18_131_627, isAnnex: false },
 
-  // Familia "anx": "annex" abreviado. Salió de diagnosticar 36 trusts fallidos.
-  // Ojo con los term sheets de la misma familia: pesan MÁS que el anexo, así
-  // que un umbral por tamaño los dejaría pasar y al anexo afuera.
+  // The "anx" family: "annex" abbreviated. It came from diagnosing 36 failed
+  // trusts. Careful with the term sheets of the same family: they weigh MORE
+  // than the annex, so a size threshold would let them through and leave the
+  // annex out.
   { issuer: "anx-a", form: "FWP", documentName: "n4501-x4_anxa.htm", documentDescription: "FREE WRITING PROSPECTUS", sizeBytes: 3_300_000, isAnnex: true },
   { issuer: "anx-a", form: "FWP", documentName: "n4501_x8-premktts.htm", documentDescription: "", sizeBytes: 5_700_000, isAnnex: false },
   { issuer: "anx-b", form: "FWP", documentName: "n4385-x4anxa1.htm", documentDescription: "FREE WRITING PROSPECTUS", sizeBytes: 2_600_000, isAnnex: true },
@@ -409,97 +411,98 @@ const REAL_FILINGS: Array<{
   { issuer: "anx-c", form: "FWP", documentName: "n4706-x7_ts.htm", documentDescription: "PRELIMINARY TERM SHEET", sizeBytes: 7_900_000, isAnnex: false },
 ];
 
-check("reconoce el Annex A de las tres familias de emisores", () => {
+check("recognises the Annex A of all three issuer families", () => {
   for (const f of REAL_FILINGS.filter((x) => x.isAnnex)) {
     const score = scoreAnnexFiling(f);
     assert(score >= 0.5, `${f.issuer} "${f.documentName}" tuvo ${score.toFixed(2)}, esperaba ≥ 0.5`);
   }
 });
 
-check("ningún documento que no sea Annex A supera el umbral", () => {
+check("no non-Annex-A document passes the threshold", () => {
   for (const f of REAL_FILINGS.filter((x) => !x.isAnnex)) {
     const score = scoreAnnexFiling(f);
-    assert(score < 0.5, `${f.issuer} "${f.documentName}" tuvo ${score.toFixed(2)}, debería quedar afuera`);
+    assert(score < 0.5, `${f.issuer} "${f.documentName}" scored ${score.toFixed(2)}, it should be left out`);
   }
 });
 
-check("dentro de cada emisor, el Annex A gana", () => {
+check("within each issuer, the Annex A wins", () => {
   for (const issuer of new Set(REAL_FILINGS.map((f) => f.issuer))) {
     const scored = REAL_FILINGS.filter((f) => f.issuer === issuer)
       .map((f) => ({ ...f, score: scoreAnnexFiling(f) }))
       .sort((a, b) => b.score - a.score);
-    assert(scored[0]!.isAnnex, `en ${issuer} ganó "${scored[0]!.documentName}" (${scored[0]!.score.toFixed(2)})`);
+    assert(scored[0]!.isAnnex, `in ${issuer} the winner was "${scored[0]!.documentName}" (${scored[0]!.score.toFixed(2)})`);
   }
 });
 
-check("el term sheet no se cuela pese a pesar 6-8 MB", () => {
-  // Este es el caso que rompía la heurística basada en tamaño.
+check("the term sheet does not slip through despite weighing 6-8 MB", () => {
+  // This is the case that broke the size-based heuristic.
   for (const f of REAL_FILINGS.filter((x) => /-ts\.htm$/.test(x.documentName))) {
     const score = scoreAnnexFiling(f);
     assert(score < 0.5, `"${f.documentName}" (${(f.sizeBytes / 1e6).toFixed(1)} MB) tuvo ${score.toFixed(2)}`);
   }
 });
 
-check("la descripción varía entre emisores y no se depende de ella", () => {
+check("the description varies between issuers and is not relied on", () => {
   const descriptions = new Set(REAL_FILINGS.filter((f) => f.isAnnex).map((f) => f.documentDescription));
-  assert(descriptions.size >= 3, `esperaba variedad, hay: ${[...descriptions].join(" | ")}`);
-  // Aun con la descripción vacía, el nombre debería alcanzar.
+  assert(descriptions.size >= 3, `expected variety, there are: ${[...descriptions].join(" | ")}`);
+  // Even with an empty description, the name should be enough.
   const score = scoreAnnexFiling({
     form: "FWP", documentName: "n5676_x3-annexa.htm", documentDescription: "", sizeBytes: 8_910_695,
   });
-  assert(score >= 0.5, `sin descripción quedó en ${score.toFixed(2)}`);
+  assert(score >= 0.5, `with no description it scored ${score.toFixed(2)}`);
 });
 
-check("descarta formas que nunca traen Annex A", () => {
+check("discards forms that never carry an Annex A", () => {
   for (const form of ["10-D", "10-K", "ABS-EE", "8-K", "ABS-15G"]) {
     eq(scoreAnnexFiling({ form, documentName: "annexa1.htm", documentDescription: "ANNEX A-1", sizeBytes: 4_000_000 }), 0, form);
   }
 });
 
-check("el prospecto sirve de respaldo cuando no hay Annex dedicado", () => {
-  // 11 de 36 trusts fallidos publican el anexo dentro del prospecto en vez de
-  // como filing propio. El parser es agnóstico al formato, así que vale
-  // intentarlo —pero solo como respaldo: son documentos de 15-22 MB.
+check("the prospectus works as a fallback when there is no dedicated Annex", () => {
+  // 11 of 36 failed trusts publish the annex inside the prospectus rather than
+  // as a filing of its own. The parser is format-agnostic, so it is worth
+  // trying —but only as a fallback: these are 15-22 MB documents.
   assert(
     scoreProspectusFallback({ form: "424B2", documentName: "n4362_x19-424b2.htm", sizeBytes: 17_400_000 }) > 0,
-    "un 424B2 grande debería servir de respaldo",
+    "a large 424B2 should work as a fallback",
   );
   assert(
     scoreProspectusFallback({ form: "424H", documentName: "n4501_x5-424h.htm", sizeBytes: 15_700_000 }) > 0,
-    "un 424H grande también",
+    "a large 424H too",
   );
   eq(
-    scoreProspectusFallback({ form: "424B2", documentName: "chico.htm", sizeBytes: 1_000_000 }),
+    scoreProspectusFallback({ form: "424B2", documentName: "small.htm", sizeBytes: 1_000_000 }),
     0,
-    "un prospecto chico no trae el pool completo",
+    "a small prospectus does not carry the full pool",
   );
   eq(
     scoreProspectusFallback({ form: "FWP", documentName: "n4385-x5ts.htm", sizeBytes: 7_400_000 }),
     0,
-    "un FWP no es prospecto",
+    "an FWP is not a prospectus",
   );
 });
 
-check("el prospecto final se prefiere al preliminar", () => {
+check("the final prospectus is preferred over the preliminary one", () => {
   const final = scoreProspectusFallback({ form: "424B2", documentName: "a.htm", sizeBytes: 17_000_000 });
   const preliminary = scoreProspectusFallback({ form: "424H", documentName: "b.htm", sizeBytes: 17_000_000 });
-  assert(final > preliminary, `424B2 ${final} debería superar a 424H ${preliminary}`);
+  assert(final > preliminary, `424B2 ${final} should beat 424H ${preliminary}`);
 });
 
-check("un nombre irreconocible NO alcanza el umbral por tamaño solo", () => {
-  // Es el modo de falla conocido: si un emisor no pone "annex" en el nombre,
-  // el harvester no lo encuentra y hay que inspeccionar con `filings <cik>`.
+check("an unrecognisable name does NOT reach the threshold on size alone", () => {
+  // It is the known failure mode: if an issuer does not put "annex" in the
+  // name, the harvester does not find it and you have to inspect with
+  // `filings <cik>`.
   const score = scoreAnnexFiling({
     form: "FWP", documentName: "d123456dfwp.htm", documentDescription: "", sizeBytes: 3_500_000,
   });
-  assert(score < 0.5, `quedó en ${score.toFixed(2)} — el tamaño solo no debería alcanzar`);
+  assert(score < 0.5, `it scored ${score.toFixed(2)} — size alone should not be enough`);
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nParseo de tablas HTML");
+console.log("\nHTML table parsing");
 
-/** HTML con la forma de un Annex A: encabezados en dos filas y colspan. */
+/** HTML shaped like an Annex A: headers across two rows and colspan. */
 const ANNEX_HTML = `
 <html><body>
   <p>ANNEX A-1</p>
@@ -511,67 +514,67 @@ const ANNEX_HTML = `
   </table>
 </body></html>`;
 
-check("extrae tablas de un HTML", () => {
+check("extracts tables from an HTML document", () => {
   const tables = extractFromHtml(ANNEX_HTML);
-  eq(tables.length, 1, "cantidad de tablas");
+  eq(tables.length, 1, "number of tables");
 });
 
-check("fusiona encabezados partidos en dos filas", () => {
+check("merges headers split across two rows", () => {
   const tables = extractFromHtml(ANNEX_HTML);
   const header = tables[0]!.rows[0]!.map((c) => String(c ?? ""));
   assert(
     header.some((h) => /underwritten/i.test(h) && /noi/i.test(h)),
-    `no fusionó: ${JSON.stringify(header)}`,
+    `did not merge: ${JSON.stringify(header)}`,
   );
 });
 
-check("expande colspan para no correr las columnas", () => {
+check("expands colspan so the columns do not shift", () => {
   const html = `<table>
-    <tr><td colspan="3">Grupo</td><td>Suelta</td></tr>
+    <tr><td colspan="3">Group</td><td>Loose</td></tr>
     <tr><td>a</td><td>b</td><td>c</td><td>d</td></tr>
     <tr><td>1</td><td>2</td><td>3</td><td>4</td></tr>
   </table>`;
   const rows = extractFromHtml(html)[0]!.rows;
   const dataRow = rows[rows.length - 1]!;
-  eq(dataRow.length, 4, "ancho de la fila de datos");
+  eq(dataRow.length, 4, "width of the data row");
 });
 
-check("limpia &nbsp; y espacios de sobra", () => {
+check("cleans &nbsp; and surplus whitespace", () => {
   const html = `<table>
     <tr><th>Property&nbsp;&nbsp;Name</th><th>  NOI  </th><th>Occupancy</th></tr>
     <tr><td>A</td><td>$1,000</td><td>90%</td></tr>
     <tr><td>B</td><td>$2,000</td><td>91%</td></tr>
   </table>`;
   const header = extractFromHtml(html)[0]!.rows[0]!.map((c) => String(c ?? ""));
-  assert(header.includes("Property Name"), `no limpió: ${JSON.stringify(header)}`);
-  assert(header.includes("NOI"), `no limpió NOI: ${JSON.stringify(header)}`);
+  assert(header.includes("Property Name"), `did not clean: ${JSON.stringify(header)}`);
+  assert(header.includes("NOI"), `did not clean NOI: ${JSON.stringify(header)}`);
 });
 
-check("no fusiona cuando la segunda fila trae datos", () => {
+check("does not merge when the second row carries data", () => {
   const html = `<table>
     <tr><th>Property Name</th><th>NOI</th><th>Occupancy</th></tr>
     <tr><td>Riverbend</td><td>$4,120,000</td><td>95.2%</td></tr>
     <tr><td>Gateway</td><td>$5,900,000</td><td>100%</td></tr>
   </table>`;
   const rows = extractFromHtml(html)[0]!.rows;
-  eq(String(rows[0]![0]), "Property Name", "fusionó de más");
-  eq(rows.length, 3, "perdió filas");
+  eq(String(rows[0]![0]), "Property Name", "merged too much");
+  eq(rows.length, 3, "lost rows");
 });
 
-check("ignora tablas de layout", () => {
+check("ignores layout tables", () => {
   const html = `<table><tr><td>solo layout</td></tr></table>
                 <table>
                   <tr><th>Property Name</th><th>NOI</th><th>Occupancy</th></tr>
                   <tr><td>A</td><td>$1</td><td>90%</td></tr>
                   <tr><td>B</td><td>$2</td><td>91%</td></tr>
                 </table>`;
-  eq(extractFromHtml(html).length, 1, "debería quedar una sola");
+  eq(extractFromHtml(html).length, 1, "only one should remain");
 });
 
-check("el HTML llega hasta observations con el pipeline sin cambios", () => {
+check("HTML reaches observations through the pipeline unchanged", () => {
   const tables = extractFromHtml(ANNEX_HTML);
   const h = findHeaderRow(tables[0]!.rows, { minMatches: 3 });
-  assert(h, "no encontró encabezados en el HTML");
+  assert(h, "no headers found in the HTML");
 
   const result = rowsToObservations(tables[0]!.rows, h!.rowIndex, SOURCE, { minObservationsPerRow: 3 });
   eq(result.stats.propertiesKept, 2, "propiedades");
@@ -581,7 +584,7 @@ check("el HTML llega hasta observations con el pipeline sin cambios", () => {
   eq(occ?.value, "0.952", "ocupancia");
 });
 
-check("extractTables elige el parser por extensión", () => {
+check("extractTables picks the parser by extension", () => {
   const htmlBuf = Buffer.from(ANNEX_HTML, "utf8");
   eq(extractTables(htmlBuf, "annexa1.htm").length, 1, "html");
 
@@ -592,14 +595,14 @@ check("extractTables elige el parser por extensión", () => {
 
   let threw = false;
   try { extractTables(Buffer.from(""), "doc.pdf"); } catch { threw = true; }
-  assert(threw, "debería fallar con un formato no soportado");
+  assert(threw, "it should fail on an unsupported format");
 });
 
 // ---------------------------------------------------------------------------
 
-console.log("\nRoundtrip por xlsx real");
+console.log("\nRoundtrip through a real xlsx");
 
-check("lee un xlsx generado y lo cosecha de punta a punta", () => {
+check("reads a generated xlsx and harvests it end to end", () => {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(buildRows(HEADERS_TERSE, [
     ["L1", "Aster Ridge", "900 Aster Rd", "Nashville", "TN", "37203", "Multifamily",
@@ -614,7 +617,7 @@ check("lee un xlsx generado y lo cosecha de punta a punta", () => {
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
 
   const h = findHeaderRow(rows);
-  assert(h, "no encontró headers tras el roundtrip");
+  assert(h, "no headers found after the roundtrip");
 
   const result = rowsToObservations(rows, h!.rowIndex, SOURCE);
   eq(result.stats.propertiesKept, 1, "propiedades");
@@ -627,21 +630,22 @@ check("lee un xlsx generado y lo cosecha de punta a punta", () => {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Los seis nombres del identificador de préstamo
+// The six names of the loan identifier
 // ---------------------------------------------------------------------------
 
 /**
- * Las emisiones 2020-2021 nombran esta columna de seis formas distintas. Sin
- * cubrirlas, 33 emisiones y 2.919 préstamos quedaban sin identificador —se
- * cosechaban bien, pero después no pegaban contra su desempeño—.
+/**
+ * The 2020-2021 issuances name this column in six different ways. Without
+ * covering them, 33 issuances and 2,919 loans were left with no identifier —they
+ * harvested fine, but afterwards did not match their performance.
  *
- * Los casos negativos importan más que los positivos: "Mortgage Loan Seller"
- * aparece en nueve filings y matchea /mortgage\s*loan/ perfectamente. Un patrón
- * generoso sin exclusiones guardaría el nombre del banco como identificador, que
- * es peor que no tener ninguno: el join daría cero y parecería un problema de
- * datos en vez de uno de mapeo.
+ * The negative cases matter more than the positive ones: "Mortgage Loan Seller"
+ * appears in nine filings and matches /mortgage\s*loan/ perfectly. A generous
+ * pattern with no exclusions would store the bank's name as the identifier,
+ * which is worse than having none: the join would return zero and it would look
+ * like a data problem rather than a mapping one.
  */
-check("identificador: los seis nombres reales", () => {
+check("identifier: the six real names", () => {
   const positivos = [
     "Loan ID", "Loan ID Number", "Mortgage Loan Number",
     "Control Number", "Loan #", "Loan No.",
@@ -649,11 +653,11 @@ check("identificador: los seis nombres reales", () => {
   for (const header of positivos) {
     const { matches } = mapColumns([header, "Property Name", "UW NOI", "Cut-off Date Balance"]);
     const hit = matches.find((m) => m.metric.key === "loan_id");
-    assert(hit?.header === header, `"${header}" no mapeó a loan_id`);
+    assert(hit?.header === header, `"${header}" did not map to loan_id`);
   }
 });
 
-check("identificador: lo que NO debe llevarse", () => {
+check("identifier: what must NOT be taken", () => {
   const negativos = [
     "Mortgage Loan Seller",
     "Net Mortgage Loan Rate (%)",
@@ -668,35 +672,35 @@ check("identificador: lo que NO debe llevarse", () => {
   for (const header of negativos) {
     const { matches } = mapColumns([header, "Property Name", "City"]);
     const hit = matches.find((m) => m.metric.key === "loan_id");
-    assert(!hit, `"${header}" se mapeó a loan_id y no debería`);
+    assert(!hit, `"${header}" mapped to loan_id and should not have`);
   }
 });
 
 /**
- * "Loan" y "Loan/Prop." son la misma columna con dos nombres, y ninguno es el
- * identificador. El primero lo mapeé mal y la suite lo bendijo: había un test
- * afirmando que "Loan" iba a loan_id. Un test puede fijar un error igual que
- * fija un acierto.
+ * "Loan" and "Loan/Prop." are the same column under two names, and neither is
+ * the identifier. I mapped the first one wrong and the suite blessed it: there
+ * was a test asserting that "Loan" went to loan_id. A test can fix an error just
+ * as firmly as it fixes a correct behaviour.
  */
-check("Loan y Loan/Prop. son el flag, no el identificador", () => {
+check("Loan and Loan/Prop. are the flag, not the identifier", () => {
   for (const header of ["Loan/Prop.", "Loan"]) {
     const { matches } = mapColumns([header, "Property Name", "UW NOI", "City"]);
     const flag = matches.find((m) => m.metric.key === "loan_property_flag");
     const id = matches.find((m) => m.metric.key === "loan_id");
-    assert(flag?.header === header, `"${header}" no mapeó al flag`);
-    assert(!id, `"${header}" se lo llevó loan_id: las filas de propiedad se contarían como préstamos`);
+    assert(flag?.header === header, `"${header}" did not map to the flag`);
+    assert(!id, `"${header}" was taken by loan_id: the property rows would be counted as loans`);
   }
 });
 
-check("Loan/Prop. sigue yendo al flag", () => {
+check("Loan/Prop. still goes to the flag", () => {
   const { matches } = mapColumns(["Loan/Prop.", "Property Name", "UW NOI", "City"]);
   const flag = matches.find((m) => m.metric.key === "loan_property_flag");
   const id = matches.find((m) => m.metric.key === "loan_id");
-  assert(flag?.header === "Loan/Prop.", "no mapeó al flag");
-  assert(!id, "se lo llevó loan_id: las filas de propiedad volverían a contarse como préstamos");
+  assert(flag?.header === "Loan/Prop.", "did not map to the flag");
+  assert(!id, "taken by loan_id: the property rows would again be counted as loans");
 });
 
-check("conviven identificador y flag en el mismo Annex A", () => {
+check("identifier and flag coexist in the same Annex A", () => {
   const { matches } = mapColumns([
     "Mortgage Loan Number", "Loan/Prop.", "Property Name", "UW NOI",
   ]);
@@ -705,74 +709,74 @@ check("conviven identificador y flag en el mismo Annex A", () => {
   assert(keys.includes("loan_property_flag" as never), "falta loan_property_flag");
 });
 
-check("Total Debt Cut-off Date Balance tiene métrica propia", () => {
+check("Total Debt Cut-off Date Balance has its own metric", () => {
   const { matches } = mapColumns([
     "Cut-off Date Balance ($)",
     "Total Debt Cut-off Date Balance ($)",
     "Whole Loan Cut-off Date Balance ($)",
   ]);
   const byKey = new Map(matches.map((m) => [m.metric.key, m.header]));
-  assert(byKey.get("loan_amount" as never) === "Cut-off Date Balance ($)", "loan_amount tomó otra");
+  assert(byKey.get("loan_amount" as never) === "Cut-off Date Balance ($)", "loan_amount took another one");
   assert(
     byKey.get("balance_total_debt" as never) === "Total Debt Cut-off Date Balance ($)",
-    "balance_total_debt no mapeó",
+    "balance_total_debt did not map",
   );
   assert(
     byKey.get("balance_whole_loan" as never) === "Whole Loan Cut-off Date Balance ($)",
-    "balance_whole_loan no mapeó",
+    "balance_whole_loan did not map",
   );
 });
 
 /**
- * El encabezado de dos columnas de las emisiones 2020.
+ * The two-column header of the 2020 issuances.
  *
- * Fila real de Benchmark 2020-B16:
+ * A real row from Benchmark 2020-B16:
  *
  *   | Loan | ID | Property Name | ... |
  *   | Loan | 1  | Harrison Retail | ... |
  *
- * La primera es el flag y la segunda el identificador. Sin cubrir el "ID"
- * pelado, ningún bloque de esos Annex A tiene clave de unión y el join
- * horizontal colapsa 83 préstamos en 1.
+ * The first is the flag and the second the identifier. Without covering the
+ * bare "ID", no block of those Annex A files has a join key and the horizontal
+ * join collapses 83 loans into 1.
  */
-check("formato 2020: Loan es el flag e ID es el identificador", () => {
+check("2020 format: Loan is the flag and ID is the identifier", () => {
   const { matches } = mapColumns([
     "Loan", "ID", "Property Name", "Cut-off Date Balance($)", "Underwritten NOI($)",
   ]);
   const byKey = new Map(matches.map((m) => [m.metric.key, m.header]));
-  assert(byKey.get("loan_property_flag" as never) === "Loan", "el flag no tomó 'Loan'");
-  assert(byKey.get("loan_id" as never) === "ID", "el identificador no tomó 'ID'");
+  assert(byKey.get("loan_property_flag" as never) === "Loan", "the flag did not take 'Loan'");
+  assert(byKey.get("loan_id" as never) === "ID", "the identifier did not take 'ID'");
 });
 
-check("un ID pelado no se confunde con otras columnas", () => {
+check("a bare ID is not confused with other columns", () => {
   for (const header of ["Property ID", "Loan ID Number", "Identification"]) {
     const { matches } = mapColumns([header, "ID", "Property Name", "UW NOI"]);
     const id = matches.find((m) => m.metric.key === "loan_id");
     assert(id?.header === "ID" || id?.header === "Loan ID Number",
-      `con "${header}" presente, loan_id tomó ${JSON.stringify(id?.header)}`);
+      `with "${header}" present, loan_id took ${JSON.stringify(id?.header)}`);
   }
 });
 
 /**
- * Números partidos por un espacio.
+ * Numbers split by a space.
  *
- * Aparecen en Annex A reales como error de tipeo del emisor: Benchmark 2020-B16
- * publica "48 5%" donde va "48.5%". Sacar el espacio junto con las comas lo
- * convertía en 485% y lo metía al corpus como 4.85.
+ * They appear in real Annex A files as issuer typos: Benchmark 2020-B16
+ * publishes "48 5%" where "48.5%" belongs. Stripping the space along with the
+ * commas turned it into 485% and put it into the corpus as 4.85.
  */
-check("un número con espacio en el medio no es un número", () => {
+check("a number with a space in the middle is not a number", () => {
   for (const raw of ["13 1%", "48 5%", "1 234", "12 5", "$1 500 000"]) {
     assert(parseValue(raw, "percent") === null, `"${raw}" produjo un porcentaje`);
     assert(parseValue(raw, "currency") === null, `"${raw}" produjo un monto`);
   }
 });
 
-check("los formatos legítimos siguen andando", () => {
-  assert(parseValue("13.1%", "percent") === "0.131", "13.1% se rompió");
-  assert(parseValue("1,234,567", "currency") === "1234567", "los miles con coma se rompieron");
-  assert(parseValue(" 65.8% ", "percent") === "0.658", "los espacios alrededor se rompieron");
-  assert(parseValue("(1,234)", "currency") === "-1234", "los paréntesis se rompieron");
-  assert(parseValue("1.45x", "ratio") === "1.45", "el sufijo x se rompió");
+check("the legitimate formats still work", () => {
+  assert(parseValue("13.1%", "percent") === "0.131", "13.1% broke");
+  assert(parseValue("1,234,567", "currency") === "1234567", "thousands with commas broke");
+  assert(parseValue(" 65.8% ", "percent") === "0.658", "surrounding spaces broke");
+  assert(parseValue("(1,234)", "currency") === "-1234", "parentheses broke");
+  assert(parseValue("1.45x", "ratio") === "1.45", "the x suffix broke");
 });
 
 console.log(
