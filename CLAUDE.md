@@ -4,7 +4,7 @@ A corpus of CMBS loans built from public SEC filings, with the tools to interrog
 it and to try to prove it wrong.
 
 Start by reading `docs/underwriting-finding.md` — the result and its holes — and
-`docs/cre-taxonomy.md`, which documents the 94 metrics with the incident that
+`docs/cre-taxonomy.md`, which documents 101 metrics —55 with a definition— with the incident that
 motivated each distinction.
 
 **The project is in English.** It was written in Spanish and migrated; anything
@@ -280,7 +280,7 @@ over the three fixtures: 138 discarded rows, all 138 with a state.
 
 ## State
 
-233 issuances · 9,694 loans · 94 metrics · 2,231 loans with post-closing
+233 issuances · 9,694 loans · 101 metrics · 2,231 loans with post-closing
 performance.
 
 Identities (taxonomy `2026.08.13`, before the pending re-harvest):

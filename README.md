@@ -3,7 +3,7 @@
 A corpus of commercial real estate loans built from public SEC filings, with the
 tools to interrogate it and to try to prove it wrong.
 
-233 CMBS issuances · 9,694 loans · 94 metrics · 2,231 loans with post-closing
+233 CMBS issuances · 9,694 loans · 101 metrics · 2,231 loans with post-closing
 performance.
 
 ---
@@ -16,7 +16,7 @@ financials-playground/
 │   ├── underwriting-finding.md     The result: projected against delivered growth
 │   │                               by vintage, with its controls and its holes.
 │   │                               Start here.
-│   ├── cre-taxonomy.md             94 metrics with definition, ambiguities and the
+│   ├── cre-taxonomy.md             101 metrics, 55 with a definition, plus the
 │   │                               incident that motivated each distinction.
 │   │                               Generated: npm run taxonomy -- --write
 │   ├── own-architecture.md         Design decisions and what was discarded
