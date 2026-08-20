@@ -1,22 +1,22 @@
 /**
- * Mapeo de columnas del Annex A a nuestras métricas.
+ * Mapping Annex A columns to our metrics.
  *
- * Este es el corazón del harvester y la parte que más se rompe. Cada emisor
- * nombra las columnas distinto, y a veces el mismo emisor cambia entre deals.
- * Ejemplos reales del mismo concepto:
+ * This is the heart of the harvester and the part that breaks most. Every issuer
+ * names the columns differently, and sometimes the same issuer changes between
+ * deals. Real examples of the same concept:
  *
  *   NOI:        "Most Recent NOI", "UW NOI", "Underwritten Net Operating Income",
  *               "NOI ($)", "Most Recent NOI ($)", "T-12 NOI"
  *   Ocupancia:  "Occupancy", "% Occupied", "Occupancy Rate", "Physical Occupancy (%)"
  *   Unidades:   "Units", "Units/Rooms/Pads", "# of Units", "Units/SF"
  *
- * Estrategia: patrones por métrica, con puntaje. No exact match, porque el
- * primer emisor nuevo lo rompe.
+ * Strategy: patterns per metric, with scoring. Not exact matching, because the
+ * first new issuer breaks that.
  *
- * NOTA IMPORTANTE sobre NOI: hay dos conceptos distintos que conviene NO
- * mezclar. "UW NOI" (underwritten) es la proyección del originador; "Most
- * Recent NOI" es lo que la propiedad produjo de verdad. Los mapeamos a métricas
- * separadas — justamente el tipo de distinción que hace útil al Deal Index.
+ * IMPORTANT NOTE on NOI: there are two distinct concepts that are best NOT
+ * mixed. "UW NOI" (underwritten) is the originator's projection; "Most Recent
+ * NOI" is what the property actually produced. We map them to separate metrics —
+ * exactly the kind of distinction that makes the Deal Index useful.
  */
 
 export type MetricKey =
@@ -127,26 +127,26 @@ export interface MetricSpec {
   label: string;
   unit: "currency" | "percent" | "ratio" | "count" | "years" | "text";
   entity: "deal" | "property";
-  /** Patrones que suman puntaje si aparecen en el header. */
+  /** Patterns that add score if they appear in the header. */
   patterns: RegExp[];
-  /** Patrones que descalifican — evitan falsos positivos. */
+  /** Patterns that disqualify — they prevent false positives. */
   exclude?: RegExp[];
 }
 
 /**
- * NOTA SOBRE COLUMNAS SATÉLITE
+ * NOTE ON SATELLITE COLUMNS
  *
- * Un Annex A real no tiene una columna de NOI: tiene un racimo.
+ * A real Annex A does not have one NOI column: it has a cluster.
  *
- *   Underwritten Net Operating Income ($)   ← la que queremos
+ *   Underwritten Net Operating Income ($)   ← the one we want
  *   Underwritten NOI DSCR (x)
  *   Underwritten NOI Debt Yield (%)
  *   Third Most Recent NOI Date
  *   Third Most Recent Description
  *
- * Todas contienen "NOI" o "Underwritten". Sin estas exclusiones, la primera que
- * aparece se lleva la métrica y la columna verdadera queda huérfana. Pasó con
- * datos reales: el NOI de un hotel quedó guardado como 1.83, que era su DSCR.
+ * They all contain "NOI" or "Underwritten". Without these exclusions, the first
+ * one to appear takes the metric and the real column is orphaned. It happened
+ * with real data: a hotel's NOI was stored as 1.83, which was its DSCR.
  */
 const NOI_SATELLITES = [
   /dscr/i,
@@ -163,61 +163,62 @@ const NOI_SATELLITES = [
 ];
 
 /**
- * El orden importa: las métricas más específicas van primero, para que
- * "Most Recent NOI" no caiga en el patrón genérico de NOI underwritten, ni
- * "Unit of Measure" en el de "Units".
+ * Order matters: the more specific metrics go first, so that "Most Recent NOI"
+ * does not fall into the generic underwritten NOI pattern, nor "Unit of Measure"
+ * into the one for "Units".
  */
 /**
- * "Total Debt" no siempre se escribe "Total Debt".
+ * "Total Debt" is not always written "Total Debt".
  *
- * INCIDENTE: quince emisiones de 2020-2021 no cerraban ni una fila de la
- * identidad del debt yield. La causa era una palabra: el encabezado dice
- * "Total Mortgage Debt UW NOI Debt Yield" y la exclusión pedía las dos palabras
- * pegadas, así que no matchea con "Mortgage" en el medio.
+ * INCIDENT: fifteen 2020-2021 issuances did not close a single row of the debt
+ * yield identity. The cause was one word: the header reads "Total Mortgage Debt
+ * UW NOI Debt Yield" and the exclusion required the two words adjacent, so it
+ * does not match with "Mortgage" in between.
  *
- * El efecto fue doble y por eso costó verlo. El ratio de deuda total entró como
- * si fuera el sénior —imposible de cerrar contra ningún saldo sénior, porque el
- * denominador incluye la subordinada— y al mismo tiempo `debt_yield_total_debt`,
- * que existe justamente para recibirlo, tampoco lo capturó por la misma razón.
- * Una métrica quedó contaminada y la otra vacía con el mismo bug.
+ * The effect was twofold, which is why it took so long to see. The total-debt
+ * ratio entered as if it were the senior one —impossible to close against any
+ * senior balance, because the denominator includes the subordinate debt— and at
+ * the same time `debt_yield_total_debt`, which exists precisely to receive it,
+ * did not capture it either, for the same reason. One metric was contaminated
+ * and the other left empty by the same bug.
  *
- * "Total Senior Notes" NO va acá: eso es trust + pari passu, que es exactamente
- * el denominador que usamos. Excluirlo rompería las emisiones Benchmark.
- * El lookahead de "service" no es paranoia: "Total Debt Service Coverage Ratio"
- * es un DSCR sénior legítimo, y sin el lookahead esta exclusión lo tiraría. La
- * exclusión anterior tenía el mismo agujero; al ensancharla, el riesgo crece.
+ * "Total Senior Notes" does NOT belong here: that is trust + pari passu, which
+ * is exactly the denominator we use. Excluding it would break the Benchmark
+ * issuances. The "service" lookahead is not paranoia: "Total Debt Service
+ * Coverage Ratio" is a legitimate senior DSCR, and without the lookahead this
+ * exclusion would discard it. The previous exclusion had the same hole; widening
+ * it raises the risk.
  */
 const TOTAL_DEBT = /total\s*(mortgage|secured|combined)?\s*debt(?!\s*service)/i;
 
 /**
- * Columnas de NOI histórico disfrazadas de suscrito.
+ * Trailing NOI columns disguised as underwritten.
  *
- * CSAIL 2020-C19 publica "Third Most Recent NOI Debt Yield" y ninguna columna
- * llamada simplemente "debt yield". Nuestro patrón /\bnoi\s*debt\s*yield/i la
- * agarró: guardamos como ratio suscrito un ratio calculado sobre el NOI de dos
- * años antes del cierre. No es un número mal parseado, es otro número.
+ * CSAIL 2020-C19 publishes "Third Most Recent NOI Debt Yield" and no column
+ * simply called "debt yield". Our pattern /\bnoi\s*debt\s*yield/i took it: we
+ * stored as an underwritten ratio a ratio computed on the NOI from two years
+ * before closing. It is not a badly parsed number, it is a different number.
  */
 const HISTORICAL = [/most\s*recent/i, /\btrailing\b/i, /\bt-?12\b/i, /\bhistorical\b/i];
 
 export const METRIC_SPECS: MetricSpec[] = [
   /**
-   * NOTA SOBRE AÑADAS
+   * NOTE ON VINTAGES
    *
-   * Un Annex A publica el mismo concepto en varios períodos:
+   * An Annex A publishes the same concept across several periods:
    *
-   *   Third Most Recent NOI ($)     ← hace ~3 años
-   *   Second Most Recent NOI ($)    ← hace ~2 años
-   *   Most Recent NOI ($)           ← el último cerrado
-   *   Underwritten NOI ($)          ← la proyección del originador
+   *   Third Most Recent NOI ($)     ← ~3 years ago
+   *   Second Most Recent NOI ($)    ← ~2 years ago
+   *   Most Recent NOI ($)           ← the last closed one
+   *   Underwritten NOI ($)          ← the originator's projection
    *
-   * El patrón genérico /most recent.*noi/ matchea las tres primeras y se queda
-   * con la que aparece antes en la planilla, que suele ser la más VIEJA. Con
-   * datos reales eso etiquetó un NOI de hace tres períodos como si fuera el
-   * actual: $9,7M cuando el underwritten era $10,9M.
+   * The generic pattern /most recent.*noi/ matches the first three and keeps
+   * whichever appears earliest in the spreadsheet, which tends to be the OLDEST.
+   * With real data that labelled an NOI from three periods ago as if it were the
+   * current one: $9.7M when the underwritten figure was $10.9M.
    *
-   * Cada añada va a su propia métrica. Además de evitar el error, le da al Index
-   * una serie temporal: "¿cómo viene evolucionando el NOI?" pasa a ser
-   * contestable.
+   * Each vintage gets its own metric. Besides avoiding the error, it gives the
+   * Index a time series: "how has the NOI been evolving?" becomes answerable.
    */
   {
     key: "noi_third_most_recent",
@@ -245,10 +246,10 @@ export const METRIC_SPECS: MetricSpec[] = [
       /\bnoi\b.*\b(most\s*recent|t-?12|ttm|trailing)\b/i,
       /\b(most\s*recent|trailing)\s*net\s*operating\s*income/i,
     ],
-    // Un Annex A real trae columnas satélite alrededor del NOI —fecha,
-    // descripción, DSCR, debt yield— que contienen la palabra "NOI" y se
-    // robarían la métrica. Ver NOTA sobre columnas satélite más arriba.
-    // Y las añadas anteriores ya tienen su propia métrica.
+    // A real Annex A carries satellite columns around the NOI —date,
+    // description, DSCR, debt yield— that contain the word "NOI" and would steal
+    // the metric. See the NOTE on satellite columns above.
+    // And the earlier vintages already have their own metric.
     exclude: [...NOI_SATELLITES, /\b(second|third|fourth)\s*most\s*recent\b/i],
   },
   {
@@ -266,28 +267,28 @@ export const METRIC_SPECS: MetricSpec[] = [
     exclude: [/most\s*recent/i, /t-?12/i, /ttm/i, /trailing/i, /ncf/i, ...NOI_SATELLITES],
   },
   /**
-   * EGI Y GASTOS: UNA CLAVE POR COLUMNA, COMO EL NOI.
+   * EGI AND EXPENSES: ONE KEY PER COLUMN, LIKE NOI.
    *
-   * Antes eran cuatro claves para ocho columnas: `effective_gross_income`
-   * juntaba "Underwritten EGI" con "Most Recent EGI", y `egi_prior_period`
-   * juntaba "Second" con "Third Most Recent". Los pares empataban en el puntaje
-   * y `mapColumns` desempataba por orden de columna, que depende de cómo
-   * quedaron los bloques tras `joinAnnexTables` y varía por emisión.
+   * They used to be four keys for eight columns: `effective_gross_income`
+   * lumped "Underwritten EGI" with "Most Recent EGI", and `egi_prior_period`
+   * lumped "Second" with "Third Most Recent". The pairs tied on score and
+   * `mapColumns` broke the tie by column order, which depends on how the blocks
+   * ended up after `joinAnnexTables` and varies by issuance.
    *
-   * Detectado con `harvest:ties`: las cuatro claves empataban en las 6
-   * emisiones muestreadas, una por añada.
+   * Detected with `harvest:ties`: all four keys tied across the 6 sampled
+   * issuances, one per vintage.
    *
-   * Underwritten y Most Recent no son variantes de lo mismo: uno es la
-   * proyección del suscriptor y el otro lo que el edificio produjo. Es
-   * exactamente la distinción que sostiene la medición de Griffin, y estaba
-   * decidida por el orden de las columnas.
+   * Underwritten and Most Recent are not variants of the same thing: one is the
+   * underwriter's projection and the other is what the building produced. It is
+   * exactly the distinction that supports the Griffin measurement, and it was
+   * being decided by column order.
    *
-   * `real.test.ts` ya afirmaba la intención correcta —EGI a underwritten,
-   * prior_period a third— y pasaba, pero por el orden del fixture, no por la
-   * taxonomía. Una validación que no podía fallar.
+   * `real.test.ts` already asserted the correct intent —EGI to underwritten,
+   * prior_period to third— and passed, but because of the fixture's order, not
+   * because of the taxonomy. A validation that could not fail.
    *
-   * El NOI ya tenía las cuatro claves separadas desde el principio. Esto es
-   * copiarle la estructura, no inventar una.
+   * NOI already had the four keys separated from the start. This copies that
+   * structure rather than inventing one.
    */
   {
     key: "egi_third_most_recent",
@@ -320,7 +321,7 @@ export const METRIC_SPECS: MetricSpec[] = [
       /\bunderwritten\b.*\begi\b/i,
       /\bu\/?w\b.*\begi\b/i,
       /\bunderwritten\s*effective\s*gross/i,
-      // Respaldo: un Annex A con una sola columna de EGI, sin calificar.
+      // Fallback: an Annex A with a single, unqualified EGI column.
       /\begi\b/i,
       /effective\s*gross\s*income/i,
     ],
@@ -365,10 +366,10 @@ export const METRIC_SPECS: MetricSpec[] = [
     exclude: [/most\s*recent/i],
   },
   /**
-   * Ocupancia física y económica son métricas distintas: la económica descuenta
-   * concesiones e incobrables, así que siempre es menor. Muchos Annex A solo
-   * publican la económica, así que si las unificáramos bajo una exclusión de
-   * "economic" nos quedaríamos sin ninguna.
+   * Physical and economic occupancy are different metrics: the economic one
+   * deducts concessions and bad debt, so it is always lower. Many Annex A
+   * documents publish only the economic one, so unifying them under an
+   * "economic" exclusion would leave us with none.
    */
   {
     key: "occupancy_economic",
@@ -384,50 +385,50 @@ export const METRIC_SPECS: MetricSpec[] = [
     unit: "percent",
     entity: "property",
     /**
-     * EL ORDEN ACÁ NO ES COSMÉTICO: DESEMPATA.
+     * THE ORDER HERE IS NOT COSMETIC: IT BREAKS TIES.
      *
-     * `scoreHeader` puntúa 1 - i*0.08 según la posición del patrón, así que dos
-     * encabezados que caen en el mismo patrón empatan, y `mapColumns` resuelve
-     * el empate por orden de columna.
+     * `scoreHeader` scores 1 - i*0.08 by the pattern's position, so two headers
+     * falling on the same pattern tie, and `mapColumns` resolves the tie by
+     * column order.
      *
-     * El Annex A conduit —que es plantilla compartida: los encabezados salen
-     * byte por byte iguales en BMO, Benchmark, Wells, JPMorgan y BANK— trae
-     * seis columnas de ocupación: `Leased Occupancy (%)`, `Underwritten Hotel
-     * Occupancy (%)` y la serie histórica `Most Recent` / `Second` / `Third`.
-     * Todas matcheaban solo `/occupancy/` y empataban en 0,76.
+     * The conduit Annex A —which is a shared template: the headers come out
+     * byte for byte identical across BMO, Benchmark, Wells, JPMorgan and BANK—
+     * carries six occupancy columns: `Leased Occupancy (%)`, `Underwritten Hotel
+     * Occupancy (%)` and the historical series `Most Recent` / `Second` /
+     * `Third`. They all matched only `/occupancy/` and tied at 0.76.
      *
-     * Como `joinAnnexTables` une los bloques en una sola tabla y el mapeo corre
-     * una vez sobre los encabezados unidos, ganaba la que quedara primero — y
-     * eso depende del orden de los bloques, que varía por emisión.
+     * Since `joinAnnexTables` merges the blocks into a single table and the
+     * mapping runs once over the joined headers, whichever came first won — and
+     * that depends on the block order, which varies by issuance.
      *
-     * Cuando ganaba una columna de hotel, solo los hoteles quedaban con dato.
-     * En 7 emisiones de 2026 el conteo de préstamos con ocupación era
-     * exactamente el conteo de hoteles: BANK5 6 de 35 con 18% hospitality,
-     * BMO 2026-C15 cero de 16 sin ningún hotel.
+     * When a hotel column won, only the hotels ended up with data. In 7 of the
+     * 2026 issuances the count of loans with occupancy was exactly the count of
+     * hotels: BANK5 6 of 35 with 18% hospitality, BMO 2026-C15 zero of 16 with
+     * no hotels at all.
      *
-     * Peor que el agujero: los valores que sí había no eran la misma métrica
-     * que en las otras 21 emisiones. La cobertura se veía como 76% y adentro
-     * había dos cantidades distintas mezcladas.
+     * Worse than the hole: the values that were there were not the same metric
+     * as in the other 21 issuances. Coverage looked like 76% and inside it were
+     * two different quantities mixed together.
      */
     patterns: [
-      // La columna del conduit: cubre todo tipo de activo. Gana siempre que esté.
+      // The conduit column: covers every asset type. It wins whenever present.
       /leased\s*occ/i,
       /physical\s*occ/i,
       /%\s*occupied/i,
       /\boccupied\b.*%/i,
-      // Genérico: incluye "Underwritten Hotel Occupancy" y "Most Recent
-      // Occupancy". Son ocupación de verdad y sirven cuando no hay Leased
-      // —una emisión mono-hotel no tiene otra cosa—, pero pierden contra ella.
+      // Generic: includes "Underwritten Hotel Occupancy" and "Most Recent
+      // Occupancy". They are real occupancy and are useful when there is no
+      // Leased —a single-hotel issuance has nothing else— but they lose to it.
       /\boccupancy\b/i,
     ],
     /**
-     * "area", "sf" y "rentable" aparecen cuando un encabezado de grupo tipo
-     * "Physical & Occupancy" se pega a una columna de superficie.
+     * "area", "sf" and "rentable" appear when a group header like
+     * "Physical & Occupancy" gets glued to an area column.
      *
-     * La serie histórica ordinal se excluye entera: "Second/Third/Fourth/Fifth
-     * Most Recent" son fotos viejas del mismo activo, no la ocupación vigente.
-     * "Most Recent" a secas NO se excluye — en varios formatos es la columna
-     * corriente y la única que hay.
+     * The ordinal historical series is excluded entirely: "Second/Third/Fourth/
+     * Fifth Most Recent" are old snapshots of the same asset, not current
+     * occupancy. Plain "Most Recent" is NOT excluded — in several formats it is
+     * the current column and the only one there is.
      */
     exclude: [
       /economic/i,
@@ -444,9 +445,9 @@ export const METRIC_SPECS: MetricSpec[] = [
     label: "Unit of Measure",
     unit: "text",
     entity: "property",
-    // Va ANTES de `units`: "Unit of Measure" empieza con "Unit" y si no le
-    // ganamos la prioridad, `units` se queda con esta columna de texto y
-    // "Number of Units" —el conteo real— queda sin mapear.
+    // Goes BEFORE `units`: "Unit of Measure" starts with "Unit" and if we do not
+    // win priority over it, `units` takes this text column and "Number of Units"
+    // —the real count— goes unmapped.
     patterns: [/unit\s*of\s*measure/i, /^\s*measure\b/i],
   },
   {
@@ -477,14 +478,14 @@ export const METRIC_SPECS: MetricSpec[] = [
       /\bsf\b/i,
     ],
     /**
-     * Ojo con excluir /rent/ a secas: mata "Net Rentable Area", que es
-     * justamente uno de los nombres más comunes de esta columna.
+     * Careful about excluding plain /rent/: it kills "Net Rentable Area", which
+     * is one of the most common names for this very column.
      *
-     * Los `%` son otra historia. "Largest Tenant % of NRA" contiene "NRA" y se
-     * lo llevaba este patrón: en Tysons Corner Center guardábamos 14 como
-     * superficie —el porcentaje que ocupa el inquilino principal— en vez de los
-     * pies cuadrados. Un valor de dos dígitos en una métrica que debería tener
-     * seis, invisible salvo que se mire la procedencia fila por fila.
+     * The `%` cases are another story. "Largest Tenant % of NRA" contains "NRA"
+     * and this pattern was taking it: at Tysons Corner Center we were storing 14
+     * as the area —the percentage the largest tenant occupies— instead of the
+     * square footage. A two-digit value in a metric that should have six,
+     * invisible unless you read the provenance row by row.
      */
     exclude: [
       /per\s*s(q|f)/i, /\/\s*s(q|f)/i, /price/i, /\brent\s+roll\b/i,
@@ -511,34 +512,35 @@ export const METRIC_SPECS: MetricSpec[] = [
     unit: "currency",
     entity: "deal",
     /**
-     * EL SALDO DEL TRUST, NO EL DEL PRÉSTAMO.
+     * THE TRUST'S BALANCE, NOT THE LOAN'S.
      *
-     * Un Annex A publica siete saldos distintos para el mismo préstamo. Esta
-     * métrica es el que le corresponde a este trust a la fecha de corte; los
-     * otros seis tienen métrica propia más abajo.
+     * An Annex A publishes seven different balances for the same loan. This
+     * metric is the one belonging to this trust at the cut-off date; the other
+     * six have their own metrics further down.
      *
-     * La preferencia por "Cut-off Date Balance" sobre "Original Balance" no es
-     * estética: el original es el monto al originar y el de corte es el vigente
-     * cuando el trust lo compró. Para un préstamo que ya amortizó algo, no son
-     * iguales.
+     * Preferring "Cut-off Date Balance" over "Original Balance" is not
+     * aesthetic: the original is the amount at origination and the cut-off one
+     * is what was outstanding when the trust bought it. For a loan that has
+     * already amortised, they are not the same.
      *
-     * INCIDENTE: apuntaba a "Original Balance ($)" sin excluir ningún
-     * calificador. En Tysons Corner Center guardaba $2.460.000 —la rebanada de
-     * este trust en un préstamo de $709M repartido entre decenas de emisiones—
-     * y con eso el debt yield calculado daba 3947%. Las identidades aritméticas
-     * lo delataron: el saldo implícito por debt yield y el implícito por LTV
-     * coincidían en 288x, hasta el tercer dígito.
+     * INCIDENT: it pointed at "Original Balance ($)" with no qualifier excluded.
+     * At Tysons Corner Center it stored $2,460,000 —this trust's slice of a
+     * $709M loan split across dozens of issuances— and with that the computed
+     * debt yield gave 3947%. The arithmetic identities gave it away: the balance
+     * implied by debt yield and the one implied by LTV agreed at 288x, to three
+     * digits.
      */
     /**
-     * "Current Balance" en el formato Benchmark/JPMDB 2020.
+     * "Current Balance" in the Benchmark/JPMDB 2020 format.
      *
-     * Esas emisiones publican "Original Balance ($)" y "Current Balance ($)" en
-     * vez de original y cut-off. Sin el patrón, `loan_amount` caía en el
-     * original —el monto al originar, no el vigente cuando el trust lo compró— y
-     * en un préstamo que ya amortizó no son el mismo número. Son 97 préstamos en
-     * 8 emisiones, entre ellas Benchmark 2020-B17 y B20.
+     * Those issuances publish "Original Balance ($)" and "Current Balance ($)"
+     * instead of original and cut-off. Without the pattern, `loan_amount` fell
+     * on the original —the amount at origination, not what was outstanding when
+     * the trust bought it— and on a loan that has amortised they are not the
+     * same number. That is 97 loans across 8 issuances, among them Benchmark
+     * 2020-B17 and B20.
      *
-     * Va DESPUÉS del de cut-off para que donde existan las dos gane la explícita.
+     * It goes AFTER the cut-off one so that where both exist the explicit wins.
      */
     patterns: [
       /cut-?off\s*date\s*(principal\s*)?balance/i,
@@ -561,35 +563,35 @@ export const METRIC_SPECS: MetricSpec[] = [
     entity: "property",
     patterns: [/appraised\s*value/i, /appraisal\s*value/i, /^\s*value\b/i],
     /**
-     * "Appraised Value Type" es una columna de TEXTO ("As Is", "As Stabilized")
-     * y empataba en 1,00 con "Appraised Value ($)".
+     * "Appraised Value Type" is a TEXT column ("As Is", "As Stabilized") and it
+     * tied at 1.00 with "Appraised Value ($)".
      *
-     * El exclude de "per" estaba sin anclar: matcheaba la subcadena adentro de
-     * cualquier palabra —"Property" la contiene— así que excluía encabezados
-     * que no tenían nada que ver. Anclado con \b hace lo que decía hacer.
+     * The "per" exclude was unanchored: it matched the substring inside any word
+     * —"Property" contains it— so it excluded headers that had nothing to do
+     * with it. Anchored with \b it does what it said it did.
      */
     exclude: [/date/i, /\bper\b/i, /\btype\b/i],
   },
   /**
-   * NOTA SOBRE ESTRUCTURAS DE DEUDA
+   * NOTE ON DEBT STRUCTURES
    *
-   * Un Annex A publica el mismo ratio contra denominadores distintos:
+   * An Annex A publishes the same ratio against different denominators:
    *
-   *   Cut-off Date LTV Ratio (%)               ← el préstamo que está en ESTE trust
-   *   Whole Loan Cut-off Date LTV Ratio (%)    ← incluye las notas pari passu
-   *                                              que quedaron en otros trusts
-   *   Total Debt Cut-off Date LTV Ratio (%)    ← suma mezzanine y deuda subordinada
-   *   LTV Ratio at Maturity / ARD (%)          ← al vencimiento, no al cierre
+   *   Cut-off Date LTV Ratio (%)               ← the loan that is in THIS trust
+   *   Whole Loan Cut-off Date LTV Ratio (%)    ← includes the pari passu notes
+   *                                              left in other trusts
+   *   Total Debt Cut-off Date LTV Ratio (%)    ← adds mezzanine and subordinate
+   *   LTV Ratio at Maturity / ARD (%)          ← at maturity, not at closing
    *
-   * No son matices: el whole loan LTV puede ser 60% mientras el del trust es
-   * 45%. Un patrón genérico /ltv/ toma la primera columna que aparece y el
-   * resultado depende del orden de las columnas.
+   * These are not nuances: the whole loan LTV can be 60% while the trust's is
+   * 45%. A generic /ltv/ pattern takes the first column that appears and the
+   * result depends on column order.
    *
-   * Con datos reales tomó "Whole Loan Cut-off Date LTV", que solo existe para
-   * los préstamos partidos: 8 de 32. La cobertura al 25% fue lo que delató el
-   * problema —el valor en sí era correcto, solo que de otra métrica.
+   * With real data it took "Whole Loan Cut-off Date LTV", which only exists for
+   * split loans: 8 of 32. Coverage at 25% is what gave the problem away —the
+   * value itself was correct, it just belonged to a different metric.
    *
-   * Las variantes van primero para que el patrón base no se las quede.
+   * The variants go first so the base pattern does not take them.
    */
   {
     key: "ltv_whole_loan",
@@ -623,18 +625,18 @@ export const METRIC_SPECS: MetricSpec[] = [
     exclude: [/maturity/i, /balloon/i, /\bard\b/i, /whole\s*loan/i, TOTAL_DEBT, /\bcoop\b/i],
   },
   /**
-   * Los Annex A reales traen DOS DSCR y DOS debt yields: uno sobre NOI y otro
-   * sobre NCF (net cash flow, que descuenta reservas de capex y TI/LC). Son
-   * métricas distintas —el NCF siempre es más conservador— y mapearlas a la
-   * misma perdería justo la diferencia que a un analista le importa.
+   * Real Annex A documents carry TWO DSCRs and TWO debt yields: one on NOI and
+   * one on NCF (net cash flow, which deducts capex and TI/LC reserves). They are
+   * different metrics —NCF is always more conservative— and mapping them to the
+   * same one would lose exactly the difference an analyst cares about.
    *
-   * El orden importa: las variantes explícitas van antes del patrón genérico.
+   * Order matters: the explicit variants go before the generic pattern.
    */
   /**
-   * DSCR y debt yield sufren la misma multiplicación que el LTV: cada uno
-   * aparece contra el préstamo del trust, contra el whole loan y contra la
-   * deuda total. Las variantes van primero y el patrón base las excluye, para
-   * que cuál gana no dependa del orden de las columnas.
+   * DSCR and debt yield suffer the same multiplication as LTV: each appears
+   * against the trust's loan, against the whole loan and against total debt. The
+   * variants go first and the base pattern excludes them, so that which one wins
+   * does not depend on column order.
    */
   {
     key: "dscr_whole_loan",
@@ -712,17 +714,17 @@ export const METRIC_SPECS: MetricSpec[] = [
     patterns: [/detailed\s*property\s*type/i, /property\s*sub-?type/i],
   },
   /**
-   * PRÉSTAMOS A COOPERATIVAS
+   * COOPERATIVE LOANS
    *
-   * Una cooperativa de vivienda —típicamente de Nueva York— es dueña del
-   * edificio y toma deuda muy chica contra un valor muy alto. Un LTV de 10-20%
-   * con DSCR de 4x a 12x es normal ahí, no un error.
+   * A housing cooperative —typically in New York— owns the building and takes
+   * very small debt against a very high value. An LTV of 10-20% with a DSCR of
+   * 4x to 12x is normal there, not an error.
    *
-   * Vienen clasificadas como "Multifamily", así que sin distinguirlas arrastran
-   * las medianas de esa categoría hacia abajo. En los deals BANK son la mitad
-   * del pool: la mediana de LTV de multifamily daba 11%.
+   * They come classified as "Multifamily", so without distinguishing them they
+   * drag that category's medians down. In the BANK deals they are half the pool:
+   * the multifamily LTV median came out at 11%.
    *
-   * Se detectan por las columnas específicas que el Annex les dedica.
+   * They are detected by the specific columns the Annex dedicates to them.
    */
   {
     key: "coop_units",
@@ -750,8 +752,8 @@ export const METRIC_SPECS: MetricSpec[] = [
     label: "Co-op LTV as Rental",
     unit: "percent",
     entity: "deal",
-    // El LTV que tendría el edificio si se valuara como renta en vez de
-    // cooperativa. Es el número comparable contra un multifamily normal.
+    // The LTV the building would have if valued as a rental rather than as a
+    // cooperative. It is the number comparable against normal multifamily.
     patterns: [/\bcoop\b.*ltv.*rental/i, /ltv\s*as\s*rental/i],
   },
   {
@@ -759,30 +761,30 @@ export const METRIC_SPECS: MetricSpec[] = [
     label: "Loan / Property Flag",
     unit: "text",
     entity: "deal",
-    // Distingue la fila del préstamo de las filas de sus propiedades.
-    // Sin esto, un préstamo con 2 propiedades genera 3 deals.
-    // "Loan/Prop." es la abreviatura que usan las emisiones 2020-2021 para el
-    // mismo flag. Sin ella, las filas de propiedad de esas añadas se cuentan
-    // como préstamos —el bug que ya nos costó una iteración entera—.
+    // Distinguishes the loan's row from the rows of its properties.
+    // Without this, a loan with 2 properties generates 3 deals.
+    // "Loan/Prop." is the abbreviation the 2020-2021 issuances use for the same
+    // flag. Without it, the property rows of those vintages get counted as
+    // loans —the bug that already cost us a whole iteration.
     patterns: [
       /loan\s*\/\s*property\s*flag/i,
       /loan\s*or\s*property/i,
       /^\s*loan\s*\/\s*prop\.?\s*$/i,
-      // "Loan" a secas: las emisiones 2020 titulan así la columna cuyos valores
-      // son "Loan" y "Property". Se distingue del identificador por el valor,
-      // no por el nombre.
+      // Plain "Loan": the 2020 issuances title the column that way, and its
+      // values are "Loan" and "Property". It is told apart from the identifier
+      // by its values, not by its name.
       /^\s*loan\s*$/i,
-      // "Property Flag": Morgan Stanley 2021-L5 y su familia. Mismos valores
-      // —"Loan" y "Property"— con el nombre invertido respecto de los demás.
+      // "Property Flag": Morgan Stanley 2021-L5 and its family. Same values
+      // —"Loan" and "Property"— with the name inverted relative to the others.
       //
-      // INCIDENTE: sin este patrón la clasificación cae en la heurística de
-      // respaldo, que en L5 dejó 19 préstamos y 52 filas de propiedad sobre 71.
-      // El reparto real es 65 y 6. Se perdían 46 préstamos enteros, en silencio:
-      // ningún chequeo de sanidad se dispara porque los que quedan están bien.
+      // INCIDENT: without this pattern the classification falls back to the
+      // heuristic, which on L5 left 19 loans and 52 property rows out of 71. The
+      // real split is 65 and 6. Forty-six whole loans were being lost, silently:
+      // no sanity check fires because the ones that remain are fine.
       /^\s*property\s*flag\s*$/i,
     ],
-    // "Property Flag" no debe llevarse property_name ni property_type, que
-    // corren después en el array pero podrían competir por el mismo header.
+    // "Property Flag" must not take property_name or property_type, which run
+    // later in the array but could compete for the same header.
     exclude: [/\bname\b/i, /\btype\b/i, /\bcount\b/i, /#/],
   },
   {
@@ -791,44 +793,43 @@ export const METRIC_SPECS: MetricSpec[] = [
     unit: "text",
     entity: "deal",
     /**
-     * Clave para unir los bloques horizontales del Annex A, y para unir contra
-     * el informe del servicer.
+     * The key for joining the Annex A's horizontal blocks, and for joining
+     * against the servicer report.
      *
-     * SEIS NOMBRES PARA LA MISMA COLUMNA.
+     * SIX NAMES FOR THE SAME COLUMN.
      *
-     * Los dos primeros patrones cubrían las emisiones 2022-2026. Sobre las de
-     * 2020-2021 no matcheaban ninguna: 33 emisiones y 2.919 préstamos quedaban
-     * SIN identificador, y por lo tanto sin posibilidad de unirse a su
-     * desempeño. No fallaba nada visible —los préstamos se cosechaban bien— solo
-     * que después no pegaban contra nada.
+     * The first two patterns covered the 2022-2026 issuances. Against the
+     * 2020-2021 ones they matched none: 33 issuances and 2,919 loans were left
+     * WITHOUT an identifier, and therefore with no way to be joined to their
+     * performance. Nothing visible failed —the loans harvested fine— they just
+     * did not match anything afterwards.
      *
-     * Los nombres, con en cuántos filings aparece cada uno:
+     * The names, with how many filings each appears in:
      *
      *   Mortgage Loan Number   13      Loan No.        2
-     *   Control Number          7      Loan/Prop.      4  (es el flag, no el id)
-     *   Loan #                  5      Loan            4  (TAMBIÉN el flag)
+     *   Control Number          7      Loan/Prop.      4  (that is the flag, not the id)
+     *   Loan #                  5      Loan            4  (ALSO the flag)
      *
-     * Y el identificador de esas mismas emisiones se llama "ID" a secas, en la
-     * columna de al lado. Dos columnas para lo que el formato moderno resuelve
-     * con una.
+     * And the identifier in those same issuances is called plain "ID", in the
+     * column next to it. Two columns for what the modern format solves with one.
      *
-     * EL "Loan" PELADO ES EL FLAG. Lo agregué acá pensando que era un
-     * identificador abreviado y fue exactamente el error contra el que advierte
-     * el párrafo de abajo. El síntoma tardó una corrida en aparecer y vino
-     * doble: los loan_ref quedaron con valores "Loan" y "Property" —los del
-     * flag— y, como `loan_property_flag` se quedó sin columna, las filas de
-     * propiedad dejaron de filtrarse. Benchmark 2020-B18 pasó de 65 préstamos a
-     * 155 y sus observations por préstamo cayeron de 40 a 3,9.
+     * PLAIN "Loan" IS THE FLAG. I added it here thinking it was an abbreviated
+     * identifier, and it was exactly the error the paragraph below warns about.
+     * The symptom took a run to appear and came twofold: the loan_refs ended up
+     * with the values "Loan" and "Property" —the flag's— and, since
+     * `loan_property_flag` was left with no column, the property rows stopped
+     * being filtered. Benchmark 2020-B18 went from 65 loans to 155 and its
+     * observations per loan fell from 40 to 3.9.
      *
-     * Los dos síntomas eran el mismo bug. Y el test que escribí afirmaba que
-     * "Loan" debía mapear a loan_id, así que la suite lo bendecía.
+     * Both symptoms were the same bug. And the test I wrote asserted that
+     * "Loan" should map to loan_id, so the suite blessed it.
      *
-     * LAS EXCLUSIONES NO SON OPCIONALES. "Mortgage Loan Seller" aparece en 9
-     * filings y matchea /mortgage\s*loan/ perfectamente; guardaría el nombre del
-     * banco como identificador. Lo mismo "Net Mortgage Loan Rate", "Crossed
-     * Loan", "Loan per Net Rentable Area" y "Pari Passu Companion Loan Annual
-     * Debt Service". Un patrón generoso sin exclusiones convierte un agujero en
-     * datos equivocados, que es peor.
+     * THE EXCLUSIONS ARE NOT OPTIONAL. "Mortgage Loan Seller" appears in 9
+     * filings and matches /mortgage\s*loan/ perfectly; it would store the bank's
+     * name as the identifier. Same for "Net Mortgage Loan Rate", "Crossed Loan",
+     * "Loan per Net Rentable Area" and "Pari Passu Companion Loan Annual Debt
+     * Service". A generous pattern without exclusions turns a hole into wrong
+     * data, which is worse.
      */
     patterns: [
       /^\s*loan\s*id\b/i,
@@ -837,11 +838,11 @@ export const METRIC_SPECS: MetricSpec[] = [
       /control\s*number/i,
       /^\s*loan\s*#/i,
       /^\s*loan\s*no\.?\s*$/i,
-      // Las emisiones 2020 parten en dos lo que el formato moderno junta:
-      // columna 0 con el flag ("Loan"/"Property") y columna 1 con el número,
-      // titulada solo "ID". Sin este patrón ningún bloque de esos filings tiene
-      // clave, ninguno es unible, y el join horizontal se queda con la única
-      // tabla que sí la tenía —la de deuda mezzanine, de una fila—.
+      // The 2020 issuances split in two what the modern format joins: column 0
+      // with the flag ("Loan"/"Property") and column 1 with the number, titled
+      // just "ID". Without this pattern no block of those filings has a key,
+      // none is joinable, and the horizontal join is left with the only table
+      // that did have one —the mezzanine debt table, of one row.
       /^\s*id\s*$/i,
     ],
     exclude: [
@@ -851,13 +852,13 @@ export const METRIC_SPECS: MetricSpec[] = [
     ],
   },
   /**
-   * Las tasas también se multiplican por estructura de deuda.
+   * Rates multiply by debt structure too.
    *
-   * Un Annex A publica la del préstamo hipotecario, la de la deuda subordinada
-   * y la de la mezzanine. Sin separarlas terminan todas en `interest_rate` y
-   * contaminan cualquier serie: la mezzanine se cotiza muy por encima.
+   * An Annex A publishes the mortgage loan's rate, the subordinate debt's and
+   * the mezzanine's. Without separating them they all end up in `interest_rate`
+   * and contaminate any series: mezzanine prices well above.
    *
-   * Encontrado revisando por qué la tasa mediana de un trimestre daba 84%.
+   * Found while checking why a quarter's median rate came out at 84%.
    */
   {
     key: "interest_rate_mezzanine",
@@ -901,18 +902,18 @@ export const METRIC_SPECS: MetricSpec[] = [
     unit: "text",
     entity: "property",
     /**
-     * "General Property Type" y "Detailed Property Type" empataban en 1,00, así
-     * que qué taxonomía quedaba guardada dependía del orden de los bloques.
+     * "General Property Type" and "Detailed Property Type" tied at 1.00, so
+     * which taxonomy got stored depended on the block order.
      *
-     * No son granularidades intercambiables: la general da ~9 categorías
-     * ("Retail"), la detallada decenas ("Anchored Retail", "Unanchored"). Esta
-     * columna es el estrato de la exclusión mono-tipo, de la composición del
-     * benchmark y de toda comparación por tipo — mezclarlas hace incomparables
-     * dos emisiones sin que nada lo indique.
+     * They are not interchangeable granularities: the general one gives ~9
+     * categories ("Retail"), the detailed one dozens ("Anchored Retail",
+     * "Unanchored"). This column is the stratum for the single-type exclusion,
+     * for benchmark composition and for every comparison by type — mixing them
+     * makes two issuances incomparable with nothing to indicate it.
      *
-     * Se prefiere la general: menos categorías, más pares por celda, y es la
-     * que ya usan los cortes existentes. La detallada tiene su propia clave,
-     * `property_type_detailed`.
+     * The general one is preferred: fewer categories, more pairs per cell, and
+     * it is the one the existing cuts already use. The detailed one has its own
+     * key, `property_type_detailed`.
      */
     patterns: [/general\s*property\s*type/i, /property\s*type/i, /^\s*type\b/i, /asset\s*type/i],
     exclude: [/loan/i, /rate/i, /sub/i, /detailed/i],
@@ -922,30 +923,30 @@ export const METRIC_SPECS: MetricSpec[] = [
     label: "Mortgage Loan Seller",
     unit: "text",
     /**
-     * QUIÉN ORIGINÓ EL PRÉSTAMO, QUE NO ES QUIÉN ARMÓ LA EMISIÓN
+     * WHO ORIGINATED THE LOAN, WHICH IS NOT WHO ASSEMBLED THE ISSUANCE
      *
-     * Todo el análisis de "emisoras" venía atribuyéndole a BANK o a BBCMS lo que
-     * hicieron sus vendedores. Un deal BANK agrupa préstamos originados por Bank
-     * of America, Morgan Stanley y Wells Fargo; el shelf es el empaquetador.
+     * All the "issuer" analysis had been attributing to BANK or BBCMS what their
+     * sellers did. A BANK deal groups loans originated by Bank of America,
+     * Morgan Stanley and Wells Fargo; the shelf is the packager.
      *
-     * Y es la variable que puede CONFIRMAR el efecto en vez de solo no matarlo:
-     * el mismo vendedor coloca en varias emisiones, así que el diseño queda
-     * cruzado por construcción. Wells Fargo vende hacia BANK (SIR 0,42) y hacia
-     * su propio shelf (1,20). Si el vendedor manda, fijarlo debería aplanar esa
-     * diferencia.
+     * And it is the variable that can CONFIRM the effect rather than merely fail
+     * to kill it: the same seller places into several issuances, so the design
+     * is crossed by construction. Wells Fargo sells into BANK (SIR 0.42) and
+     * into its own shelf (1.20). If the seller is what matters, holding it fixed
+     * should flatten that difference.
      *
-     * La entidad es `property` porque ese es el nivel de fila del Annex A, no
-     * porque el vendedor describa una propiedad: en un préstamo con varias
-     * propiedades el valor se repite. Sirve igual — la pregunta se hace a nivel
-     * préstamo y ahí el valor es único.
+     * The entity is `property` because that is the Annex A's row level, not
+     * because the seller describes a property: on a loan with several properties
+     * the value repeats. It works anyway — the question is asked at loan level
+     * and there the value is unique.
      *
-     * LAS EXCLUSIONES
+     * THE EXCLUSIONS
      *
-     * "Mortgage Loan Seller" ya figuraba en este archivo, pero solo como
-     * exclusión de `loan_amount` —el encabezado aparece en 9 filings y el patrón
-     * de monto lo capturaba—. Acá hay que evitar el camino inverso: columnas que
-     * hablan del vendedor sin nombrarlo, como el número de préstamos que aportó
-     * o el porcentaje del pool.
+     * "Mortgage Loan Seller" already appeared in this file, but only as an
+     * exclusion for `loan_amount` —the header appears in 9 filings and the
+     * amount pattern was capturing it. Here the inverse path has to be avoided:
+     * columns that talk about the seller without naming it, like the number of
+     * loans it contributed or its percentage of the pool.
      */
     entity: "property",
     patterns: [
@@ -995,24 +996,23 @@ export const METRIC_SPECS: MetricSpec[] = [
   },
 
   // -------------------------------------------------------------------------
-  // Bloques que hasta ahora se descartaban enteros
+  // Blocks that used to be discarded whole
   // -------------------------------------------------------------------------
   //
-  // Un Annex A reparte sus columnas en bloques horizontales unidos por Loan ID.
-  // Tres de esos bloques no tenían NINGUNA columna mapeada, así que
-  // `findHeaderRow` —que exige cuatro coincidencias— los daba por no-Annex y el
-  // pipeline los descartaba completos. No se perdían préstamos (los mismos IDs
-  // están en los bloques que sí leíamos) pero sí se perdían estas métricas, y de
-  // forma invisible: el listado de "columnas sin mapear" solo cubre bloques que
-  // llegamos a abrir.
+  // An Annex A splits its columns into horizontal blocks joined by Loan ID.
+  // Three of those blocks had NO mapped column at all, so `findHeaderRow`
+  // —which requires four matches— judged them non-Annex and the pipeline
+  // discarded them entirely. No loans were lost (the same IDs are in the blocks
+  // we did read) but these metrics were, and invisibly: the "unmapped columns"
+  // listing only covers blocks we actually opened.
   //
   // ORDEN Y COLISIONES
   //
-  // Las reservas van primero y el servicio de deuda las excluye explícitamente,
-  // porque "Upfront Debt Service Reserve" contiene "Debt Service" y sin eso se
-  // lo llevaría `debt_service_pi`. Mismo problema entre "Underwritten TI / LC"
-  // —una deducción del NCF— y "Upfront TI/LC Reserve" —un escrow al cierre—:
-  // suenan igual y son cosas distintas, así que cada uno excluye al otro.
+  // The reserves go first and the debt service excludes them explicitly,
+  // because "Upfront Debt Service Reserve" contains "Debt Service" and without
+  // that `debt_service_pi` would take it. Same problem between "Underwritten TI
+  // / LC" —an NCF deduction— and "Upfront TI/LC Reserve" —an escrow at closing:
+  // they sound alike and are different things, so each excludes the other.
 
   {
     key: "reserve_tax_upfront",
@@ -1150,12 +1150,12 @@ export const METRIC_SPECS: MetricSpec[] = [
     exclude: [/\bcaps?\b/i, /description/i],
   },
 
-  // --- deducciones del NCF, no escrows -------------------------------------
+  // --- NCF deductions, not escrows -----------------------------------------
   //
-  // Estas dos son la diferencia entre NOI y NCF: el suscriptor resta una reserva
-  // teórica de reposición y otra de comisiones e incentivos de alquiler. No son
-  // plata depositada —eso son las reserve_* de arriba— sino un ajuste de cálculo.
-  // Tenerlas permite verificar que NCF = NOI − estas dos.
+  // These two are the difference between NOI and NCF: the underwriter subtracts
+  // a theoretical replacement reserve and another for leasing commissions and
+  // incentives. They are not deposited money —that is the reserve_* above— but a
+  // calculation adjustment. Having them allows verifying NCF = NOI − these two.
   {
     key: "underwritten_replacement_reserve",
     label: "Underwritten Replacement / FF&E Reserve",
@@ -1171,7 +1171,7 @@ export const METRIC_SPECS: MetricSpec[] = [
     patterns: [/underwritten\s*ti\s*\/?\s*lc/i],
   },
 
-  // --- servicio de deuda y estructura del préstamo --------------------------
+  // --- debt service and loan structure --------------------------------------
   {
     key: "debt_service_pi",
     label: "Annual Debt Service (P&I)",
@@ -1282,7 +1282,7 @@ export const METRIC_SPECS: MetricSpec[] = [
     patterns: [/#\s*of\s*properties/i, /number\s*of\s*properties/i],
   },
 
-  // --- control de flujo de fondos -------------------------------------------
+  // --- cash flow control ----------------------------------------------------
   {
     key: "holdback_amount",
     label: "Holdback / Earnout Amount",
@@ -1313,15 +1313,14 @@ export const METRIC_SPECS: MetricSpec[] = [
     patterns: [/cash\s*management/i],
   },
   // -------------------------------------------------------------------------
-  // Los otros seis saldos
+  // The other six balances
   // -------------------------------------------------------------------------
   //
-  // Es la misma trampa que el LTV, peor. Con el LTV eran tres denominadores;
-  // con el saldo son siete columnas que se llaman casi igual y significan cosas
-  // distintas. Los ratios que publica el emisor —debt yield, DSCR, LTV— se
-  // calculan contra el préstamo completo, no contra la porción del trust, así
-  // que sin estas columnas ninguna identidad puede cerrar en los préstamos
-  // grandes.
+  // It is the same trap as LTV, worse. With LTV there were three denominators;
+  // with the balance there are seven columns named almost identically that mean
+  // different things. The ratios the issuer publishes —debt yield, DSCR, LTV—
+  // are computed against the entire loan, not against the trust's portion, so
+  // without these columns no identity can close on the large loans.
 
   {
     key: "balance_whole_loan",
@@ -1332,29 +1331,29 @@ export const METRIC_SPECS: MetricSpec[] = [
     exclude: [/%|percent/i, /ltv/i, /dscr/i, /debt\s*yield/i],
   },
   /**
-   * El sénior completo, publicado en una sola columna.
+   * The full senior, published in a single column.
    *
-   * ENCONTRADO POR EL RECONCILIADOR, NO POR LEER ENCABEZADOS
+   * FOUND BY THE RECONCILER, NOT BY READING HEADERS
    *
-   * Los ratios del emisor se calculan contra trust + pari passu no-trust, y
-   * nosotros lo armábamos sumando dos métricas. Resulta que varias emisiones
-   * publican ese total en una columna propia —"Total Cut-off Date Pari Passu
-   * Debt"— y la estábamos ignorando.
+   * The issuer's ratios are computed against trust + non-trust pari passu, and
+   * we were assembling that by adding two metrics. It turns out several
+   * issuances publish that total in a column of its own —"Total Cut-off Date
+   * Pari Passu Debt"— and we were ignoring it.
    *
-   * No salió de mirar la lista de columnas sin mapear: salió de preguntar qué
-   * celda de cada fila vale el saldo implícito por la identidad. 33 préstamos en
-   * 4 emisiones coincidieron dentro del 1%, con ejemplos como 1.001,0M contra
-   * 1.001,3M de implícito. La columna se identificó por su valor, no por su
-   * nombre.
+   * It did not come from looking at the list of unmapped columns: it came from
+   * asking which cell of each row is worth the balance implied by the identity.
+   * 33 loans across 4 issuances matched within 1%, with examples like 1,001.0M
+   * against an implied 1,001.3M. The column was identified by its value, not by
+   * its name.
    *
-   * Vale más que la suma cuando está: no depende de que las dos partes se hayan
-   * mapeado bien, ni de que el Annex publique las dos.
+   * It is worth more than the sum when present: it does not depend on both parts
+   * having been mapped correctly, nor on the Annex publishing both.
    *
-   * NO confundir con `balance_total_debt`, que además incluye la subordinada y
-   * la mezzanine. Coinciden solo cuando el préstamo no tiene deuda junior, que
-   * es por qué "Total Debt Cut-off Balance" también apareció en el
-   * reconciliador — esa se deja donde está, porque en un préstamo con B-note
-   * daría un denominador inflado.
+   * NOT to be confused with `balance_total_debt`, which also includes the
+   * subordinate and the mezzanine. They coincide only when the loan has no
+   * junior debt, which is why "Total Debt Cut-off Balance" also turned up in the
+   * reconciler — that one stays where it is, because on a loan with a B-note it
+   * would give an inflated denominator.
    */
   {
     key: "balance_senior_total",
@@ -1367,8 +1366,8 @@ export const METRIC_SPECS: MetricSpec[] = [
       /total\s*pari\s*passu\s*debt\s*(cut-?off|current)/i,
       /total\s*senior\s*notes?\s*cut-?off\s*date\s*balance/i,
       /senior\s*notes?\s*cut-?off\s*date\s*balance/i,
-      // El original va último: mismo criterio que loan_amount, donde estén las
-      // dos gana la de fecha de corte.
+      // The original goes last: same criterion as loan_amount, where both exist
+      // the cut-off date one wins.
       /total\s*original\s*balance\s*pari\s*passu\s*debt/i,
     ],
     exclude: [
@@ -1390,37 +1389,38 @@ export const METRIC_SPECS: MetricSpec[] = [
     unit: "currency",
     entity: "deal",
     /**
-     * El segundo patrón cubre las emisiones que no escriben "non-trust".
+     * The second pattern covers the issuances that do not write "non-trust".
      *
-     * Un "companion loan" es, por definición, la porción que NO está en este
-     * trust: si estuviera, no sería companion. Así que "Cut-off Date Pari Passu
-     * Companion Loan Balance ($)" es el mismo concepto con otro nombre. Aparece
-     * en 7 emisiones que hoy tienen 144 préstamos con el debt yield roto.
+     * A "companion loan" is, by definition, the portion that is NOT in this
+     * trust: if it were, it would not be a companion. So "Cut-off Date Pari
+     * Passu Companion Loan Balance ($)" is the same concept under another name.
+     * It appears in 7 issuances that today have 144 loans with a broken debt
+     * yield.
      *
-     * Es una inferencia sobre la terminología, no una certeza. La prueba es la
-     * identidad: si al mapearla el debt yield cierra en esos 144, el concepto
-     * era el que creemos. Si el denominador se pasa, la columna incluía también
-     * la porción del trust y hay que restarla.
+     * It is an inference about terminology, not a certainty. The proof is the
+     * identity: if mapping it makes the debt yield close on those 144, the
+     * concept was what we think. If the denominator overshoots, the column also
+     * included the trust's portion and it has to be subtracted.
      *
-     * Las exclusiones son las banderas y los flujos: el mismo bloque trae
-     * "Pari Passu (Y/N)" y "Pari Passu Companion Loan Annual Debt Service ($)".
+     * The exclusions are the flags and the flows: the same block carries
+     * "Pari Passu (Y/N)" and "Pari Passu Companion Loan Annual Debt Service ($)".
      */
     /**
-     * ORIGINAL Y FECHA DE CORTE NO SON EL MISMO SALDO, TAMPOCO ACÁ.
+     * ORIGINAL AND CUT-OFF DATE ARE NOT THE SAME BALANCE HERE EITHER.
      *
-     * `loan_amount` distingue los dos —prefiere el de corte y manda el original
-     * a su propia métrica— porque en un préstamo que ya amortizó no coinciden.
-     * Esta métrica se había olvidado de hacer la misma distinción.
+     * `loan_amount` distinguishes the two —it prefers the cut-off one and sends
+     * the original to its own metric— because on a loan that has amortised they
+     * do not coincide. This metric had forgotten to make the same distinction.
      *
-     * El resultado era peor que un número impreciso: el denominador sumaba el
-     * saldo a fecha de corte del trust con el saldo ORIGINAL del companion. Dos
-     * fechas distintas en la misma cuenta. CF 2020-CF4 y Benchmark 2020-B18
-     * mapeaban "Non-Trust Pari Passu Original Balance($)" y ninguna de sus filas
-     * cerraba la identidad del debt yield.
+     * The result was worse than an imprecise number: the denominator was adding
+     * the trust's cut-off date balance to the companion's ORIGINAL balance. Two
+     * different dates in the same sum. CF 2020-CF4 and Benchmark 2020-B18 mapped
+     * "Non-Trust Pari Passu Original Balance($)" and none of their rows closed
+     * the debt yield identity.
      *
-     * Los patrones van de más específico a más general: donde el Annex publique
-     * las dos columnas gana la de corte, y donde solo esté la original se usa
-     * esa —con la fecha mezclada, pero visible en el encabezado que guardamos—.
+     * The patterns run from more specific to more general: where the Annex
+     * publishes both columns the cut-off one wins, and where only the original
+     * exists that is used —with the mixed date, but visible in the header we store.
      */
     patterns: [
       /non-?\s*trust\s*pari\s*passu.*cut-?off\s*date.*balance/i,
@@ -1429,8 +1429,8 @@ export const METRIC_SPECS: MetricSpec[] = [
       /non-?\s*trust\s*pari\s*passu.*balance/i,
       /pari\s*passu\s*companion\s*loan.*balance/i,
       // "Pari Passu Piece Non-Trust Cut-Off Balance" y "Original Balance Piece
-      // Non-Trust ($)": 52 préstamos en 5 emisiones, identificados por el
-      // reconciliador porque su valor iguala lo que le falta al saldo del trust.
+      // Non-Trust ($)": 52 loans across 5 issuances, identified by the
+      // reconciler because their value equals what the trust balance is missing.
       /pari\s*passu\s*piece\s*non-?\s*trust.*balance/i,
       /balance\s*piece\s*non-?\s*trust/i,
     ],
@@ -1460,8 +1460,8 @@ export const METRIC_SPECS: MetricSpec[] = [
     label: "Total Debt Cut-off Date Balance",
     unit: "currency",
     entity: "deal",
-    // El denominador de ltv_total_debt y debt_yield_total_debt, que ya
-    // mapeábamos sin tener nunca su base. Aparece en 176 filings.
+    // The denominator of ltv_total_debt and debt_yield_total_debt, which we were
+    // already mapping without ever having its base. It appears in 176 filings.
     patterns: [/total\s*(mortgage\s*)?debt\s*cut-?off\s*date\s*balance/i, /total\s*(mortgage\s*)?debt\s*balance/i],
     exclude: [/%|percent/i, /ltv/i, /dscr/i, /debt\s*yield/i, /\bper\b/i],
   },
@@ -1479,25 +1479,25 @@ export const METRIC_SPECS: MetricSpec[] = [
     unit: "currency",
     entity: "deal",
     /**
-     * El patrón genérico va tercero A PROPÓSITO.
+     * The generic pattern goes third ON PURPOSE.
      *
-     * `scoreHeader` decae 0.08 por posición, así que este spec puntúa 0.84 sobre
-     * "Original Balance ($)" mientras `loan_amount` puntúa 0.92 con el mismo
-     * header. La asignación es golosa y global, así que el efecto es:
+     * `scoreHeader` decays 0.08 per position, so this spec scores 0.84 on
+     * "Original Balance ($)" while `loan_amount` scores 0.92 on the same header.
+     * The assignment is greedy and global, so the effect is:
      *
-     *   hay "Cut-off Date Balance"  → loan_amount se queda con ese (1.00) y
-     *                                 el original cae acá
-     *   solo hay "Original Balance" → loan_amount lo toma (0.92 > 0.84)
+     *   there is "Cut-off Date Balance"  → loan_amount takes it (1.00) and the
+     *                                      original falls here
+     *   only "Original Balance" exists   → loan_amount takes it (0.92 > 0.84)
      *
-     * Es el fallback que hacía falta: un Annex A que no publique saldo a la
-     * fecha de corte igual tiene que producir `loan_amount`. Sin este orden,
-     * esa familia de formato quedaría sin saldo y en silencio.
+     * It is the fallback that was needed: an Annex A that does not publish a
+     * cut-off date balance still has to produce `loan_amount`. Without this
+     * order, that format family would be left with no balance, silently.
      */
     patterns: [
-      // Las dos primeras son grafías raras y van acá solo para que la genérica
-      // quede en el índice 2 y puntúe 0.84. "Original Principal Balance" NO va
-      // arriba: es la misma columna escrita completa, y ponerla primero le
-      // robaba el saldo a `loan_amount` en los Annex A que la usan.
+      // The first two are unusual spellings and are here only so the generic one
+      // lands at index 2 and scores 0.84. "Original Principal Balance" does NOT
+      // go above: it is the same column written out in full, and putting it
+      // first stole the balance from `loan_amount` in the Annex A files that use it.
       /original\s*balance\s*at\s*securiti[sz]ation/i,
       /balance\s*at\s*origination/i,
       /original\s*(principal\s*)?balance/i,
@@ -1524,15 +1524,15 @@ export interface ColumnMatch {
 }
 
 /**
- * ¿Este texto identifica una métrica por sí solo, sin contexto?
+ * Does this text identify a metric on its own, without context?
  *
- * Lo usa el fusionado de encabezados HTML para decidir si necesita pegarle el
- * encabezado de grupo. "Net Rentable Area (SF)" se entiende solo; "NOI" a
- * secas no —puede ser underwritten o trailing— y necesita el grupo.
+ * Used by the HTML header merging to decide whether it needs to glue the group
+ * header on. "Net Rentable Area (SF)" stands alone; plain "NOI" does not —it
+ * could be underwritten or trailing— and needs the group.
  *
- * El umbral es alto a propósito: ante la duda conviene fusionar, porque un
- * encabezado ambiguo se puede desambiguar con el grupo, pero un encabezado
- * contaminado por el grupo se mapea mal en silencio.
+ * The threshold is high on purpose: when in doubt it is better to merge,
+ * because an ambiguous header can be disambiguated by the group, but a header
+ * contaminated by the group gets mapped wrong silently.
  */
 export function mapsToSomeMetric(header: string, minScore = 0.9): boolean {
   for (const spec of METRIC_SPECS) {
@@ -1542,8 +1542,8 @@ export function mapsToSomeMetric(header: string, minScore = 0.9): boolean {
 }
 
 /**
- * Puntúa un header contra una métrica.
- * 0 = no aplica. Cuanto más específico el patrón que matchea, más alto.
+ * Scores a header against a metric.
+ * 0 = does not apply. The more specific the matching pattern, the higher.
  */
 export function scoreHeader(header: string, spec: MetricSpec): number {
   const clean = header.replace(/\s+/g, " ").trim();
@@ -1553,7 +1553,7 @@ export function scoreHeader(header: string, spec: MetricSpec): number {
 
   for (let i = 0; i < spec.patterns.length; i++) {
     if (spec.patterns[i]!.test(clean)) {
-      // Los primeros patrones de la lista son los más específicos.
+      // The first patterns in the list are the most specific.
       return 1 - i * 0.08;
     }
   }
@@ -1561,11 +1561,11 @@ export function scoreHeader(header: string, spec: MetricSpec): number {
 }
 
 /**
- * Mapea los headers de una planilla a métricas.
+ * Maps a spreadsheet's headers to metrics.
  *
- * Resuelve conflictos: si dos columnas matchean la misma métrica, gana la de
- * mayor puntaje. Si una columna matchea varias métricas, gana la de mayor
- * puntaje. Así evitamos que "UW NOI" y "Most Recent NOI" terminen en la misma.
+ * It resolves conflicts: if two columns match the same metric, the higher score
+ * wins. If one column matches several metrics, the higher score wins. That is
+ * how we stop "UW NOI" and "Most Recent NOI" ending up in the same one.
  */
 export function mapColumns(headers: string[]): {
   matches: ColumnMatch[];
@@ -1604,15 +1604,15 @@ export function mapColumns(headers: string[]): {
 }
 
 // ---------------------------------------------------------------------------
-// Parseo de valores
+// Value parsing
 // ---------------------------------------------------------------------------
 
 /**
- * Convierte el valor crudo de la celda al tipo de la métrica.
+ * Converts the cell's raw value to the metric's type.
  *
- * Los Annex A mezclan formatos sin piedad: "$1,234,567", "1234567", "94.5%",
- * "0.945", "1.25x", "N/A", "-", "" y celdas vacías. Devuelve null cuando no
- * hay dato — que es distinto de cero.
+ * Annex A documents mix formats without mercy: "$1,234,567", "1234567", "94.5%",
+ * "0.945", "1.25x", "N/A", "-", "" and empty cells. Returns null when there is
+ * no datum — which is different from zero.
  */
 export function parseValue(raw: unknown, unit: MetricSpec["unit"]): string | null {
   if (raw === null || raw === undefined) return null;
@@ -1629,22 +1629,8 @@ export function parseValue(raw: unknown, unit: MetricSpec["unit"]): string | nul
   const isNegative = /^\(.*\)$/.test(s); // contabilidad: (1,234) = -1234
 
   /**
-   * Un número con un espacio en el medio no es un número.
+   * A number with a space in the middle is not a number.
    *
-   * Benchmark 2020-B16 publica un LTV como "48 5%" y un debt yield como "13 1%":
-   * un espacio donde va el punto decimal. Es un error de tipeo del emisor —las
-   * celdas vecinas dicen "65.8%" y "9.0%"— y está así en el HTML de la SEC.
-   *
-   * Al sacar los espacios junto con las comas, "13 1%" se convertía en 131% y
-   * entraba al corpus como 1.31. El chequeo de sanidad lo agarraba por rango,
-   * pero un "12 5%" habría dado 1.25 y pasado desapercibido.
-   *
-   * Reparar la intención sería adivinar: "13 1" podría ser 13.1 o 131. Preferimos
-   * el agujero declarado, que es la misma decisión que tomamos con los saldos y
-   * con los identificadores no numéricos.
-   *
-   * El separador de miles va con coma en estos documentos, nunca con espacio, así
-   * que no hay caso legítimo que esto rompa.
    */
   const withoutMoney = s.replace(/[$,()%]/g, "").replace(/x$/i, "").trim();
   if (/\d[\s\u00a0]+\d/.test(withoutMoney)) return null;
@@ -1661,12 +1647,12 @@ export function parseValue(raw: unknown, unit: MetricSpec["unit"]): string | nul
   let value = isNegative ? -n : n;
 
   if (unit === "percent") {
-    // "94.5%" → 0.945 ; "0.945" ya está en fracción.
-    // Heurística: con signo de %, o sin él pero > 1.5, asumimos porcentaje.
+    // "94.5%" → 0.945 ; "0.945" is already a fraction.
+    // Heuristic: with a % sign, or without one but > 1.5, we assume a percentage.
     if (hadPercentSign || value > 1.5) value = value / 100;
-    // Dividir por 100 introduce ruido de punto flotante: 93.1/100 da
-    // 0.9309999999999999. Redondeamos a 6 decimales, que es más precisión de
-    // la que cualquier Annex A reporta.
+    // Dividing by 100 introduces floating-point noise: 93.1/100 gives
+    // 0.9309999999999999. We round to 6 decimals, which is more precision than
+    // any Annex A reports.
     value = round(value, 6);
   }
 
@@ -1676,7 +1662,7 @@ export function parseValue(raw: unknown, unit: MetricSpec["unit"]): string | nul
 
   if (unit === "count" || unit === "years") {
     value = Math.round(value);
-    // Un año fuera de rango es basura, no dato.
+    // A year out of range is junk, not data.
     if (unit === "years" && (value < 1700 || value > 2100)) return null;
   }
 
@@ -1689,11 +1675,11 @@ function round(n: number, decimals: number): number {
 }
 
 /**
- * Reconoce filas de agregación: totales, subtotales, promedios.
+ * Recognises aggregation rows: totals, subtotals, averages.
  *
- * Los Annex A intercalan estas filas entre los datos y hay que descartarlas.
- * Contar observations no alcanza: una fila "TOTAL" con NOI y balance sumados
- * tiene datos suficientes para pasar el filtro por cantidad.
+ * Annex A documents interleave these rows among the data and they have to be
+ * discarded. Counting observations is not enough: a "TOTAL" row with summed NOI
+ * and balance has enough data to pass the count filter.
  */
 export function looksLikeAggregateRow(textValues: Array<string | null>): boolean {
   const AGGREGATE = /^\s*(grand\s+)?(total|subtotal|sub-total|average|avg|weighted\s*average|wtd\.?\s*avg|sum|count|min|max|median)\b/i;
@@ -1701,22 +1687,22 @@ export function looksLikeAggregateRow(textValues: Array<string | null>): boolean
 }
 
 /**
- * Marcadores de "sin dato" que aparecen en Annex A reales.
+ * "No data" markers that appear in real Annex A documents.
  *
- * `NAP` (not applicable) y `NAV` (not available) son convención de CMBS y
- * significan cosas distintas para un analista, pero para nosotros ambos son
- * ausencia de dato. `Various` aparece cuando un préstamo cubre varias
- * propiedades con valores distintos — tampoco es un número.
+ * `NAP` (not applicable) and `NAV` (not available) are CMBS convention and mean
+ * different things to an analyst, but for us both are an absent datum.
+ * `Various` appears when a loan covers several properties with different values
+ * — that is not a number either.
  */
 function isNullish(s: string): boolean {
   return /^(n\/?a|na|nap|nav|none|null|various|-+|—|\.\.\.)$/i.test(s.trim());
 }
 
 /**
- * Encuentra la fila de headers en una planilla.
+ * Finds the header row in a spreadsheet.
  *
- * Los Annex A arrancan con filas de título, logos y notas antes de la tabla
- * real. Buscamos la primera fila que mapee al menos `minMatches` métricas.
+ * Annex A documents start with title rows, logos and notes before the real
+ * table. We look for the first row that maps at least `minMatches` metrics.
  */
 export function findHeaderRow(
   rows: unknown[][],
