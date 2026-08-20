@@ -1,19 +1,18 @@
 /**
- * Cosecha en lote, para armar un corpus con el que se puedan ver distribuciones.
+ * Batch harvesting, to build a corpus where distributions can be seen.
  *
  *   npm run harvest:batch -- --limit 30
  *   npm run harvest:batch -- --cik 2053102,2110410,2104049
  *   npm run harvest:batch -- --limit 300 --years 7
  *   npm run harvest:batch -- --limit 300 --refresh-stale
  *
- * Un solo filing no dice nada: 32 préstamos no alcanzan para distinguir una
- * mediana de un accidente. Con veinte o treinta trusts —entre 600 y 2000
- * préstamos— recién ahí las distribuciones por tipo de activo empiezan a tener
- * sentido.
+ * A single filing says nothing: 32 loans are not enough to tell a median from
+ * an accident. With twenty or thirty trusts —between 600 and 2000 loans— the
+ * distributions by asset type start to make sense.
  *
- * Respeta el límite de SEC (el cliente limita a 8 req/s) y salta los trusts que
- * fallan en vez de abortar: en un lote de treinta, uno o dos van a tener el
- * Annex en un formato que todavía no manejamos.
+ * It respects the SEC limit (the client caps at 8 req/s) and skips the trusts
+ * that fail rather than aborting: in a batch of thirty, one or two will have
+ * their Annex in a format we do not handle yet.
  */
 
 import { EdgarError, preflight } from "./edgar/client.js";
@@ -38,15 +37,15 @@ function flag(name: string): string | null {
 
 const limit = Number(flag("limit")) || 20;
 /**
- * Cuántos años hacia atrás buscar.
+ * How many years back to search.
  *
- * EDGAR corta la paginación de una misma consulta alrededor de los 100
- * resultados, y esos 100 son los más recientes. Sin ventanas de fecha, pedir 300
- * trusts devuelve los mismos 100 de siempre.
+ * EDGAR cuts off pagination for a single query at around 100 results, and those
+ * 100 are the most recent. Without date windows, asking for 300 trusts returns
+ * the same 100 every time.
  *
- * El default de 4 cubre 2023-2026, que es lo que hacía falta para tener añadas
- * con desempeño reportado. Para empalmar con la ventana de Griffin —que termina
- * en 2019— hay que ir más atrás:
+ * The default of 4 covers 2023-2026, which is what was needed to have vintages
+ * with reported performance. To join up with Griffin's window —which ends in
+ * 2019— you have to go further back:
  *
  *   npm run harvest:batch -- --limit 300 --years 7
  */
@@ -54,12 +53,12 @@ const years = Number(flag("years")) || 4;
 const explicitCiks = flag("cik")?.split(",").map((c) => c.trim()).filter(Boolean) ?? [];
 
 /**
- * Varias consultas porque una sola no alcanza.
+ * Several queries because one is not enough.
  *
- * La búsqueda full-text de EDGAR devuelve resultados sesgados hacia los
- * emisores más frecuentes. Rotando el fraseo se llega a familias distintas
- * —Benchmark, BANK, BBCMS, Wells Fargo, Morgan Stanley— y el corpus queda menos
- * concentrado en un solo originador, que es lo que arruinaría las medianas.
+ * EDGAR's full-text search returns results biased towards the most frequent
+ * issuers. Rotating the phrasing reaches different families —Benchmark, BANK,
+ * BBCMS, Wells Fargo, Morgan Stanley— and the corpus ends up less concentrated
+ * in a single originator, which is what would ruin the medians.
  */
 const DISCOVERY_QUERIES = [
   '"Commercial Mortgage Trust"',
@@ -86,17 +85,17 @@ async function main() {
     process.exit(1);
   }
   if (!health.schemaReady) {
-    console.error(`\n✗ El schema corpus no existe.\n\n    npm run db:migrate\n`);
+    console.error(`\n✗ The corpus schema does not exist.\n\n    npm run db:migrate\n`);
     process.exit(1);
   }
 
   /**
-   * Verificar EDGAR antes de empezar, no en la primera consulta.
+   * Check EDGAR before starting, not on the first query.
    *
-   * El lote chequeaba la base y arrancaba, así que un SEC_USER_AGENT faltante se
-   * descubría recién adentro del bucle de descubrimiento y se manifestaba como
-   * quince fallos seguidos. Una precondición se verifica una vez, al principio,
-   * y con un mensaje.
+   * The batch checked the database and started, so a missing SEC_USER_AGENT was
+   * only discovered inside the discovery loop and manifested as fifteen
+   * consecutive failures. A precondition is checked once, at the start, with one
+   * message.
    */
   const edgar = await preflight();
   if (!edgar.ok) {
@@ -107,49 +106,51 @@ async function main() {
   const ciks = explicitCiks.length > 0 ? explicitCiks : await discover(limit);
 
   if (ciks.length === 0) {
-    console.error("\n✗ No se encontraron trusts. Probá con --cik.\n");
+    console.error("\n✗ No trusts found. Try --cik.\n");
     process.exit(1);
   }
 
-  // Los que ya están en el corpus se saltean: el lote es reanudable.
+  // Those already in the corpus are skipped: the batch is resumable.
   const { rows: existing } = await query<{ cik: string }>("SELECT DISTINCT cik FROM corpus.filings");
   const already = new Set(existing.map((r) => r.cik));
 
   /**
-   * Recosecha dirigida cuando el mapeo mejora.
+   * Targeted re-harvest when the mapping improves.
    *
-   * El problema: el lote saltea lo que ya está, así que un mapeo nuevo no llega
-   * a los filings viejos. La opción obvia —borrar todo y recosechar— tarda veinte
-   * minutos, gasta mil pedidos contra SEC y ya nos dejó sin corpus una vez.
+   * The problem: the batch skips what is already there, so a new mapping never
+   * reaches the old filings. The obvious option —delete everything and
+   * re-harvest— takes twenty minutes, spends a thousand requests against the SEC
+   * and has already left us with no corpus once.
    *
-   * `--refresh-missing-id` baja solo las emisiones cuyos préstamos no tienen
-   * identificador USABLE, que son las que el mapeo nuevo puede arreglar. La
-   * carga es idempotente (ON CONFLICT DO UPDATE), así que recosechar una
-   * emisión la actualiza en vez de duplicarla.
+   * `--refresh-missing-id` downloads only the issuances whose loans have no
+   * USABLE identifier, which are the ones the new mapping can fix. The load is
+   * idempotent (ON CONFLICT DO UPDATE), so re-harvesting an issuance updates it
+   * rather than duplicating it.
    *
-   * POR QUÉ "USABLE" Y NO "PRESENTE"
+   * WHY "USABLE" AND NOT "PRESENT"
    *
-   * La primera versión pedía `loan_ref IS NOT NULL`. Después metí un patrón que
-   * mapeaba la columna de flag como identificador, y esos filings pasaron a
-   * tener loan_ref con valores "Loan" y "Property" —presente, inservible—. El
-   * selector los dio por sanos y los salteó: la herramienta hecha para encontrar
-   * el problema quedó ciega justo al problema.
+   * The first version asked for `loan_ref IS NOT NULL`. Then I added a pattern
+   * that mapped the flag column as the identifier, and those filings ended up
+   * with loan_ref values of "Loan" and "Property" —present, useless. The
+   * selector judged them healthy and skipped them: the tool built to find the
+   * problem went blind to precisely that problem.
    *
-   * El criterio ahora es el que el join necesita de verdad: que empiece con un
-   * dígito. Un identificador que no se puede usar es lo mismo que no tenerlo.
+   * The criterion is now what the join actually needs: that it starts with a
+   * digit. An identifier you cannot use is the same as not having one.
    */
   /**
-   * `--refresh-stale`: recosecha lo cosechado con un mapeo viejo.
+   * `--refresh-stale`: re-harvests what was harvested with an old mapping.
    *
-   * Es el criterio que había que usar desde el principio. Los tres anteriores
-   * —"sin identificador", "sin identificador usable", "rangos disjuntos"—
-   * definían la recosecha por un síntoma, y cada arreglo del mapeo cambiaba el
-   * síntoma. Benchmark 2020-B16 escapó del selector tres veces seguidas: primero
-   * porque tenía loan_ref basura, después porque el basura era numérico, después
-   * porque un solo préstamo con id numérico alcanzaba para parecer sano.
+   * It is the criterion that should have been used from the start. The previous
+   * three —"no identifier", "no usable identifier", "disjoint ranges"— defined
+   * the re-harvest by a symptom, and every mapping fix changed the symptom.
+   * Benchmark 2020-B16 escaped the selector three times running: first because
+   * it had junk loan_ref, then because the junk was numeric, then because a
+   * single loan with a numeric id was enough to look healthy.
    *
-   * La versión de la taxonomía con que se cosechó no depende de si el resultado
-   * se ve bien. Es el único predicado que no se mueve cuando arreglás algo.
+   * The taxonomy version something was harvested with does not depend on
+   * whether the result looks good. It is the only predicate that does not move
+   * when you fix something.
    */
   const refreshStale = args.includes("--refresh-stale");
   const refreshMissingId = args.includes("--refresh-missing-id");
@@ -167,32 +168,33 @@ async function main() {
       [TAXONOMY_VERSION],
     );
     /**
-     * Normalizado, porque así se consulta más abajo.
+     * Normalised, because that is how it is queried below.
      *
-     * `f.cik` puede venir con ceros a la izquierda y el filtro de `pending` usa
-     * `String(Number(c))`. Guardar el crudo hacía que el `has` no matcheara
-     * nunca — el conjunto se calculaba, se anunciaba, y no seleccionaba nada.
+     * `f.cik` can come with leading zeros and the `pending` filter uses
+     * `String(Number(c))`. Storing the raw value made the `has` never match —
+     * the set was computed, announced, and selected nothing.
      */
     refresh = new Set(rows.map((r) => String(Number(r.cik))));
     const affected = rows.reduce((a, r) => a + Number(r.loans), 0);
     console.log(
-      `\n\x1b[33m--refresh-stale:\x1b[0m ${refresh.size} emisiones cosechadas con un mapeo ` +
-        `anterior a ${TAXONOMY_VERSION} (${affected} préstamos).`,
+      `\n\x1b[33m--refresh-stale:\x1b[0m ${refresh.size} issuances harvested with a mapping ` +
+        `older than ${TAXONOMY_VERSION} (${affected} loans).`,
     );
 
     /**
-     * Avisar que la recosecha se lleva puesto el desempeño.
+     * Warn that the re-harvest takes the performance data with it.
      *
-     * Recosechar borra el filing entero antes de reescribirlo, y
-     * `corpus.performance` referencia `loans(id)` con ON DELETE CASCADE. El
-     * desempeño de esos préstamos desaparece con ellos.
+     * Re-harvesting deletes the whole filing before rewriting it, and
+     * `corpus.performance` references `loans(id)` with ON DELETE CASCADE. Those
+     * loans' performance disappears with them.
      *
-     * No es recuperable desde acá: los 10-D hay que volver a bajarlos de EDGAR.
-     * Y no se nota después —las identidades siguen cerrando, el corpus sigue
-     * completo— así que el único momento útil para decirlo es ANTES.
+     * It is not recoverable from here: the 10-D files have to be downloaded from
+     * EDGAR again. And it is not noticeable afterwards —the identities still
+     * close, the corpus still looks complete— so the only useful moment to say
+     * it is BEFORE.
      */
-    const { rows: perf } = await query<{ filas: string; prestamos: string }>(
-      `SELECT count(*)::text AS filas, count(DISTINCT p.loan_id)::text AS prestamos
+    const { rows: perf } = await query<{ rows_n: string; loans_n: string }>(
+      `SELECT count(*)::text AS rows_n, count(DISTINCT p.loan_id)::text AS loans_n
          FROM corpus.performance p
          JOIN corpus.loans l ON l.id = p.loan_id
          JOIN corpus.filings f ON f.accession = l.accession
@@ -200,14 +202,14 @@ async function main() {
       [[...refresh]],
     );
 
-    const perdidos = Number(perf[0]?.prestamos ?? 0);
-    if (perdidos > 0) {
+    const lost = Number(perf[0]?.loans_n ?? 0);
+    if (lost > 0) {
       console.log(
-        `\x1b[31m  Se van a borrar ${Number(perf[0]!.filas).toLocaleString("en-US")} filas de ` +
-          `desempeño de ${perdidos.toLocaleString("en-US")} préstamos.\x1b[0m`,
+        `\x1b[31m  ${Number(perf[0]!.rows_n).toLocaleString("en-US")} performance rows from ` +
+          `${lost.toLocaleString("en-US")} loans will be deleted.\x1b[0m`,
       );
       console.log(
-        `\x1b[90m  El CASCADE viene de loans(id). Reconstruir después con:\x1b[0m ` +
+        `\x1b[90m  The CASCADE comes from loans(id). Rebuild afterwards with:\x1b[0m ` +
           `\x1b[1mnpm run db:performance\x1b[0m`,
       );
     }
@@ -227,53 +229,54 @@ async function main() {
     for (const r of rows) refresh.add(r.cik);
     const affected = rows.reduce((a, r) => a + Number(r.loans), 0);
     console.log(
-      `\n\x1b[33m--refresh-missing-id:\x1b[0m ${refresh.size} emisiones sin identificador usable ` +
-        `(${affected} préstamos) se van a recosechar.`,
+      `\n\x1b[33m--refresh-missing-id:\x1b[0m ${refresh.size} issuances with no usable identifier ` +
+        `(${affected} loans) will be re-harvested.`,
     );
   }
 
   /**
-   * Lo descubierto MÁS lo que hay que recosechar, no lo descubierto FILTRADO.
+   * What was discovered PLUS what has to be re-harvested, not what was
+   * discovered FILTERED.
    *
-   * Esta línea decía `ciks.filter(... || refresh.has(...))`. Como `ciks` sale
-   * del descubrimiento —que por definición busca trusts que NO están en el
-   * corpus— una emisión vieja no aparecía ahí y el `||` no tenía sobre qué
-   * actuar. El flag calculaba 222 emisiones obsoletas, imprimía una advertencia
-   * en rojo sobre borrar 2.213 filas de desempeño, y después cosechaba otra
-   * cosa: veinte trusts nuevos de 2011-2014.
+   * This line read `ciks.filter(... || refresh.has(...))`. Since `ciks` comes
+   * from discovery —which by definition looks for trusts NOT in the corpus— an
+   * old issuance never appeared there and the `||` had nothing to act on. The
+   * flag computed 222 stale issuances, printed a red warning about deleting
+   * 2,213 performance rows, and then harvested something else entirely: twenty
+   * new trusts from 2011-2014.
    *
-   * Es la peor forma de este error. No falló en silencio: falló anunciando en
-   * voz alta que estaba haciendo lo correcto.
+   * It is the worst form of this error. It did not fail silently: it failed
+   * while announcing loudly that it was doing the right thing.
    */
   const norm = (c: string) => String(Number(c));
-  const descubiertos = ciks.filter((c) => !already.has(norm(c)));
-  const enLista = new Set(descubiertos.map(norm));
+  const discovered = ciks.filter((c) => !already.has(norm(c)));
+  const enLista = new Set(discovered.map(norm));
 
   /**
-   * `--refresh-limit N`: recosechar N emisiones y parar.
+   * `--refresh-limit N`: re-harvest N issuances and stop.
    *
-   * Recosechar 222 emisiones son ~30 minutos y borra el desempeño de 2.213
-   * préstamos por CASCADE. El código que las selecciona acababa de tener un bug
-   * que lo hacía no seleccionar ninguna mientras anunciaba lo contrario.
+   * Re-harvesting 222 issuances is ~30 minutes and deletes the performance of
+   * 2,213 loans by CASCADE. The code that selects them had just had a bug that
+   * made it select none while announcing the opposite.
    *
-   * Correr cinco primero cuesta un minuto y responde si el arreglo funciona.
-   * Es la misma lógica que la sonda del vendedor: verificar antes de la
-   * operación cara, no después de que el resultado sorprenda.
+   * Running five first costs a minute and answers whether the fix works. It is
+   * the same logic as the seller probe: verify before the expensive operation,
+   * not after the result surprises you.
    */
   const refreshLimitFlag = args.indexOf("--refresh-limit");
   const refreshLimit =
     refreshLimitFlag === -1 ? Infinity : Number(args[refreshLimitFlag + 1] ?? Infinity);
 
-  const aRecosechar = [...refresh]
+  const toReharvest = [...refresh]
     .filter((c) => !enLista.has(c))
     .slice(0, refreshLimit);
-  const pending = [...descubiertos, ...aRecosechar];
-  const skipped = ciks.length - descubiertos.length;
+  const pending = [...discovered, ...toReharvest];
+  const skipped = ciks.length - discovered.length;
 
   console.log(
-    `\n${ciks.length} trusts descubiertos · ${descubiertos.length} nuevos por cosechar` +
-      `${skipped ? ` · ${skipped} ya en el corpus` : ""}` +
-      `${aRecosechar.length ? ` · \x1b[33m${aRecosechar.length} a recosechar por mapeo viejo\x1b[0m` : ""}\n`,
+    `\n${ciks.length} trusts discovered · ${discovered.length} new to harvest` +
+      `${skipped ? ` · ${skipped} already in the corpus` : ""}` +
+      `${toReharvest.length ? ` · \x1b[33m${toReharvest.length} to re-harvest for an old mapping\x1b[0m` : ""}\n`,
   );
 
   const started = Date.now();
@@ -290,8 +293,8 @@ async function main() {
       const result = await harvestOne(cik);
       if (!result) {
         failed++;
-        problems.push({ cik, reason: "sin Annex A identificable" });
-        console.log(`${prefix} \x1b[33m—\x1b[0m cik ${cik}: sin Annex A`);
+        problems.push({ cik, reason: "no identifiable Annex A" });
+        console.log(`${prefix} \x1b[33m—\x1b[0m cik ${cik}: no Annex A`);
         continue;
       }
 
@@ -306,8 +309,8 @@ async function main() {
 
       console.log(
         `${prefix} ${mark} ${result.source.companyName.slice(0, 44).padEnd(44)} ` +
-          `${String(report.loans).padStart(3)} préstamos · ${String(report.observations).padStart(4)} obs` +
-          `${errors > 0 ? ` · \x1b[33m${errors} error(es) de sanidad\x1b[0m` : ""}`,
+          `${String(report.loans).padStart(3)} loans · ${String(report.observations).padStart(4)} obs` +
+          `${errors > 0 ? ` · \x1b[33m${errors} sanity error(s)\x1b[0m` : ""}`,
       );
     } catch (err) {
       failed++;
@@ -320,22 +323,22 @@ async function main() {
   const mins = ((Date.now() - started) / 60_000).toFixed(1);
 
   console.log(`\n${"─".repeat(70)}`);
-  console.log(`  ${ok} cosechados · ${failed} failed · ${mins} min`);
-  console.log(`  ${loans} préstamos · ${observations} observations agregadas`);
+  console.log(`  ${ok} harvested · ${failed} failed · ${mins} min`);
+  console.log(`  ${loans} loans · ${observations} observations added`);
 
   if (problems.length > 0) {
-    console.log(`\n  No se pudieron cosechar:`);
+    console.log(`\n  Could not be harvested:`);
     for (const p of problems) {
       console.log(`    cik ${p.cik.padEnd(9)} ${p.reason}`);
     }
-    console.log(`\n  \x1b[90mInspeccioná alguno con: npm run harvest -- filings <cik>\x1b[0m`);
+    console.log(`\n  \x1b[90mInspect one with: npm run harvest -- filings <cik>\x1b[0m`);
   }
 
   const { rows: totals } = await query<{ filings: string; loans: string }>(
     "SELECT (SELECT count(*) FROM corpus.filings) AS filings, (SELECT count(*) FROM corpus.loans) AS loans",
   );
   console.log(
-    `\n  Corpus: ${totals[0]!.filings} filings · ${totals[0]!.loans} préstamos\n`,
+    `\n  Corpus: ${totals[0]!.filings} filings · ${totals[0]!.loans} loans\n`,
   );
   console.log(`  Siguiente:  npm run db:analyze\n`);
 }
@@ -343,11 +346,11 @@ async function main() {
 // ---------------------------------------------------------------------------
 
 /**
- * Ventanas anuales para llegar más atrás.
+ * Yearly windows to reach further back.
  *
- * EDGAR corta la paginación de una misma consulta alrededor de los 100
- * resultados, y esos 100 son los más recientes. Para juntar cientos de trusts
- * hay que combinar consultas distintas con ventanas de fechas distintas.
+ * EDGAR cuts off pagination for a single query at around 100 results, and those
+ * 100 are the most recent. To gather hundreds of trusts you have to combine
+ * different queries with different date windows.
  */
 function yearWindows(years: number): Array<{ from: string; to: string }> {
   const currentYear = new Date().getFullYear();
@@ -364,10 +367,10 @@ async function discover(target: number): Promise<string[]> {
   const range = span.length
     ? ` · ${span[span.length - 1]!.from.slice(0, 4)}-${span[0]!.to.slice(0, 4)}`
     : "";
-  console.log(`\nDescubriendo trusts de CMBS (objetivo ${target}${range})...`);
+  console.log(`\nDiscovering CMBS trusts (target ${target}${range})...`);
 
   const found = new Map<string, string>();
-  // Con pocos trusts alcanza el año en curso; para cientos hay que ir atrás.
+  // With few trusts the current year is enough; for hundreds you have to go back.
   const windows = target > 40 ? yearWindows(years) : [{ from: "", to: "" }];
 
   for (const win of windows) {
@@ -394,17 +397,18 @@ async function discover(target: number): Promise<string[]> {
         }
       } catch (err) {
         /**
-         * Un problema de configuración no se reintenta.
+         * A configuration problem is not retried.
          *
-         * Este catch trataba todo igual: si faltaba SEC_USER_AGENT, las quince
-         * combinaciones de consulta y año fallaban por lo mismo y el mismo
-         * mensaje se imprimía quince veces, terminando en un "no se encontraron
-         * trusts" que sugería revisar la consulta. Reintentar algo que no puede
-         * funcionar no es robustez, es ruido que oculta la causa.
+         * This catch treated everything the same: if SEC_USER_AGENT was
+         * missing, all fifteen combinations of query and year failed for the
+         * same reason and the same message printed fifteen times, ending in a
+         * "no trusts found" that suggested checking the query. Retrying
+         * something that cannot work is not robustness, it is noise that hides
+         * the cause.
          */
         const msg = err instanceof Error ? err.message : String(err);
         if (/SEC_USER_AGENT/.test(msg)) throw err;
-        console.log(`  \x1b[90m${q} falló: ${msg}\x1b[0m`);
+        console.log(`  \x1b[90m${q} failed: ${msg}\x1b[0m`);
       }
     }
     if (found.size >= target) break;
@@ -412,10 +416,10 @@ async function discover(target: number): Promise<string[]> {
 
   if (found.size < target) {
     console.log(
-      `\n  \x1b[33mSe encontraron ${found.size} de ${target}.\x1b[0m EDGAR limita la paginación por consulta;`,
+      `\n  \x1b[33mFound ${found.size} of ${target}.\x1b[0m EDGAR limits pagination per query;`,
     );
     console.log(
-      `  \x1b[90mpara más, agregá consultas a DISCOVERY_QUERIES o pasá CIKs con --cik.\x1b[0m`,
+      `  \x1b[90mfor more, add queries to DISCOVERY_QUERIES or pass CIKs with --cik.\x1b[0m`,
     );
   }
 
@@ -450,22 +454,23 @@ async function harvestOne(cik: string) {
 
   const result = rowsToObservations(filtered.rows, joined.headerRowIndex, source);
   /**
-   * Cuántas filas de propiedad tiró `keepLoanRows`.
+   * How many property rows `keepLoanRows` threw away.
    *
-   * Un Annex A trae una fila por préstamo y una por cada propiedad que lo
-   * garantiza, con la dirección, la ciudad y el estado de cada una. Nos quedamos
-   * con las de préstamo, así que la geografía de las carteras multi-propiedad se
-   * descarta acá — y hasta ahora no quedaba registro de cuánta.
+   * An Annex A carries one row per loan and one per property securing it, with
+   * each one's address, city and state. We keep the loan rows, so the geography
+   * of multi-property portfolios is discarded here — and until now there was no
+   * record of how much.
    *
-   * Intenté estimarlo por resta sobre `stats` y me dio ~0, porque `dataRows` se
-   * cuenta DESPUÉS de este filtro. El proxy medía otra cosa y contestaba con
-   * confianza: casi cierra una línea de investigación que era correcta.
+   * I tried to estimate it by subtraction over `stats` and got ~0, because
+   * `dataRows` is counted AFTER this filter. The proxy measured something else
+   * and answered confidently: it nearly closed a line of investigation that was
+   * correct.
    */
   result.stats.propertyRowsDropped = filtered.propertyRows;
   /**
-   * Y ahora se guardan, no solo se cuentan. Ver `toProperties`: sobre los tres
-   * fixtures son 138 filas con dirección, ciudad y estado, todas atadas a su
-   * préstamo por la numeración 3.01 del emisor.
+   * And now they are stored, not just counted. See `toProperties`: over the
+   * three fixtures that is 138 rows with address, city and state, each tied to
+   * its loan by the issuer's 3.01 numbering.
    */
   result.propertyRows = toProperties(
     joined.rows, joined.headerRowIndex, filtered.droppedPropertyRows, source,
