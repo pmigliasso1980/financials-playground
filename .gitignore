@@ -22,3 +22,6 @@ out/
 # Python bytecode from tools/
 __pycache__/
 *.pyc
+
+# Workflow state staging (corpus-weekly)
+state/

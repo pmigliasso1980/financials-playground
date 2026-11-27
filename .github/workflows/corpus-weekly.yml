@@ -1,0 +1,135 @@
+# Weekly CMBS corpus maintenance, independent of any personal machine.
+#
+# State between runs lives in a release asset (tag `corpus-db`):
+#   corpus.sql.gz   pg_dump of the database
+#   health.json     the monitor's previous snapshot (out/health.json)
+# Seed it once with tools/publish-corpus-dump.sh. Without a seed the run starts
+# from an empty database and says so.
+#
+# Needs one repository secret: SEC_USER_AGENT ("Name email"). EDGAR requires it;
+# it is a secret only so the email is not published in a public repo.
+#
+# The job fails (and GitHub emails the repo owner) when the harvest errors, the
+# monitor finds something to look at (exit 1), or a test fails. A quiet week is
+# a green run with nothing to read.
+
+name: corpus-weekly
+
+on:
+  schedule:
+    - cron: "30 11 * * 1" # Mondays 11:30 UTC = 08:30 America/Argentina/Cordoba
+  workflow_dispatch:
+
+permissions:
+  contents: write # to upload the refreshed dump to the release
+
+concurrency:
+  group: corpus-weekly
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      GH_TOKEN: ${{ github.token }}
+      DATABASE_URL: postgres://financials:financials@localhost:5433/financials
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: financials
+          POSTGRES_PASSWORD: financials
+          POSTGRES_DB: financials
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U financials -d financials"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check SEC_USER_AGENT
+        run: |
+          if [ -z "$SEC_USER_AGENT" ]; then
+            echo "::error::Repository secret SEC_USER_AGENT is not set"; exit 1
+          fi
+
+      - name: Restore previous state
+        id: restore
+        run: |
+          mkdir -p out state
+          if gh release download corpus-db --dir state --pattern 'corpus.sql.gz' --pattern 'health.json' 2>/dev/null \
+             && [ -f state/corpus.sql.gz ]; then
+            gunzip -c state/corpus.sql.gz | docker exec -i "$(docker ps -q --filter ancestor=postgres:17-alpine)" \
+              psql -U financials -d financials -v ON_ERROR_STOP=1 -q
+            [ -f state/health.json ] && cp state/health.json out/health.json
+            echo "seeded=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No corpus-db release found: starting from an EMPTY database"
+            echo "seeded=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Migrate
+        run: npm run db:migrate
+
+      - name: Harvest
+        id: harvest
+        continue-on-error: true
+        run: npm run harvest:batch -- --refresh-stale --refresh-limit 30 2>&1 | tee harvest.log
+
+      - name: Rebuild performance rows
+        id: perf
+        if: steps.harvest.outcome == 'success'
+        continue-on-error: true
+        run: npm run db:performance 2>&1 | tee performance.log
+
+      - name: Monitor
+        id: monitor
+        continue-on-error: true
+        run: npm run db:monitor 2>&1 | tee monitor.log
+
+      - name: Tests
+        id: tests
+        continue-on-error: true
+        run: npm run test:all 2>&1 | tee tests.log
+
+      - name: Save state for next week
+        if: steps.restore.outputs.seeded == 'true' || steps.harvest.outcome == 'success'
+        run: |
+          docker exec "$(docker ps -q --filter ancestor=postgres:17-alpine)" \
+            pg_dump -U financials -d financials --no-owner | gzip -9 > state/corpus.sql.gz
+          cp -f out/health.json state/health.json 2>/dev/null || true
+          gh release view corpus-db >/dev/null 2>&1 || \
+            gh release create corpus-db --title "corpus-db (state)" --notes "Database dump and monitor snapshot used by corpus-weekly. Do not delete."
+          gh release upload corpus-db state/corpus.sql.gz state/health.json --clobber
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Corpus weekly"
+            echo "- seeded from release: ${{ steps.restore.outputs.seeded }}"
+            echo "- harvest: ${{ steps.harvest.outcome }}"
+            echo "- performance: ${{ steps.perf.outcome }}"
+            echo "- monitor: ${{ steps.monitor.outcome }} (failure = something to look at)"
+            echo "- tests: ${{ steps.tests.outcome }}"
+            echo; echo '### Monitor'; echo '```'; cat monitor.log 2>/dev/null | tail -60; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the run if anything needs attention
+        if: always()
+        run: |
+          if [ "${{ steps.harvest.outcome }}" = "failure" ] || [ "${{ steps.perf.outcome }}" = "failure" ] \
+             || [ "${{ steps.monitor.outcome }}" = "failure" ] || [ "${{ steps.tests.outcome }}" = "failure" ]; then
+            echo "::error::Something needs attention - see the Summary tab"; exit 1
+          fi
